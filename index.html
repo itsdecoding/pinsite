@@ -889,17 +889,17 @@ code.masked{color:var(--dim);letter-spacing:.3em}
 
       <div id="paneOne">
         <div class="grid2">
-          <label class="fld"><span>Clinic name</span><input class="in" id="iClinic" placeholder="Smile Craft Dental"></label>
-          <label class="fld"><span>Doctor</span><input class="in" id="iDoctor" placeholder="Dr. Anjali Deshpande"></label>
-          <label class="fld"><span>Specialty</span><input class="in" id="iSpecialty" placeholder="Dental" list="specialtyList"></label>
-          <label class="fld"><span>Phone</span><input class="in" id="iPhone" placeholder="+91 98200 11223"></label>
-          <label class="fld"><span>Email</span><input class="in" id="iEmail" placeholder="front desk email"></label>
-          <label class="fld"><span>Website</span><input class="in" id="iSite" placeholder="smilecraft.in"></label>
+          <label class="fld"><span>Clinic name</span><input class="in" id="iClinic" placeholder="Clinic name"></label>
+          <label class="fld"><span>Doctor</span><input class="in" id="iDoctor" placeholder="Doctor or contact name"></label>
+          <label class="fld"><span>Specialty</span><input class="in" id="iSpecialty" placeholder="Specialty" list="specialtyList"></label>
+          <label class="fld"><span>Phone</span><input class="in" id="iPhone" placeholder="+91 00000 00000"></label>
+          <label class="fld"><span>Email</span><input class="in" id="iEmail" placeholder="contact@example.com"></label>
+          <label class="fld"><span>Website</span><input class="in" id="iSite" placeholder="website.com"></label>
           <label class="fld"><span>Website status</span><select class="in" id="iWeb"><option value="unknown">Not checked yet</option><option value="none">No website</option><option value="has">Has a website</option></select></label>
-          <label class="fld span2"><span>Address</span><input class="in" id="iAddress" placeholder="Lane 5, Koregaon Park, Pune 411001"></label>
-          <label class="fld"><span>City</span><input class="in" id="iCity" placeholder="Pune" list="cityList"></label>
+          <label class="fld span2"><span>Address</span><input class="in" id="iAddress" placeholder="Clinic address"></label>
+          <label class="fld"><span>City</span><input class="in" id="iCity" placeholder="City" list="cityList"></label>
           <label class="fld"><span>Source</span><select class="in" id="iSource"></select></label>
-          <label class="fld span2"><span>Google listing link</span><input class="in" id="iGoogle" placeholder="https://maps.google.com/?cid=1234567890"></label>
+          <label class="fld span2"><span>Google listing link</span><input class="in" id="iGoogle" placeholder="https://maps.google.com/?cid=..."></label>
           <label class="fld span2"><span>Assign to</span><div class="chips" id="iOwnerChips"></div><input type="hidden" id="iOwner"></label>
           <label class="fld"><span>Priority</span><select class="in" id="iPriority"></select></label>
         </div>
@@ -912,10 +912,10 @@ code.masked{color:var(--dim);letter-spacing:.3em}
       <div id="paneMany" style="display:none">
         <label class="fld">
           <span>One clinic per line — clinic | doctor | phone | email | address | city | google link</span>
-          <textarea class="in" id="iBulk" style="min-height:150px;font-size:12.5px" placeholder="Smile Craft Dental | Dr. Anjali Deshpande | +91 98200 11223 | hello@smilecraft.in | Lane 5, Koregaon Park | Pune | https://maps.google.com/?cid=1234567890"></textarea>
+          <textarea class="in" id="iBulk" style="min-height:150px;font-size:12.5px" placeholder="Clinic Name | Doctor | Phone | Email | Address | City | Maps Link"></textarea>
         </label>
         <div class="hint">Use a pipe or a tab between fields — addresses contain commas, so comma-splitting would break them. Commas still work on lines with no pipe. A header row is detected and skipped, and blank fields are fine.</div>
-        <button class="btn btn-sm" id="btnSample" style="margin-top:10px">Load a sample batch with duplicates in it</button>
+        <button class="btn btn-sm" id="btnSample" style="margin-top:10px">Insert template format</button>
         <div id="manyVerdict"></div>
       </div>
     </div>
@@ -1090,7 +1090,7 @@ const SIGNALS = [
 
 const state = {
   leads: [],
-  team: [{name:'Alex', color:'#FF6B00', code:'AX24'}, {name:'Jordan', color:'#5B8DEF', code:'JD57'}],
+  team: [],
   me: '',
   country: '91',
   lists: {specialties:[], cities:[]},
@@ -1444,56 +1444,10 @@ function intake(raw, silent){
 }
 
 /* =========================================================
-   Seed data — clinic outreach
+   Seed data — clean state (no preloaded leads)
    ========================================================= */
 function seed(){
-  const rows = [
-    ['Smile Craft Dental','Dr. Anjali Deshpande','Dental','+91 98200 11223','front@smilecraft.in','smilecraft.in',
-     'Lane 5, Koregaon Park, Pune 411001','Pune','https://maps.google.com/?cid=10293847561',
-     'Google Maps','Alex','High','wants_demo','Site is a one-page template from 2016. Asked to see what a rebuild looks like.','has',2],
-    ['Aster Skin & Hair Clinic','Dr. Rohit Kulkarni','Dermatology','+91 99870 45612','hello@asterskin.in','asterskin.in',
-     'Baner Road, Baner, Pune 411045','Pune','https://maps.google.com/?cid=88213470091',
-     'Instagram DM','Jordan','Medium','voicemail','Left a voicemail Tuesday. Runs two branches, one shared site.','has',1],
-    ['Northline Physio','Dr. Sanjay Rao','Physiotherapy','+91 91230 77881','','',
-     'Nyati Empire, Viman Nagar, Pune 411014','Pune','https://maps.google.com/?cid=55120983744',
-     'Cold call','Alex','High','no_answer','Front desk said call back Thursday after 4. No website at all — easy pitch.','none',3],
-    ['Bright Harbor Dental','Dr. Sofia Alvarez','Dental','+1 512 555 0142','office@brightharbordental.com','brightharbordental.com',
-     '2100 South Lamar Blvd, Austin, TX 78704','Austin','https://maps.google.com/?cid=71204558830',
-     'Cold email','Jordan','High','demo_sent','Mockup sent Friday. Wants online booking on the new site before their Q4 push.','has',2],
-    ['Lumen Eye Care','Dr. Priya Nair','Ophthalmology','+91 99000 44556','contact@lumeneye.in','lumeneye.in',
-     'Panampilly Nagar, Kochi 682036','Kochi','https://maps.google.com/?cid=39887100254',
-     'Referral','Jordan','High','closed_won','Signed. New site and Google profile go live next month.','has',3],
-    ['Kite Orthodontics','Dr. Aisha Rahman','Orthodontics','+91 98330 22114','','',
-     'Linking Road, Bandra West, Mumbai 400050','Mumbai','https://maps.google.com/?cid=64003992218',
-     'Google Maps','Alex','High','not_called','Instagram only, no site, 400 reviews. Prime target.','none',0],
-    ['Becker Zahnarztpraxis','Dr. Tom Becker','Dental','+49 151 23456789','praxis@beckerzahn.de','beckerzahn.de',
-     'Leopoldstrasse 42, Munich 80802','Munich','https://maps.google.com/?cid=20114558873',
-     'Website form','Jordan','Medium','not_interested','Said they already have an agency on retainer.','has',1],
-    ['Grayscale Skin','Dr. Lena Fischer','Dermatology','+49 30 55510177','','',
-     'Kastanienallee 12, Berlin 10435','Berlin','https://maps.google.com/?cid=90233118876',
-     'Cold email','Unassigned','Low','closed_lost','No budget, revisit next year.','unknown',1]
-  ];
-  const now = Date.now();
-  rows.forEach((r,i) => {
-    const lead = makeLead({
-      clinic:r[0], doctor:r[1], specialty:r[2], phone:r[3], email:r[4], website:r[5],
-      address:r[6], city:r[7], google:r[8], source:r[9], owner:r[10], priority:r[11],
-      stage:r[12], notes:r[13], web:r[14], attempts:r[15],
-      createdAt: new Date(now - (rows.length - i) * 7.2e6).toISOString()
-    });
-    logEvent(lead, `Added from ${lead.source}`);
-    if(lead.stage !== defaultStage()) logEvent(lead, `Marked ${stageLabel(lead.stage)}`);
-    state.leads.push(lead);
-  });
-
-  /* Two entries the check should have caught, already sitting in Rejected. */
-  intake({clinic:'Smilecraft Dental Clinic', doctor:'Anjali Deshpande', specialty:'Dental',
-          phone:'098200 11223', address:'Lane No. 5, Koregaon Park, Pune', city:'Pune',
-          google:'https://maps.google.com/?cid=10293847561', source:'Cold call'}, true);
-  intake({clinic:'Aster Skin and Hair', doctor:'Dr Rohit Kulkarni', specialty:'Dermatology',
-          email:'hello@asterskin.in', address:'Baner Rd, Baner, Pune', city:'Pune',
-          source:'Referral'}, true);
-
+  state.leads = [];
   anim.flashRejected = false;
   anim.pulse = null;
 }
@@ -1836,8 +1790,8 @@ function renderMe(){
   const m = state.team.find(x => x.name === state.me);
   const av = $('meAv');
   av.style.cssText = 'width:22px;height:22px;border-radius:99px;display:grid;place-items:center;font-size:10px;font-weight:700;color:#0A0A0F;background:' + (m ? m.color : 'var(--raise)');
-  av.textContent = m ? m.name[0] : (devActive() ? 'D' : '?');
-  $('meName').textContent = state.me || 'Dev';
+  av.textContent = m ? m.name[0] : (devActive() ? 'D' : 'U');
+  $('meName').textContent = state.me || (devActive() ? 'Dev' : 'User');
   $('meMenu').innerHTML =
     `<div class="t">Signed in on this device only. Refreshing signs you out.</div>
      <button id="meOut"><span class="dotav none">&#10005;</span>Sign out</button>`;
@@ -2272,15 +2226,7 @@ function submitMany(){
   toast(`${rows.length} rows checked — ${out.rejected} rejected.`, out.rejected > 0);
 }
 
-const SAMPLE = [
-  'clinic | doctor | phone | email | address | city | google link',
-  'Smile Craft Dental | Dr. Anjali Deshpande | +91 98200 11223 | | Lane 5, Koregaon Park | Pune | https://maps.google.com/?cid=10293847561',
-  'Serene Dental Studio | Dr. Vikram Shah | +91 98765 43210 | front@serenedental.in | FC Road, Shivajinagar | Pune | https://maps.google.com/?cid=77410029934',
-  'Aster Skin & Hair | Dr Rohit Kulkarni | | hello@asterskin.in | Baner Rd, Baner | Pune |',
-  'Meridian Physiotherapy | Dr. Kavita Joshi | +91 90112 33445 | | Aundh Road, Aundh | Pune | https://maps.google.com/?cid=31558800127',
-  'Bright Harbor Dental | Dr. Sofia Alvarez | +1 512 555 0142 | | 2100 S Lamar Blvd | Austin | ',
-  'Vista Eye Centre | Dr. Imran Sheikh | +91 88220 91100 | care@vistaeye.in | MG Road, Camp | Pune | https://maps.google.com/?cid=44120983311'
-].join('\n');
+const SAMPLE = 'clinic | doctor | phone | email | address | city | google link';
 
 /* =========================================================
    Team editor
@@ -2636,7 +2582,6 @@ function renderDev(){
       <button class="btn btn-sm" id="devDownload">Download JSON backup</button>
       <button class="btn btn-sm btn-danger" id="devPurge">Discard ${rej} rejected</button>
       <button class="btn btn-sm btn-danger" id="devWipe">Delete every lead</button>
-      <button class="btn btn-sm" id="devSeed">Reload demo data</button>
       <button class="btn btn-sm btn-ghost" id="devLock">Lock now</button>
     </div>
     <label class="fld"><span>Restore from a JSON backup</span>
@@ -2659,10 +2604,6 @@ function renderDev(){
     state.leads = []; state.seq = 0; anim.seen.clear();
     closeDrawer(); renderDev(); toast(`${n} leads deleted.`);
   });
-  $('devSeed').onclick     = () => {
-    state.leads = []; state.seq = 0; anim.seen.clear();
-    seed(); render(); renderDev(); toast('Demo data reloaded.');
-  };
   $('devLock').onclick     = () => devLock();
   $('devRestore').onclick  = devRestore;
 }
