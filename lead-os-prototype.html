@@ -1,0 +1,2970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pinsite — Leads</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* =========================================================
+   Pinsite design system
+   near-black canvas · solid dark cards · orange accent
+   glow borders, ambient orbs, animated grid — no glass cards
+   ========================================================= */
+:root{
+  --bg:#0A0A0F;
+  --chrome:rgba(16,16,22,.78);
+  --col:#121218;
+  --card:#1A1A21;
+  --card-hi:#20202A;
+  --raise:#25252F;
+  --line:rgba(255,255,255,.07);
+  --line-strong:rgba(255,255,255,.15);
+  --text:#ECECF1;
+  --muted:#8A8A99;
+  --dim:#5F5F6E;
+  --accent:#FF6B00;
+  --accent-2:#FF9A3D;
+  --accent-soft:rgba(255,107,0,.12);
+  --accent-line:rgba(255,107,0,.38);
+  --danger:#FF4D4D;
+  --danger-soft:rgba(255,77,77,.10);
+  --warn:#FFB020;
+  --warn-soft:rgba(255,176,32,.12);
+  --ok:#2ECC71;
+  --ok-soft:rgba(46,204,113,.12);
+  --spring:cubic-bezier(.16,1,.3,1);
+  --ease:cubic-bezier(.4,0,.2,1);
+  --shadow:0 18px 50px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow:hidden;
+}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+button{cursor:pointer;border:none;background:none}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:99px}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2)}
+
+/* ---------- layered background ---------- */
+.bg-grid,.bg-noise,.orb{position:fixed;pointer-events:none;z-index:0}
+.bg-grid{
+  inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:56px 56px;
+  -webkit-mask-image:radial-gradient(ellipse 100% 80% at 50% 0%,#000 30%,transparent 95%);
+  mask-image:radial-gradient(ellipse 100% 80% at 50% 0%,#000 30%,transparent 95%);
+  animation:gridDrift 30s linear infinite;
+}
+@keyframes gridDrift{to{background-position:56px 56px,56px 56px}}
+.bg-noise{
+  inset:0;opacity:.028;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.orb{border-radius:50%;filter:blur(100px)}
+.orb.a{width:540px;height:540px;background:#FF6B00;opacity:.085;top:-240px;left:-160px;animation:drift1 26s ease-in-out infinite}
+.orb.b{width:480px;height:480px;background:#6E3BFF;opacity:.07;bottom:-260px;right:-180px;animation:drift2 34s ease-in-out infinite}
+@keyframes drift1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(90px,60px) scale(1.12)}}
+@keyframes drift2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-80px,-50px) scale(1.1)}}
+
+/* ---------- shell ---------- */
+.app{position:relative;z-index:1;display:flex;flex-direction:column;height:100vh;height:100dvh;min-height:0;animation:bootIn .55s var(--ease) both}
+@keyframes bootIn{from{opacity:0}to{opacity:1}}
+
+.topbar{
+  display:flex;align-items:center;gap:16px;padding:0 20px;height:62px;flex:0 0 62px;
+  border-bottom:1px solid var(--line);
+  background:var(--chrome);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+}
+.brand{display:flex;align-items:center;gap:11px;flex:0 0 auto}
+.mark{
+  width:28px;height:28px;border-radius:9px;
+  background:linear-gradient(145deg,var(--accent-2),var(--accent));
+  display:grid;place-items:center;font-weight:700;font-size:13px;color:#150800;
+  box-shadow:0 0 0 1px rgba(255,255,255,.12) inset,0 6px 18px rgba(255,107,0,.32);
+}
+.brand h1{font-size:15px;font-weight:600;letter-spacing:-.015em}
+.brand h1 em{color:var(--muted);font-style:normal;font-weight:400}
+.topbar-spacer{flex:1}
+
+.searchwrap{position:relative;flex:0 1 290px}
+.searchwrap svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.4;transition:opacity .18s}
+.searchwrap:focus-within svg{opacity:.9;color:var(--accent)}
+.search{
+  width:100%;height:37px;padding:0 12px 0 35px;
+  background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:10px;
+  transition:border-color .18s,background .18s,box-shadow .18s;
+}
+.search::placeholder{color:var(--dim)}
+.search:focus{border-color:var(--accent-line);background:rgba(0,0,0,.5);box-shadow:0 0 0 3px rgba(255,107,0,.08);outline:none}
+
+.btn{
+  position:relative;overflow:hidden;height:37px;padding:0 15px;border-radius:10px;
+  border:1px solid var(--line-strong);background:var(--card);
+  font-weight:500;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
+  transition:background .18s,border-color .18s,transform .18s var(--spring);
+}
+.btn:hover{background:var(--card-hi);border-color:rgba(255,255,255,.26);transform:translateY(-1px)}
+.btn:active{transform:translateY(0) scale(.985)}
+.btn-primary{
+  background:linear-gradient(145deg,#FF7C1B,var(--accent));border-color:transparent;
+  color:#150800;font-weight:600;box-shadow:0 6px 20px rgba(255,107,0,.26);
+}
+.btn-primary:hover{background:linear-gradient(145deg,#FF8B33,#FF7412);box-shadow:0 10px 26px rgba(255,107,0,.36)}
+.btn-primary::after{
+  content:'';position:absolute;inset:0;transform:translateX(-120%);
+  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.42) 50%,transparent 70%);
+}
+.btn-primary:hover::after{animation:sheen .75s var(--ease)}
+@keyframes sheen{to{transform:translateX(120%)}}
+.btn-sm{height:31px;padding:0 11px;font-size:12.5px;border-radius:9px}
+.btn-ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn-ghost:hover{background:var(--card);color:var(--text)}
+.btn-wide{width:100%;justify-content:center}
+
+/* ---------- filter rail ---------- */
+.rail{
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:11px 20px;
+  border-bottom:1px solid var(--line);
+  background:var(--chrome);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+}
+.rail-label{color:var(--dim);font-size:12px;margin-right:2px}
+select.f{
+  height:33px;padding:0 27px 0 11px;border-radius:9px;
+  background:var(--card) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%238A8A99' stroke-width='1.5' fill='none' stroke-linecap='round'/></svg>") no-repeat right 10px center;
+  border:1px solid var(--line);appearance:none;font-size:13px;max-width:150px;
+  transition:border-color .18s,background-color .18s,color .18s;
+}
+select.f:hover{border-color:var(--line-strong)}
+select.f.on{border-color:var(--accent-line);color:var(--accent);background-color:var(--accent-soft)}
+.rail .sep{width:1px;height:20px;background:var(--line)}
+.counts{margin-left:auto;display:flex;gap:18px;font-size:12.5px;color:var(--muted);align-items:center}
+.counts b{display:inline-block;color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;transition:color .3s}
+.counts .dupe b{color:var(--danger)}
+.counts .won b{color:var(--ok)}
+.counts b.tick{animation:tick .5s var(--spring)}
+@keyframes tick{0%{transform:translateY(-4px) scale(1.16)}100%{transform:none}}
+
+/* ---------- board ---------- */
+.board{flex:1;min-height:0;display:flex;gap:14px;padding:16px 20px 20px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+.col{
+  flex:0 0 296px;display:flex;flex-direction:column;min-height:0;max-height:100%;
+  background:var(--col);border:1px solid var(--line);border-radius:20px;
+  transition:border-color .2s,box-shadow .2s,transform .2s var(--spring);
+}
+.col.enter{animation:colIn .5s var(--spring) both;animation-delay:calc(var(--i) * 55ms)}
+@keyframes colIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.col.rejected{
+  border-color:rgba(255,77,77,.24);
+  background:linear-gradient(180deg,rgba(255,77,77,.055),transparent 180px),var(--col);
+}
+.col.drop{
+  border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--accent),0 0 40px rgba(255,107,0,.22) inset;
+  transform:translateY(-2px);
+}
+.col-head{display:flex;align-items:center;gap:9px;padding:14px 15px 11px;border-bottom:1px solid var(--line);cursor:pointer;user-select:none}
+.col-head:hover .chev{color:var(--text)}
+.chev{flex:0 0 auto;color:var(--dim);display:grid;place-items:center;transition:transform .28s var(--spring),color .18s}
+.col.collapsed .chev{transform:rotate(-90deg)}
+.col.collapsed .col-body{display:none}
+.dot{width:7px;height:7px;border-radius:99px;flex:0 0 auto;position:relative}
+.dot::after{content:'';position:absolute;inset:-3px;border-radius:99px;background:inherit;opacity:.28;animation:halo 2.6s ease-in-out infinite}
+@keyframes halo{0%,100%{transform:scale(1);opacity:.28}50%{transform:scale(1.7);opacity:0}}
+.col-head h2{font-size:13px;font-weight:600;letter-spacing:-.005em}
+.pill{
+  margin-left:auto;min-width:23px;height:21px;padding:0 7px;border-radius:7px;
+  background:var(--raise);color:var(--muted);font-size:11.5px;font-weight:600;
+  display:grid;place-items:center;font-variant-numeric:tabular-nums;transition:background .3s,color .3s;
+}
+.pill.flash{animation:pillFlash 1.1s var(--ease)}
+@keyframes pillFlash{
+  0%{background:var(--danger);color:#150000;transform:scale(1.35)}
+  55%{background:var(--danger);color:#150000;transform:scale(1)}
+  100%{background:var(--raise);color:var(--muted)}
+}
+.col-body{flex:1;min-height:76px;overflow-y:auto;padding:11px;display:flex;flex-direction:column;gap:10px}
+.empty{
+  border:1px dashed var(--line);border-radius:14px;padding:20px 13px;
+  color:var(--dim);font-size:12.5px;text-align:center;line-height:1.6;
+}
+
+/* ---------- lead card ---------- */
+.card{
+  position:relative;background:var(--card);border:1px solid var(--line);
+  border-radius:14px;padding:12px 13px;cursor:grab;
+  transition:background .2s,border-color .2s,transform .22s var(--spring),box-shadow .22s;
+}
+.card::before{
+  content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;
+  background:radial-gradient(160px circle at var(--mx,50%) var(--my,50%),rgba(255,107,0,.75),transparent 62%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  mask-composite:exclude;
+  opacity:0;transition:opacity .22s;pointer-events:none;
+}
+.card:hover{background:var(--card-hi);transform:translateY(-2px);box-shadow:0 10px 26px rgba(0,0,0,.4)}
+.card:hover::before{opacity:1}
+.card:active{cursor:grabbing;transform:translateY(-1px) scale(.99)}
+.card.dragging{opacity:.34;transform:scale(.96) rotate(-1.4deg)}
+.card.sel{border-color:var(--accent-line);box-shadow:0 0 0 1px var(--accent-line),0 10px 26px rgba(0,0,0,.4)}
+.card.enter{animation:cardIn .42s var(--spring) both;animation-delay:calc(var(--i) * 36ms)}
+@keyframes cardIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+.card.landed{animation:landed .6s var(--spring)}
+@keyframes landed{0%{box-shadow:0 0 0 2px var(--accent)}100%{box-shadow:0 0 0 0 transparent}}
+.card.stamped{animation:stamped .7s var(--ease)}
+@keyframes stamped{
+  0%{transform:scale(1.06);box-shadow:0 0 0 2px var(--danger)}
+  40%{transform:scale(1)}
+  100%{box-shadow:0 0 0 0 transparent}
+}
+.card-top{display:flex;align-items:flex-start;gap:8px}
+.card h3{font-size:13.5px;font-weight:600;line-height:1.35;flex:1;letter-spacing:-.01em}
+.card .doc{color:var(--text);font-size:12px;margin-top:3px;opacity:.82}
+.card .addr{
+  color:var(--dim);font-size:11.5px;margin-top:4px;line-height:1.45;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.card-meta{display:flex;align-items:center;gap:6px;margin-top:11px;flex-wrap:wrap}
+.tag{font-size:11px;padding:3px 8px;border-radius:7px;background:var(--raise);color:var(--muted);border:1px solid transparent}
+.tag.hi{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}
+.tag.nosite{background:rgba(201,162,39,.14);color:#E0B93B;border-color:rgba(201,162,39,.38)}
+.tag.warn{background:var(--warn-soft);color:var(--warn);border-color:rgba(255,176,32,.3)}
+.tag.dupe{background:var(--danger-soft);color:var(--danger);border-color:rgba(255,77,77,.3)}
+.av{
+  width:21px;height:21px;border-radius:99px;flex:0 0 auto;margin-left:auto;
+  display:grid;place-items:center;font-size:10px;font-weight:700;color:#0A0A0F;
+  box-shadow:0 0 0 1px rgba(255,255,255,.14) inset;
+}
+.av.none{background:var(--raise);color:var(--dim);box-shadow:0 0 0 1px var(--line-strong) inset}
+
+/* Google listing button — on card and in drawer */
+.glink{
+  display:inline-flex;align-items:center;gap:6px;height:27px;padding:0 10px;
+  border-radius:8px;background:var(--raise);border:1px solid var(--line-strong);
+  font-size:11.5px;font-weight:500;color:var(--muted);text-decoration:none;
+  transition:color .18s,border-color .18s,background .18s,transform .18s var(--spring);
+}
+.glink:hover{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft);transform:translateY(-1px)}
+.glink svg{flex:0 0 auto}
+.glink.wide{width:100%;justify-content:center;height:37px;font-size:13px;border-radius:10px}
+.card-actions{display:flex;align-items:center;gap:7px;margin-top:10px}
+
+/* ---------- drawer ---------- */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .22s;z-index:40}
+.scrim.on{opacity:1;pointer-events:auto}
+.drawer{
+  position:fixed;top:0;right:0;bottom:0;width:460px;max-width:93vw;z-index:50;
+  background:var(--col);border-left:1px solid var(--line);
+  transform:translateX(102%);transition:transform .38s var(--spring);
+  display:flex;flex-direction:column;box-shadow:var(--shadow);
+}
+.drawer.on{transform:translateX(0)}
+.drawer-head{padding:19px 21px 15px;border-bottom:1px solid var(--line)}
+.drawer-head .row{display:flex;align-items:flex-start;gap:12px}
+.drawer-head h2{font-size:19px;font-weight:600;letter-spacing:-.02em;flex:1;line-height:1.25}
+.drawer-head .sub{color:var(--muted);font-size:13px;margin-top:3px}
+.drawer-body{flex:1;overflow-y:auto;padding:19px 21px 34px}
+.drawer-body.stagger > *{animation:sectIn .46s var(--spring) both;animation-delay:calc(var(--i) * 60ms + 90ms)}
+@keyframes sectIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.sect{margin-bottom:23px}
+.sect > h4{font-size:12px;color:var(--dim);font-weight:600;margin-bottom:10px}
+.kv{display:grid;grid-template-columns:100px 1fr;gap:8px 12px;font-size:13px}
+.kv dt{color:var(--muted)}
+.kv dd{word-break:break-word}
+.kv dd.status{display:inline-flex;align-items:center;gap:7px}
+.kv dd.status .dot{width:7px;height:7px}
+.kv dd.status .dot::after{display:none}
+.ctrl-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label.fld{display:block}
+label.fld span{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+.in{
+  width:100%;height:37px;padding:0 11px;border-radius:10px;
+  background:rgba(0,0,0,.35);border:1px solid var(--line);
+  transition:border-color .18s,box-shadow .18s;
+}
+textarea.in{height:auto;padding:10px 11px;resize:vertical;min-height:70px;line-height:1.55}
+.in:focus{border-color:var(--accent-line);box-shadow:0 0 0 3px rgba(255,107,0,.08);outline:none}
+select.in{
+  appearance:none;padding-right:29px;
+  background:rgba(0,0,0,.35) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%238A8A99' stroke-width='1.5' fill='none' stroke-linecap='round'/></svg>") no-repeat right 11px center;
+}
+.addr-block{
+  padding:12px 13px;background:rgba(0,0,0,.35);border:1px solid var(--line);
+  border-radius:12px;font-size:13px;line-height:1.55;margin-bottom:10px;
+}
+.addr-block .city{color:var(--dim);font-size:12px;margin-top:4px}
+.log{display:flex;flex-direction:column}
+.log-item{display:flex;gap:11px;padding:7px 0;font-size:12.5px;border-bottom:1px solid rgba(255,255,255,.035)}
+.log-item:last-child{border-bottom:none}
+.log-item .when{color:var(--dim);flex:0 0 92px;font-variant-numeric:tabular-nums}
+.log-item .what{color:var(--muted);flex:1}
+
+/* ---------- modal ---------- */
+.modal{
+  position:fixed;inset:0;z-index:60;display:none;align-items:flex-start;justify-content:center;
+  padding:56px 16px 24px;overflow-y:auto;background:rgba(0,0,0,.62);
+  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+}
+.modal.on{display:flex;animation:fadeIn .2s var(--ease)}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.sheet{
+  width:100%;max-width:640px;background:var(--col);
+  border:1px solid var(--line-strong);border-radius:20px;box-shadow:var(--shadow);
+  animation:sheetIn .38s var(--spring) both;
+}
+@keyframes sheetIn{from{opacity:0;transform:translateY(18px) scale(.965)}to{opacity:1;transform:none}}
+.sheet-head{display:flex;align-items:center;gap:12px;padding:19px 23px;border-bottom:1px solid var(--line)}
+.sheet-head h3{font-size:16px;font-weight:600;letter-spacing:-.015em}
+.sheet-head p{font-size:12.5px;color:var(--muted);margin-top:2px}
+.sheet-body{padding:21px 23px}
+.sheet-foot{
+  display:flex;align-items:center;gap:10px;padding:15px 23px;
+  border-top:1px solid var(--line);background:rgba(0,0,0,.22);border-radius:0 0 19px 19px;
+}
+.sheet-foot .grow{flex:1}
+.tabs{position:relative;display:flex;gap:4px;padding:4px;background:rgba(0,0,0,.4);border-radius:12px;margin-bottom:19px}
+.tabs .glide{position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:9px;background:var(--raise);transition:transform .34s var(--spring)}
+.tabs button{position:relative;z-index:1;flex:1;height:33px;border-radius:9px;font-size:13px;font-weight:500;color:var(--muted);transition:color .22s}
+.tabs button.on{color:var(--text)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.span2{grid-column:1 / -1}
+.hint{font-size:12px;color:var(--dim);margin-top:8px;line-height:1.55}
+
+/* ---------- the verdict: signature moment ---------- */
+.verdict{border-radius:14px;border:1px solid var(--line);overflow:hidden;margin-top:17px}
+.verdict.reject{border-color:rgba(255,77,77,.42);animation:slam .5s var(--spring) both}
+.verdict.flag{border-color:rgba(255,176,32,.42);animation:sheetIn .4s var(--spring) both}
+.verdict.pass{border-color:rgba(46,204,113,.38);animation:sheetIn .4s var(--spring) both}
+@keyframes slam{
+  0%{opacity:0;transform:scale(1.05) translateY(-8px)}
+  55%{opacity:1;transform:scale(.995)}
+  70%{transform:translateX(-5px)}
+  82%{transform:translateX(4px)}
+  92%{transform:translateX(-2px)}
+  100%{transform:none}
+}
+.verdict-head{display:flex;align-items:center;gap:10px;padding:12px 15px;font-weight:600;font-size:13.5px}
+.verdict.reject .verdict-head{background:var(--danger-soft);color:var(--danger)}
+.verdict.flag .verdict-head{background:var(--warn-soft);color:var(--warn)}
+.verdict.pass .verdict-head{background:var(--ok-soft);color:var(--ok)}
+.verdict-head .glyph{width:19px;height:19px;border-radius:99px;display:grid;place-items:center;font-size:11px;background:currentColor;color:#0A0A0F;flex:0 0 auto}
+.verdict.reject .verdict-head .glyph{animation:pop .45s var(--spring) .12s both}
+@keyframes pop{from{transform:scale(0) rotate(-90deg)}to{transform:none}}
+.verdict-body{padding:14px 15px;font-size:12.5px;color:var(--muted);line-height:1.6}
+.trace{display:flex;flex-direction:column;gap:7px;margin-top:11px}
+.trace-row{
+  display:flex;align-items:center;gap:9px;padding:8px 10px;
+  background:rgba(0,0,0,.4);border:1px solid var(--line);border-radius:10px;font-size:12px;
+  animation:traceIn .4s var(--spring) both;animation-delay:calc(var(--i) * 75ms + 220ms);
+}
+@keyframes traceIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+.trace-row .f{color:var(--dim);flex:0 0 78px}
+.trace-row .a{flex:1;color:var(--text);word-break:break-all}
+.trace-row .b{flex:1;color:var(--danger);word-break:break-all}
+.trace-row .eq{color:var(--danger);flex:0 0 auto;font-weight:700}
+.against{margin-top:11px;padding:10px 12px;background:rgba(0,0,0,.4);border:1px solid var(--line);border-radius:11px}
+.against .t{font-size:12px;color:var(--dim);margin-bottom:3px}
+.against .n{font-size:13px;font-weight:600}
+
+.report{display:flex;flex-direction:column;gap:8px;margin-top:15px;max-height:280px;overflow-y:auto}
+.rrow{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);
+  border-radius:11px;background:rgba(0,0,0,.35);font-size:12.5px;
+  animation:traceIn .4s var(--spring) both;animation-delay:calc(var(--i) * 45ms + 180ms);
+}
+.rrow .nm{flex:1;font-weight:500}
+.rrow .rs{color:var(--dim);font-size:11.5px;text-align:right}
+.rrow.ok{border-left:2px solid var(--ok)}
+.rrow.dup{border-left:2px solid var(--danger)}
+.rrow.flg{border-left:2px solid var(--warn)}
+.summary{display:flex;gap:10px;margin-top:15px}
+.sbox{
+  flex:1;padding:12px 13px;border:1px solid var(--line);border-radius:14px;background:rgba(0,0,0,.35);
+  animation:cardIn .45s var(--spring) both;animation-delay:calc(var(--i) * 80ms);
+}
+.sbox .n{font-size:23px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.sbox .l{font-size:11.5px;color:var(--muted);margin-top:1px}
+.sbox.dup .n{color:var(--danger)}
+.sbox.flg .n{color:var(--warn)}
+.sbox.ok .n{color:var(--ok)}
+
+.switch{display:flex;align-items:center;gap:10px;padding:10px 0;font-size:13px;cursor:pointer}
+.switch input{position:absolute;opacity:0;width:0;height:0}
+.track{width:35px;height:20px;border-radius:99px;background:var(--raise);border:1px solid var(--line-strong);position:relative;transition:background .2s,border-color .2s;flex:0 0 auto}
+.track::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:99px;background:var(--muted);transition:transform .26s var(--spring),background .2s}
+.switch input:checked + .track{background:var(--accent);border-color:var(--accent)}
+.switch input:checked + .track::after{transform:translateX(15px);background:#150800}
+.switch .txt{flex:1}
+.switch .txt small{display:block;color:var(--dim);font-size:11.5px;margin-top:1px}
+
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px) scale(.96);
+  background:var(--raise);border:1px solid var(--line-strong);border-radius:12px;
+  padding:12px 17px;font-size:13px;box-shadow:var(--shadow);z-index:130;
+  opacity:0;pointer-events:none;transition:opacity .24s,transform .38s var(--spring);
+  display:flex;align-items:center;gap:9px;
+}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}
+.toast.err{border-color:rgba(255,77,77,.5)}
+.toast .bead{width:7px;height:7px;border-radius:99px;background:var(--accent);flex:0 0 auto}
+.toast.err .bead{background:var(--danger)}
+
+/* ---------- copyable detail rows ---------- */
+.rows{display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:96px 1fr;gap:10px;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.035)}
+.row:last-child{border-bottom:none}
+.row .k{color:var(--muted);font-size:12.5px}
+.copy{
+  display:flex;align-items:center;gap:8px;width:100%;text-align:left;font-size:13px;
+  padding:6px 8px;margin:0 -8px;border-radius:9px;color:var(--text);word-break:break-word;
+  transition:background .16s,color .16s;
+}
+.copy:hover{background:var(--card)}
+.copy .ci{margin-left:auto;flex:0 0 auto;opacity:0;color:var(--dim);transition:opacity .16s,color .16s}
+.copy:hover .ci{opacity:1}
+.copy.done{color:var(--ok)}
+.copy.done .ci{opacity:1;color:var(--ok)}
+.copy.empty{color:var(--dim);cursor:default}
+.copy.empty:hover{background:transparent}
+.copy.empty .ci{display:none}
+.copy .swatch{width:7px;height:7px;border-radius:99px;flex:0 0 auto}
+
+/* ---------- contact actions ---------- */
+.acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+.act{
+  display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:10px;
+  background:var(--raise);border:1px solid var(--line-strong);font-size:12.5px;font-weight:500;
+  color:var(--muted);text-decoration:none;
+  transition:color .18s,border-color .18s,background .18s,transform .18s var(--spring);
+}
+.act:hover{transform:translateY(-1px)}
+.act.call:hover{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+.act.wa:hover{color:#25D366;border-color:rgba(37,211,102,.45);background:rgba(37,211,102,.11)}
+.act.mail:hover{color:#5B8DEF;border-color:rgba(91,141,239,.45);background:rgba(91,141,239,.11)}
+.act.done{color:var(--ok);border-color:rgba(46,204,113,.45);background:var(--ok-soft)}
+.contact-line{font-size:14px;font-weight:500;letter-spacing:-.01em}
+
+/* ---------- card mini actions ---------- */
+.mini{
+  width:30px;height:27px;display:inline-grid;place-items:center;border-radius:8px;
+  background:var(--raise);border:1px solid var(--line-strong);color:var(--muted);
+  transition:color .18s,border-color .18s,background .18s,transform .18s var(--spring);
+}
+.mini:hover{transform:translateY(-1px)}
+.mini.call:hover{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+.mini.wa:hover{color:#25D366;border-color:rgba(37,211,102,.45);background:rgba(37,211,102,.11)}
+.mini.mail:hover{color:#5B8DEF;border-color:rgba(91,141,239,.45);background:rgba(91,141,239,.11)}
+
+/* ---------- locked shell ----------
+   The app chrome stays; the content and every control do not. */
+#barTools{display:flex;align-items:center;gap:16px;min-width:0}
+body.locked #barTools,
+body.locked .rail,
+body.locked .board,
+body.locked .rejview{display:none}
+.lockedpane{flex:1;min-height:0;display:none;place-items:center;padding:24px}
+body.locked .lockedpane{display:grid}
+.lp{text-align:center;max-width:340px;animation:sheetIn .45s var(--spring) both}
+.lp .ring{
+  width:54px;height:54px;border-radius:99px;margin:0 auto 16px;display:grid;place-items:center;
+  border:1px solid var(--line-strong);background:var(--card);color:var(--dim);
+}
+.lp .ring svg{width:20px;height:20px}
+.lp h2{font-size:17px;font-weight:600;letter-spacing:-.02em}
+.lp p{color:var(--muted);font-size:13px;margin-top:7px;line-height:1.6}
+.lp .err{color:var(--danger);font-size:12.5px;margin-top:12px;min-height:18px;opacity:0;transition:opacity .2s}
+.lp .err.on{opacity:1}
+
+/* ---------- identity ---------- */
+.signin{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:4px}
+.signin[hidden]{display:none}
+.codebox{
+  width:110px;height:34px;border-radius:9px;padding:0 11px;
+  background:rgba(0,0,0,.42);border:1px solid var(--line-strong);
+  font-size:13px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+  transition:border-color .18s,box-shadow .18s;
+}
+.codebox::placeholder{letter-spacing:.04em;font-weight:400;text-transform:none;color:var(--dim)}
+.codebox:focus{border-color:var(--accent-line);box-shadow:0 0 0 3px rgba(255,107,0,.09);outline:none}
+.signin.need .codebox{border-color:var(--accent);animation:needPulse 2.2s ease-in-out infinite}
+@keyframes needPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,107,0,.28)}50%{box-shadow:0 0 0 5px rgba(255,107,0,0)}}
+.mewrap{position:relative;flex:0 0 auto;margin-left:4px}
+.mepill{
+  display:inline-flex;align-items:center;gap:8px;height:37px;padding:0 12px 0 7px;border-radius:10px;
+  border:1px solid var(--line-strong);background:var(--card);font-size:12.5px;font-weight:500;
+  transition:background .18s,border-color .18s;
+}
+.mepill:hover{background:var(--card-hi)}
+.mepill .who{color:var(--muted)}
+.mepill .nm{color:var(--text);font-weight:600}
+.memenu{
+  position:absolute;top:44px;left:0;z-index:70;min-width:230px;padding:6px;
+  background:var(--col);border:1px solid var(--line-strong);border-radius:13px;box-shadow:var(--shadow);
+  animation:sheetIn .26s var(--spring) both;
+}
+.memenu[hidden]{display:none}
+.memenu .t{font-size:11px;color:var(--dim);padding:6px 9px 7px;line-height:1.5}
+.memenu button{
+  display:flex;align-items:center;gap:9px;width:100%;height:35px;padding:0 9px;
+  border-radius:9px;font-size:13px;color:var(--muted);transition:background .14s,color .14s;
+}
+.memenu button:hover{background:var(--card);color:var(--text)}
+.memenu button.on{color:var(--text);font-weight:600}
+.memenu button .tick{margin-left:auto;color:var(--accent)}
+
+/* ---------- ownership lock ---------- */
+.card.locked{opacity:.82}
+.card.locked:hover{transform:none;box-shadow:none}
+.card.locked::before{display:none}
+.lockmark{flex:0 0 auto;color:var(--dim);display:grid;place-items:center;margin-left:auto}
+.card.locked .av{margin-left:6px}
+.rolock{
+  display:flex;align-items:flex-start;gap:10px;padding:12px 14px;margin-bottom:20px;
+  border:1px solid rgba(255,176,32,.32);background:rgba(255,176,32,.07);border-radius:13px;
+  font-size:12.5px;color:var(--muted);line-height:1.55;
+}
+.rolock b{color:var(--warn);display:block;margin-bottom:2px}
+.rolock svg{flex:0 0 auto;color:var(--warn);margin-top:1px}
+
+.lockbar{
+  display:flex;align-items:center;gap:9px;padding:10px 13px;margin-bottom:15px;
+  border:1px solid var(--line-strong);background:rgba(0,0,0,.35);border-radius:11px;
+  font-size:12.5px;color:var(--muted);
+}
+.lockbar svg{color:var(--dim);flex:0 0 auto}
+.setpane.rolocked .mcard,.setpane.rolocked .lrow{opacity:.72}
+.setpane.rolocked input,.setpane.rolocked select{cursor:default}
+code.masked{color:var(--dim);letter-spacing:.3em}
+
+/* ---------- member cards + achievements ---------- */
+.mcard{
+  border:1px solid var(--line);border-radius:14px;background:rgba(0,0,0,.3);
+  padding:12px 13px;margin-bottom:10px;
+}
+.mcode{
+  display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12px;color:var(--dim);
+}
+.mcode code{
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;font-weight:700;
+  letter-spacing:.16em;color:var(--text);background:rgba(0,0,0,.45);
+  border:1px solid var(--line-strong);border-radius:7px;padding:4px 9px;
+}
+.mcode button{font-size:11.5px;color:var(--muted);padding:3px 7px;border-radius:6px}
+.mcode button:hover{color:var(--text);background:var(--card)}
+.mcode button.done{color:var(--ok)}
+.mcard.me{border-color:var(--accent-line);background:linear-gradient(180deg,rgba(255,107,0,.06),transparent 90px),rgba(0,0,0,.3)}
+.mhead{display:flex;align-items:center;gap:10px}
+.mhead .nm{flex:1;min-width:0;height:33px;border-radius:9px;background:rgba(0,0,0,.4);border:1px solid var(--line);padding:0 10px;font-size:13px;font-weight:600}
+.mhead .nm:focus{border-color:var(--accent-line);outline:none}
+.youtag{font-size:10.5px;font-weight:700;padding:3px 7px;border-radius:6px;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
+.mstats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px 10px;margin-top:12px}
+.mstat{min-width:0}
+.mstat .n{font-size:17px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.mstat .l{font-size:10.5px;color:var(--dim);margin-top:1px}
+.mstat.win .n{color:var(--ok)}
+.mstat.dup .n{color:var(--danger)}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;padding-top:11px;border-top:1px solid rgba(255,255,255,.05)}
+.bdg{
+  display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;
+  padding:4px 9px;border-radius:7px;border:1px solid var(--line);
+  background:rgba(0,0,0,.35);color:var(--dim);
+}
+.bdg.got{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+.bdg .pr{font-weight:500;opacity:.7;font-variant-numeric:tabular-nums}
+
+/* ---------- owner chips in the form ---------- */
+.chips{display:flex;gap:7px;flex-wrap:wrap}
+.chip{
+  display:inline-flex;align-items:center;gap:7px;height:33px;padding:0 12px 0 6px;border-radius:9px;
+  border:1px solid var(--line);background:rgba(0,0,0,.35);font-size:12.5px;color:var(--muted);
+  transition:border-color .16s,color .16s,background .16s;
+}
+.chip:hover{color:var(--text);border-color:var(--line-strong)}
+.chip.on{color:var(--text);border-color:var(--accent-line);background:var(--accent-soft)}
+.chip .dotav{
+  width:20px;height:20px;border-radius:99px;display:grid;place-items:center;
+  font-size:9.5px;font-weight:700;color:#0A0A0F;box-shadow:0 0 0 1px rgba(255,255,255,.14) inset;
+}
+.chip .dotav.none{background:var(--raise);color:var(--dim)}
+
+
+.devpill{
+  display:inline-flex;align-items:center;gap:8px;height:31px;padding:0 12px;border-radius:9px;
+  background:rgba(255,176,32,.13);border:1px solid rgba(255,176,32,.42);color:var(--warn);
+  font-size:12px;font-weight:600;white-space:nowrap;
+}
+.devpill[hidden]{display:none}
+.devpill .clock{font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.devpill .lock{color:var(--warn);opacity:.7;padding:0 2px;border-radius:5px}
+.devpill .lock:hover{opacity:1;background:rgba(255,176,32,.16)}
+.devpill.low{background:var(--danger-soft);border-color:rgba(255,77,77,.45);color:var(--danger)}
+.devpill.low .lock{color:var(--danger)}
+
+.devlock{max-width:400px}
+.devlock .row2{display:flex;gap:9px;margin-top:12px}
+.devlock input{flex:1;min-width:0;letter-spacing:.08em}
+.shake{animation:shakeX .42s var(--ease)}
+@keyframes shakeX{
+  0%,100%{transform:none}
+  20%{transform:translateX(-7px)}
+  45%{transform:translateX(6px)}
+  70%{transform:translateX(-3px)}
+}
+.devwarn{
+  border:1px solid rgba(255,176,32,.35);background:rgba(255,176,32,.07);
+  border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:16px;
+}
+.devwarn b{color:var(--warn);display:block;margin-bottom:3px;font-size:12.5px}
+.devgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:16px}
+@media (max-width:640px){ .devgrid{grid-template-columns:1fr} .mstats{grid-template-columns:repeat(2,1fr)} }
+.btn-danger{border-color:rgba(255,77,77,.42);color:var(--danger);background:var(--danger-soft)}
+.btn-danger:hover{background:rgba(255,77,77,.18);border-color:rgba(255,77,77,.6)}
+.devout{
+  margin-top:12px;padding:11px 13px;border:1px solid var(--line);border-radius:11px;
+  background:rgba(0,0,0,.4);font-size:12.5px;color:var(--muted);line-height:1.6;
+}
+.devout .k{color:var(--text);font-weight:600}
+.keys{display:grid;grid-template-columns:104px 1fr;gap:5px 10px;font-size:12px}
+.keys dt{color:var(--dim)}
+.keys dd{color:var(--text);word-break:break-all;font-variant-numeric:tabular-nums}
+
+
+.viewseg{display:flex;gap:3px;padding:3px;background:rgba(0,0,0,.4);border-radius:11px;flex:0 0 auto}
+.viewseg button{
+  height:27px;padding:0 11px;border-radius:8px;font-size:12.5px;font-weight:500;color:var(--muted);
+  display:inline-flex;align-items:center;gap:7px;transition:background .16s,color .16s;
+}
+.viewseg button:hover{color:var(--text)}
+.viewseg button.on{background:var(--raise);color:var(--text)}
+.viewseg .badge{
+  min-width:19px;height:17px;padding:0 5px;border-radius:5px;
+  background:var(--danger-soft);color:var(--danger);font-size:10.5px;font-weight:700;
+  display:grid;place-items:center;font-variant-numeric:tabular-nums;
+}
+.viewseg .badge.flash{animation:pillFlash 1.1s var(--ease)}
+.btn svg,.viewseg svg{flex:0 0 auto;opacity:.85}
+.btn-primary svg{opacity:1}
+
+/* ---------- rejected review ---------- */
+.rejview{flex:1;min-height:0;overflow-y:auto;padding:18px 20px 34px}
+.rejinner{max-width:1020px;margin:0 auto}
+.rejhead{display:flex;align-items:flex-end;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+.rejhead h2{font-size:19px;font-weight:600;letter-spacing:-.02em}
+.rejhead p{font-size:12.5px;color:var(--muted);margin-top:4px;max-width:620px;line-height:1.55}
+.rejhead .grow{flex:1}
+.rejcard{
+  border:1px solid rgba(255,77,77,.2);border-radius:16px;padding:15px 17px;margin-bottom:12px;
+  background:linear-gradient(180deg,rgba(255,77,77,.05),transparent 130px),var(--col);
+  animation:cardIn .42s var(--spring) both;animation-delay:calc(var(--i) * 40ms);
+}
+.rejtop{display:flex;align-items:flex-start;gap:12px}
+.rejtop h3{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.rejtop .meta{color:var(--muted);font-size:12.5px;margin-top:3px}
+.rejwhen{color:var(--dim);font-size:12px;white-space:nowrap;margin-left:auto}
+.why{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin-top:12px;font-size:12.5px;color:var(--muted);
+}
+.why .sig{
+  font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px;
+  background:var(--danger-soft);color:var(--danger);border:1px solid rgba(255,77,77,.3);
+}
+.rejgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;align-items:start}
+.rejgrid .col-t{font-size:11.5px;color:var(--dim);margin-bottom:7px}
+.rejacts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.rejempty{
+  border:1px dashed var(--line);border-radius:16px;padding:44px 20px;text-align:center;
+  color:var(--dim);font-size:13px;line-height:1.7;
+}
+.rejempty b{display:block;color:var(--muted);font-size:14px;font-weight:600;margin-bottom:6px}
+@media (max-width:760px){ .rejgrid{grid-template-columns:1fr;gap:10px} }
+
+
+.sheet.wide{max-width:780px}
+.settings{display:grid;grid-template-columns:170px 1fr;gap:20px;min-height:360px}
+.settabs{display:flex;flex-direction:column;gap:3px;border-right:1px solid var(--line);padding-right:14px}
+.settabs button{
+  text-align:left;height:35px;padding:0 12px;border-radius:9px;color:var(--muted);
+  font-size:13px;font-weight:500;transition:background .16s,color .16s;
+}
+.settabs button:hover{color:var(--text)}
+.settabs button.on{background:var(--raise);color:var(--text)}
+.setpane{min-width:0}
+.setpane > h5{font-size:13.5px;font-weight:600;margin-bottom:5px;letter-spacing:-.01em}
+.setpane > .lead{font-size:12.5px;color:var(--dim);margin-bottom:15px;line-height:1.55}
+.lrow{
+  display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px;
+  border:1px solid var(--line);border-radius:11px;background:rgba(0,0,0,.3);
+}
+.lrow.locked{opacity:.6}
+.lrow input.t{
+  flex:1;min-width:0;height:31px;border-radius:8px;
+  background:rgba(0,0,0,.4);border:1px solid var(--line);padding:0 9px;font-size:13px;
+}
+.lrow input.t:focus{border-color:var(--accent-line);outline:none}
+.lrow input.t.s{flex:0 0 120px}
+.lrow .use{font-size:11.5px;color:var(--dim);white-space:nowrap}
+.ord{display:flex;flex-direction:column;gap:2px;flex:0 0 auto}
+.ord button{width:21px;height:14px;display:grid;place-items:center;color:var(--dim);border-radius:4px}
+.ord button:hover{color:var(--text);background:var(--card)}
+.ord button:disabled{opacity:.25;cursor:default}
+.pipbtn{
+  height:27px;padding:0 10px;border-radius:8px;font-size:11px;font-weight:600;flex:0 0 auto;
+  border:1px solid var(--line-strong);color:var(--dim);background:var(--raise);transition:all .16s;
+}
+.pipbtn.on{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+@media (max-width:640px){
+  .settings{grid-template-columns:1fr;gap:14px}
+  .settabs{flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--line);padding:0 0 10px}
+  .settabs button{flex:0 0 auto}
+  .lrow{flex-wrap:wrap}
+  .lrow input.t.s{flex:1 1 100%}
+}
+
+
+.member{
+  display:flex;align-items:center;gap:10px;padding:9px 10px;margin-bottom:9px;
+  border:1px solid var(--line);border-radius:12px;background:rgba(0,0,0,.3);
+}
+.sw{
+  width:27px;height:27px;border-radius:9px;flex:0 0 auto;
+  box-shadow:0 0 0 1px rgba(255,255,255,.18) inset;transition:transform .18s var(--spring);
+}
+.sw:hover{transform:scale(1.09)}
+.member .nm{flex:1;height:33px;border-radius:9px;background:rgba(0,0,0,.4);border:1px solid var(--line);padding:0 10px;min-width:0}
+.member .nm:focus{border-color:var(--accent-line);outline:none}
+.member .cnt{font-size:11.5px;color:var(--dim);white-space:nowrap}
+.iconbtn{width:31px;height:31px;flex:0 0 auto;display:grid;place-items:center;border-radius:9px;color:var(--dim);transition:color .16s,background .16s}
+.iconbtn:hover{color:var(--danger);background:var(--danger-soft)}
+.addrow{display:flex;gap:9px;align-items:center;margin-top:14px}
+.addrow input{flex:1;min-width:0}
+
+
+@media (max-width:900px){
+  .topbar{padding:0 14px;gap:10px}
+  .searchwrap{flex-basis:130px}
+  .brand h1 em{display:none}
+  .rail{overflow-x:auto;flex-wrap:nowrap;padding:9px 14px;gap:8px}
+  .rail::-webkit-scrollbar{display:none}
+  select.f{max-width:134px;height:31px;font-size:12.5px}
+  .counts{display:none}
+  .grid2{grid-template-columns:1fr}
+  .orb{display:none}
+
+  .board{flex-direction:column;gap:12px;padding:12px 14px 28px;overflow-x:hidden;overflow-y:auto}
+  .col{flex:0 0 auto;width:100%;max-height:none}
+  .col-body{overflow:visible;max-height:none}
+  .drawer{width:100%}
+}
+@media (max-width:640px){
+  .topbar{height:auto;flex:0 0 auto;flex-wrap:wrap;padding:10px 14px}
+  .searchwrap{flex:1 1 100%;order:5}
+  .sheet-body{padding:18px 16px}
+  .sheet-head,.sheet-foot{padding-left:16px;padding-right:16px}
+  .kv{grid-template-columns:88px 1fr}
+}
+@media (max-height:560px){ .orb,.bg-noise{display:none} }
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none !important;transition-duration:.01ms !important}
+  .card:hover,.btn:hover,.glink:hover{transform:none}
+}
+</style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+<div class="orb a"></div>
+<div class="orb b"></div>
+<div class="bg-noise"></div>
+
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">P</div>
+      <h1>Pinsite <em>· Leads</em></h1>
+    </div>
+    <div class="signin" id="signIn">
+      <input class="codebox" id="codeIn" placeholder="Your code" maxlength="16" autocomplete="off" spellcheck="false" aria-label="Access code">
+      <button class="btn btn-sm" id="codeGo">Go</button>
+    </div>
+    <div class="mewrap" id="meWrap" hidden>
+      <button class="mepill" id="mePill"><span class="dotav" id="meAv"></span><span class="nm" id="meName">—</span></button>
+      <div class="memenu" id="meMenu" hidden></div>
+    </div>
+    <div class="topbar-spacer"></div>
+    <div id="barTools">
+    <div class="searchwrap">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <input class="search" id="q" placeholder="Search clinic, doctor, address" autocomplete="off">
+    </div>
+    <div class="devpill" id="devPill" hidden>
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="3" y="7" width="10" height="6.6" rx="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M5.4 7V5.2a2.6 2.6 0 0 1 5.2 0V7" stroke="currentColor" stroke-width="1.4"/></svg>
+      Dev <span class="clock" id="devClock">10:00</span>
+      <button class="lock" id="devLockNow" title="Lock now">&#10005;</button>
+    </div>
+    <button class="btn" id="btnSettings" title="Team, statuses, lists and rules"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.6l.9 1.5 1.7-.3.3 1.7 1.5.9-.9 1.5.9 1.5-1.5.9-.3 1.7-1.7-.3L8 14.4l-.9-1.5-1.7.3-.3-1.7-1.5-.9.9-1.5-.9-1.5 1.5-.9.3-1.7 1.7.3L8 1.6z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>Settings</button>
+    <button class="btn" id="btnBulk"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 10.4V2.2M5.2 4.8L8 2l2.8 2.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.4 10.2v2.2c0 .8.6 1.4 1.4 1.4h8.4c.8 0 1.4-.6 1.4-1.4v-2.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Import batch</button>
+    <button class="btn btn-primary" id="btnAdd"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3.2v9.6M3.2 8h9.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Add lead</button>
+    </div>
+  </header>
+
+  <div class="rail">
+    <div class="viewseg">
+      <button data-view="board" class="on"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="2" y="2.6" width="3.6" height="10.8" rx="1.2" stroke="currentColor" stroke-width="1.4"/><rect x="6.9" y="2.6" width="3.6" height="7.6" rx="1.2" stroke="currentColor" stroke-width="1.4"/><rect x="11.8" y="2.6" width="2.4" height="9.4" rx="1.2" stroke="currentColor" stroke-width="1.4"/></svg>Board</button>
+      <button data-view="rejected"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.6" stroke="currentColor" stroke-width="1.4"/><path d="M4.2 4.2l7.6 7.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Rejected <span class="badge" id="rejBadge">0</span></button>
+    </div>
+    <select class="f" id="fCity"><option value="">All cities</option></select>
+    <select class="f" id="fSpecialty"><option value="">All specialties</option></select>
+    <select class="f" id="fWeb"><option value="">Website: any</option><option value="none">No website</option><option value="has">Has a website</option><option value="unknown">Not checked</option></select>
+    <select class="f" id="fSource"><option value="">All sources</option></select>
+    <select class="f" id="fOwner"><option value="">All owners</option></select>
+    <select class="f" id="fPriority"><option value="">All priorities</option></select>
+    <div class="sep"></div>
+    <button class="btn btn-sm btn-ghost" id="btnMine">Mine only</button>
+    <button class="btn btn-sm btn-ghost" id="btnClear"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M13.4 2.4v3h-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Reset</button>
+    <div class="counts">
+      <span>Leads <b id="cTotal">0</b></span>
+      <span class="won">Won <b id="cWon">0</b></span>
+      <span class="dupe">Rejected <b id="cDup">0</b></span>
+      <span>No website <b id="cOpen">0</b></span>
+    </div>
+  </div>
+
+  <main class="board" id="board"></main>
+  <section class="rejview" id="rejView" style="display:none"></section>
+  <section class="lockedpane" id="lockedPane">
+    <div class="lp">
+      <div class="ring"><svg viewBox="0 0 16 16" fill="none"><rect x="3.4" y="7" width="9.2" height="6.4" rx="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M5.6 7V5.3a2.4 2.4 0 0 1 4.8 0V7" stroke="currentColor" stroke-width="1.4"/></svg></div>
+      <h2>Locked</h2>
+      <p>Enter your access code in the bar above to load the board.</p>
+      <div class="err" id="codeErr"></div>
+    </div>
+  </section>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <div class="row">
+      <div style="flex:1">
+        <h2 id="dName">—</h2>
+        <div class="sub" id="dSub">—</div>
+      </div>
+      <button class="btn btn-sm" id="dEdit"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M11.1 2.6l2.3 2.3-8 8-3 .7.7-3 8-8z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>Edit</button>
+      <button class="btn btn-sm btn-ghost" id="dClose">Close</button>
+    </div>
+  </div>
+  <div class="drawer-body" id="dBody"></div>
+</aside>
+
+<div class="modal" id="modal">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div style="flex:1">
+        <h3 id="mTitle">Add a lead</h3>
+        <p id="mSub">Every lead runs through the duplicate check before it lands on the board.</p>
+      </div>
+      <button class="btn btn-sm btn-ghost" id="mClose">Close</button>
+    </div>
+    <div class="sheet-body">
+      <div class="tabs">
+        <div class="glide" id="glide"></div>
+        <button id="tabOne" class="on">One at a time</button>
+        <button id="tabMany">Paste a batch</button>
+      </div>
+
+      <div id="paneOne">
+        <div class="grid2">
+          <label class="fld"><span>Clinic name</span><input class="in" id="iClinic" placeholder="Smile Craft Dental"></label>
+          <label class="fld"><span>Doctor</span><input class="in" id="iDoctor" placeholder="Dr. Anjali Deshpande"></label>
+          <label class="fld"><span>Specialty</span><input class="in" id="iSpecialty" placeholder="Dental" list="specialtyList"></label>
+          <label class="fld"><span>Phone</span><input class="in" id="iPhone" placeholder="+91 98200 11223"></label>
+          <label class="fld"><span>Email</span><input class="in" id="iEmail" placeholder="front desk email"></label>
+          <label class="fld"><span>Website</span><input class="in" id="iSite" placeholder="smilecraft.in"></label>
+          <label class="fld"><span>Website status</span><select class="in" id="iWeb"><option value="unknown">Not checked yet</option><option value="none">No website</option><option value="has">Has a website</option></select></label>
+          <label class="fld span2"><span>Address</span><input class="in" id="iAddress" placeholder="Lane 5, Koregaon Park, Pune 411001"></label>
+          <label class="fld"><span>City</span><input class="in" id="iCity" placeholder="Pune" list="cityList"></label>
+          <label class="fld"><span>Source</span><select class="in" id="iSource"></select></label>
+          <label class="fld span2"><span>Google listing link</span><input class="in" id="iGoogle" placeholder="https://maps.google.com/?cid=1234567890"></label>
+          <label class="fld span2"><span>Assign to</span><div class="chips" id="iOwnerChips"></div><input type="hidden" id="iOwner"></label>
+          <label class="fld"><span>Priority</span><select class="in" id="iPriority"></select></label>
+        </div>
+        <datalist id="specialtyList"></datalist>
+        <datalist id="cityList"></datalist>
+        <label class="fld" style="margin-top:12px"><span>Notes</span><textarea class="in" id="iNotes" placeholder="What they need, who answered the phone, what to say next."></textarea></label>
+        <div id="oneVerdict"></div>
+      </div>
+
+      <div id="paneMany" style="display:none">
+        <label class="fld">
+          <span>One clinic per line — clinic | doctor | phone | email | address | city | google link</span>
+          <textarea class="in" id="iBulk" style="min-height:150px;font-size:12.5px" placeholder="Smile Craft Dental | Dr. Anjali Deshpande | +91 98200 11223 | hello@smilecraft.in | Lane 5, Koregaon Park | Pune | https://maps.google.com/?cid=1234567890"></textarea>
+        </label>
+        <div class="hint">Use a pipe or a tab between fields — addresses contain commas, so comma-splitting would break them. Commas still work on lines with no pipe. A header row is detected and skipped, and blank fields are fine.</div>
+        <button class="btn btn-sm" id="btnSample" style="margin-top:10px">Load a sample batch with duplicates in it</button>
+        <div id="manyVerdict"></div>
+      </div>
+    </div>
+    <div class="sheet-foot">
+      <span class="grow hint" id="mFootHint" style="margin:0">Duplicate rule: 2 or more matching signals, or a matching Google listing, phone or email on its own.</span>
+      <button class="btn btn-sm" id="mCancel">Cancel</button>
+      <button class="btn btn-sm btn-primary" id="mSave">Check and add</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="setModal">
+  <div class="sheet wide">
+    <div class="sheet-head">
+      <div style="flex:1">
+        <h3>Settings</h3>
+        <p>Team, pipeline statuses, filter lists and duplicate rules.</p>
+      </div>
+      <button class="btn btn-sm btn-ghost" id="setClose">Close</button>
+    </div>
+    <div class="sheet-body">
+      <div class="settings">
+        <nav class="settabs">
+          <button data-pane="Team" class="on">Team</button>
+          <button data-pane="Statuses">Statuses</button>
+          <button data-pane="Lists">Filter lists</button>
+          <button data-pane="Rules">Duplicate rules</button>
+          <button data-pane="Calling">Calling</button>
+          <button data-pane="Dev">Dev mode</button>
+        </nav>
+
+        <div class="setpane" id="paneTeam">
+          <h5>Team</h5>
+          <div class="lead">Who leads can be assigned to. Renaming someone moves their leads with them; removing someone sends their leads back to Unassigned.</div>
+          <div id="teamList"></div>
+          <div class="addrow">
+            <input class="in" id="tNew" placeholder="Add a teammate" autocomplete="off">
+            <button class="btn btn-sm btn-primary" id="tAdd">Add</button>
+          </div>
+          <div class="hint">Click a colour square to change it.</div>
+        </div>
+
+        <div class="setpane" id="paneStatuses" style="display:none">
+          <h5>Pipeline statuses</h5>
+          <div class="lead">Each status is a column on the board. The short name is the column header, the full name shows in dropdowns. Toggle <b>Call</b> to count a move into that status as a call attempt.</div>
+          <div id="statusList"></div>
+          <div class="addrow">
+            <input class="in" id="stNew" placeholder="Add a status" autocomplete="off">
+            <button class="btn btn-sm btn-primary" id="stAdd">Add</button>
+          </div>
+          <div class="hint">Rejected is the duplicate bin and can't be renamed, moved or removed. Removing a status moves its leads to the first column.</div>
+        </div>
+
+        <div class="setpane" id="paneLists" style="display:none">
+          <h5>Filter lists</h5>
+          <div class="lead">The options behind the filter dropdowns. Renaming an option updates every lead using it. An option in use can't be deleted.</div>
+          <div class="tabs" style="margin-bottom:16px">
+            <div class="glide" id="listGlide" style="width:calc(25% - 4px)"></div>
+            <button data-list="sources" class="on">Sources</button>
+            <button data-list="specialties">Specialties</button>
+            <button data-list="cities">Cities</button>
+            <button data-list="priorities">Priorities</button>
+          </div>
+          <div id="listRows"></div>
+          <div class="addrow">
+            <input class="in" id="lsNew" placeholder="Add an option" autocomplete="off">
+            <button class="btn btn-sm btn-primary" id="lsAdd">Add</button>
+          </div>
+        </div>
+
+        <div class="setpane" id="paneRules" style="display:none">
+          <h5>Duplicate rules</h5>
+          <div class="lead">These decide what gets rejected on the way in. Changes apply immediately.</div>
+          <label class="fld" style="margin-bottom:14px">
+            <span>Reject when this many signals match the same existing lead</span>
+            <select class="in" id="rThreshold">
+              <option value="1">1 signal — strict</option>
+              <option value="2" selected>2 signals — recommended</option>
+              <option value="3">3 signals — loose</option>
+            </select>
+          </label>
+          <label class="switch">
+            <input type="checkbox" id="rGoogle" checked><span class="track"></span>
+            <span class="txt">A matching Google listing is a duplicate on its own
+              <small>A place ID is one physical location. Strongest key you have — leave this on.</small></span>
+          </label>
+          <label class="switch">
+            <input type="checkbox" id="rPhone" checked><span class="track"></span>
+            <span class="txt">A matching phone is a duplicate on its own
+              <small>A clinic front desk number is effectively unique. Turn off for multi-branch chains.</small></span>
+          </label>
+          <label class="switch">
+            <input type="checkbox" id="rEmail" checked><span class="track"></span>
+            <span class="txt">A matching email is a duplicate on its own
+              <small>Turn off if your list has a lot of generic info@ addresses.</small></span>
+          </label>
+          <div class="sect" style="margin:16px 0 0">
+            <h4>Signals compared</h4>
+            <div class="kv" style="font-size:12.5px;grid-template-columns:110px 1fr">
+              <dt>Google listing</dt><dd>Reduced to place ID, CID or feature ID from the link</dd>
+              <dt>Phone</dt><dd>Last 10 digits only, country code ignored</dd>
+              <dt>Email</dt><dd>Lowercased, plus-tags and dots stripped on Gmail</dd>
+              <dt>Clinic</dt><dd>Punctuation and Clinic / Dental / Care / Centre removed</dd>
+              <dt>Doctor</dt><dd>Dr / Prof titles and punctuation stripped</dd>
+              <dt>Address</dt><dd>Street-type words, unit numbers and country removed</dd>
+              <dt>Website</dt><dd>Protocol, www and trailing slash removed</dd>
+            </div>
+          </div>
+        </div>
+
+        <div class="setpane" id="paneDev" style="display:none">
+          <h5>Dev mode</h5>
+          <div class="lead">Destructive tools the team should never reach, plus edit access to everything else in Settings. Unlocks on a timer, then locks itself.</div>
+          <div id="devBody"></div>
+        </div>
+
+        <div class="setpane" id="paneCalling" style="display:none">
+          <h5>Calling and WhatsApp</h5>
+          <div class="lead">A number stored as 098200 11223 has no country code, so a WhatsApp link built from it goes nowhere. This gets prefixed. Numbers already starting with + are left alone.</div>
+          <label class="fld">
+            <span>Default country code</span>
+            <input class="in" id="tCountry" placeholder="91" style="max-width:130px">
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="sheet-foot"><span class="grow"></span><button class="btn btn-sm btn-primary" id="setDone">Done</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span class="bead"></span><span id="toastMsg"></span></div>
+
+<script>
+'use strict';
+
+/* =========================================================
+   Configuration
+   ========================================================= */
+/* Call-outcome pipeline. `short` is the column header, `label` is what shows in dropdowns.
+   Editable at runtime from Settings, so these are `let`, not `const`. */
+let STAGES = [
+  {id:'not_called',     short:'Not Called',     label:'Not Called',                     color:'#8A8A99', attempt:false},
+  {id:'no_answer',      short:'No Answer',      label:'Busy / No Answer',               color:'#C9A227', attempt:true},
+  {id:'voicemail',      short:'Voicemail',      label:'Left Voicemail',                 color:'#5B8DEF', attempt:true},
+  {id:'not_interested', short:'Not Interested', label:'Answered — Not Interested',      color:'#6B6B78', attempt:true},
+  {id:'wants_demo',     short:'Wants Demo',     label:'Answered — Wants Demo',          color:'#A855F7', attempt:true},
+  {id:'demo_sent',      short:'Demo Sent',      label:'Demo Sent — Awaiting Feedback',  color:'#FF6B00', attempt:false},
+  {id:'closed_won',     short:'Closed Won',     label:'Closed Won',                     color:'#2ECC71', attempt:false},
+  {id:'closed_lost',    short:'Closed Lost',    label:'Closed Lost',                    color:'#FF7A7A', attempt:false},
+  {id:'rejected',       short:'Rejected',       label:'Rejected — Duplicate',           color:'#FF4D4D', attempt:false, locked:true}
+];
+const isAttemptStage = id => !!(STAGES.find(s => s.id === id) || {}).attempt;
+const defaultStage = () => (STAGES.find(s => !s.locked) || STAGES[0]).id;
+const WEB = [
+  {id:'has',     label:'Has a website'},
+  {id:'none',    label:'No website'},
+  {id:'unknown', label:'Not checked yet'}
+];
+let SOURCES = ['Google Maps','Cold call','Cold email','Referral','Website form','Instagram DM','Facebook Page','Walk-in'];
+let PRIORITIES = ['High','Medium','Low'];
+const PALETTE = ['#FF6B00','#5B8DEF','#2ECC71','#A855F7','#FFB020','#00C2A8','#FF7EB6','#FF4D4D'];
+const UNASSIGNED = 'Unassigned';
+const SIGNALS = [
+  {key:'google',    label:'Google listing'},
+  {key:'phone',     label:'Phone'},
+  {key:'email',     label:'Email'},
+  {key:'clinic',    label:'Clinic'},
+  {key:'doctor',    label:'Doctor'},
+  {key:'address',   label:'Address'},
+  {key:'website',   label:'Website'}
+];
+
+const state = {
+  leads: [],
+  team: [{name:'Alex', color:'#FF6B00', code:'AX24'}, {name:'Jordan', color:'#5B8DEF', code:'JD57'}],
+  me: '',
+  country: '91',
+  lists: {specialties:[], cities:[]},
+  rules: {threshold:2, googleAlone:true, phoneAlone:true, emailAlone:true},
+  filters: {q:'', city:'', specialty:'', web:'', source:'', owner:'', priority:'', mine:false},
+  collapsed: new Set(),
+  selected: null,
+  view: 'board',
+  dev: {until:0, minutes:10, tries:0, lockedUntil:0, timer:null},
+  seq: 0
+};
+
+const anim = {seen:new Set(), booted:false, pulse:null, pulseKind:'landed', flashRejected:false, drawerFor:null, counts:{}};
+
+/* =========================================================
+   Normalisation — one pure function per signal
+   ========================================================= */
+const clean = s => (s||'').toString().trim();
+const collapse = s => clean(s).toLowerCase().replace(/\s+/g,' ');
+
+function normEmail(v){
+  const s = collapse(v);
+  if(!s.includes('@')) return '';
+  let [user, host] = s.split('@');
+  user = user.split('+')[0];
+  if(host === 'gmail.com' || host === 'googlemail.com'){ user = user.replace(/\./g,''); host = 'gmail.com'; }
+  return user + '@' + host;
+}
+function normPhone(v){
+  const d = clean(v).replace(/\D/g,'');
+  return d.length >= 10 ? d.slice(-10) : (d.length >= 7 ? d : '');
+}
+function normClinic(v){
+  return collapse(v)
+    .replace(/[.,'"&]/g,'')
+    .replace(/\b(clinic|clinics|dental|dentistry|care|centre|center|hospital|polyclinic|multispeciality|multispecialty|speciality|specialty|practice|surgery|the|and|of)\b/g,'')
+    .replace(/\s+/g,' ').trim();
+}
+function normDoctor(v){
+  return collapse(v)
+    .replace(/\b(dr|dr\.|doctor|prof|professor|mr|mrs|ms)\b/g,'')
+    .replace(/[.,']/g,'')
+    .replace(/\s+/g,' ').trim();
+}
+function normAddress(v){
+  return collapse(v)
+    .replace(/[.,#\-\/]/g,' ')
+    .replace(/\b(road|rd|street|st|avenue|ave|lane|ln|marg|cross|main|block|floor|flr|fl|suite|ste|unit|shop|no|number|building|bldg|plot|sector|phase|near|opp|opposite|behind|above|next|to)\b/g,'')
+    .replace(/\b(india|usa|united states|uk|germany|deutschland)\b/g,'')
+    .replace(/\s+/g,' ').trim();
+}
+function normHost(v){
+  return collapse(v).replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/+$/,'').split('/')[0];
+}
+/* A Google Maps link is the strongest key here: reduce it to the place identifier. */
+function normGoogle(v){
+  const s = collapse(v);
+  if(!s) return '';
+  let m = s.match(/place_id[=:]([a-z0-9_-]+)/);         if(m) return 'pid:' + m[1];
+  m = s.match(/[?&]cid=(\d+)/);                          if(m) return 'cid:' + m[1];
+  m = s.match(/!1s(0x[0-9a-f]+:0x[0-9a-f]+)/);           if(m) return 'ftid:' + m[1];
+  m = s.match(/maps\.app\.goo\.gl\/([a-z0-9]+)/);        if(m) return 'short:' + m[1];
+  m = s.match(/\/maps\/place\/([^/@?]+)/);
+  if(m) return 'place:' + decodeURIComponent(m[1]).replace(/\+/g,' ').replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim();
+  return s.replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/+$/,'');
+}
+const NORMALISERS = {
+  google:normGoogle, phone:normPhone, email:normEmail,
+  clinic:normClinic, doctor:normDoctor, address:normAddress, website:normHost
+};
+
+function fingerprint(lead){
+  const fp = {};
+  for(const {key} of SIGNALS) fp[key] = NORMALISERS[key](lead[key]);
+  return fp;
+}
+
+/* =========================================================
+   The duplicate check
+   ========================================================= */
+function checkDuplicate(candidate, pool){
+  const cf = fingerprint(candidate);
+  let best = null;
+  for(const lead of pool){
+    if(lead.id === candidate.id) continue;
+    const lf = lead.fp || fingerprint(lead);
+    const hits = [];
+    for(const {key} of SIGNALS){
+      if(cf[key] && lf[key] && cf[key] === lf[key]) hits.push(key);
+    }
+    if(hits.length && (!best || hits.length > best.fields.length)) best = {lead, fields:hits};
+  }
+  if(!best) return {verdict:'accept', best:null, cf};
+
+  const r = state.rules;
+  const hard =
+    (r.googleAlone && best.fields.includes('google')) ||
+    (r.phoneAlone  && best.fields.includes('phone')) ||
+    (r.emailAlone  && best.fields.includes('email')) ||
+    best.fields.length >= r.threshold;
+  return {verdict: hard ? 'reject' : 'flag', best, cf};
+}
+
+/* =========================================================
+   Data helpers
+   ========================================================= */
+const stamp = () => new Date().toISOString();
+function shortDate(iso){
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' +
+         d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+}
+function makeLead(raw){
+  state.seq += 1;
+  const lead = {
+    id: 'L' + String(state.seq).padStart(4,'0'),
+    clinic: clean(raw.clinic), doctor: clean(raw.doctor), specialty: clean(raw.specialty),
+    phone: clean(raw.phone), email: clean(raw.email), website: clean(raw.website),
+    address: clean(raw.address), city: clean(raw.city), google: clean(raw.google),
+    web: clean(raw.website) ? 'has' : (raw.web || 'unknown'),
+    attempts: Number(raw.attempts) || 0,
+    source: raw.source || SOURCES[0], owner: raw.owner || UNASSIGNED,
+    priority: raw.priority || PRIORITIES[Math.floor(PRIORITIES.length/2)] || PRIORITIES[0], notes: clean(raw.notes),
+    stage: raw.stage || defaultStage(),
+    createdAt: raw.createdAt || stamp(), updatedAt: raw.createdAt || stamp(),
+    duplicateOf: null, matchedOn: [], flagged: false, log: []
+  };
+  lead.fp = fingerprint(lead);
+  return lead;
+}
+function logEvent(lead, text){
+  lead.log.unshift({at: stamp(), text});
+  lead.updatedAt = stamp();
+}
+const labelOf = k => (SIGNALS.find(s => s.key === k)||{}).label || k;
+const stageLabel = id => (STAGES.find(s => s.id === id)||{}).label || id;
+const stageShort = id => (STAGES.find(s => s.id === id)||{}).short || id;
+const stageColor = id => (STAGES.find(s => s.id === id)||{}).color || '#8A8A99';
+const webLabel = id => (WEB.find(w => w.id === id)||{}).label || 'Not checked yet';
+const titleOf = l => l.clinic || l.doctor || l.phone || 'Unnamed clinic';
+
+/* ---- team ---- */
+const ownerNames  = () => [...state.team.map(m => m.name), UNASSIGNED];
+const ownerColor  = n => (state.team.find(m => m.name === n) || {}).color || '#8A8A99';
+const nextColor   = () => PALETTE.find(c => !state.team.some(m => m.color === c)) || PALETTE[state.team.length % PALETTE.length];
+
+/* Codes skip O/0/I/1 so nobody mistypes them off a sticky note. */
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function genCode(){
+  let c;
+  do{
+    c = Array.from({length:4}, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
+  }while(state.team.some(m => m.code === c));
+  return c;
+}
+const memberByCode = c => state.team.find(m => (m.code || '').toUpperCase() === c);
+/* Signed out with a team configured means read-only until a code is entered. */
+const signedOut = () => state.team.length > 0 && !state.me && !devActive();
+
+function codeError(msg){
+  const el = $('codeErr');
+  el.textContent = msg;
+  el.classList.add('on');
+  const box = $('signIn');
+  box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake');
+  $('codeIn').value = '';
+  $('codeIn').focus();
+}
+
+function submitCode(){
+  const raw = clean($('codeIn').value).toUpperCase();
+  if(!raw) return;
+
+  const devMins = devCodeMinutes(raw.toLowerCase());
+  if(devMins){
+    $('codeIn').value = '';
+    $('codeErr').classList.remove('on');
+    startDevSession(false, devMins);
+    return;
+  }
+
+  const m = memberByCode(raw);
+  if(!m){ codeError('That code does not match anyone on this board.'); return; }
+
+  state.me = m.name;
+  $('codeIn').value = '';
+  $('codeErr').classList.remove('on');
+  render();
+  toast(`Signed in as ${m.name}.`);
+}
+
+/* Locked keeps the bar and the code box. Everything else — tools, filters,
+   the board, every lead — is out of the document flow. */
+function applyLock(){
+  const locked = signedOut();
+  document.body.classList.toggle('locked', locked);
+  $('signIn').hidden = !locked;
+  if(locked){
+    closeModal(); $('setModal').classList.remove('on');
+    $('drawer').classList.remove('on'); $('scrim').classList.remove('on');
+    state.selected = null;
+  }else{
+    $('codeErr').classList.remove('on');
+  }
+}
+
+function signOut(){
+  state.me = '';
+  clearInterval(state.dev.timer);
+  state.dev.until = 0;
+  $('devPill').hidden = true;
+  closeModal();
+  closeDrawer();
+  $('meMenu').hidden = true;
+  render();
+  toast('Signed out.');
+}
+
+/* Anything that writes needs a signed-in member (or dev mode). */
+function requireSignIn(){
+  if(devActive() || !state.team.length || state.me) return true;
+  applyLock();
+  $('codeIn').focus();
+  return false;
+}
+
+/* ---- who can touch what ----
+   A lead belongs to whoever owns it. Teammates can read it and dial it, but
+   only the owner changes it. Unassigned leads are free for anyone to claim,
+   otherwise a fresh import would land untouchable. Dev mode overrides all of it. */
+function canEdit(lead){
+  if(devActive()) return true;
+  if(!state.team.length) return true;              // no team configured: single-user mode
+  if(!state.me) return false;                      // signed out: read-only
+  if(!lead.owner || lead.owner === UNASSIGNED) return true;
+  return lead.owner === state.me;
+}
+
+/* ---- member statistics ---- */
+function memberStats(name){
+  const all    = state.leads.filter(l => l.owner === name);
+  const active = all.filter(l => l.stage !== 'rejected');
+  return {
+    leads:    active.length,
+    calls:    all.reduce((n,l) => n + (l.attempts || 0), 0),
+    demos:    active.filter(l => l.stage === 'wants_demo' || l.stage === 'demo_sent').length,
+    won:      active.filter(l => l.stage === 'closed_won').length,
+    lost:     active.filter(l => l.stage === 'closed_lost').length,
+    nosite:   active.filter(l => l.web === 'none').length,
+    rejected: all.length - active.length,
+    get rate(){ const c = this.won + this.lost; return c ? Math.round(this.won / c * 100) : 0; }
+  };
+}
+
+const ACHIEVEMENTS = [
+  {label:'First win',    need:1,   read:s => s.won},
+  {label:'Closer',       need:3,   read:s => s.won},
+  {label:'Dialler',      need:10,  read:s => s.calls},
+  {label:'Century',      need:100, read:s => s.calls},
+  {label:'Demo machine', need:5,   read:s => s.demos},
+  {label:'Site hunter',  need:5,   read:s => s.nosite},
+  {label:'Full book',    need:25,  read:s => s.leads}
+];
+
+/* ---- contact links ----
+   A number stored as "098200 11223" has no country code, so wa.me built from it
+   resolves to nothing. Anything already starting with + is trusted as-is. */
+function waNumber(raw){
+  const s = clean(raw);
+  let d = s.replace(/\D/g,'');
+  if(!d) return '';
+  if(s.startsWith('+')) return d;
+  if(d.startsWith('00')) return d.slice(2);
+  if(d.startsWith('0')) d = d.slice(1);
+  if(d.length <= 10) d = clean(state.country).replace(/\D/g,'') + d;
+  return d;
+}
+const telHref = raw => 'tel:' + clean(raw).replace(/[^\d+]/g,'');
+const waHref  = raw => 'https://wa.me/' + waNumber(raw);
+
+/* ---- clipboard: the API is blocked in some embedded frames, so keep a fallback ---- */
+async function copyText(text){
+  try{
+    await navigator.clipboard.writeText(text);
+    return true;
+  }catch(e){
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly','');
+    ta.style.cssText = 'position:fixed;top:-1000px;left:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try{ ok = document.execCommand('copy'); }catch(_){}
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+function flashCopied(el, ok){
+  if(!ok){ toast('Could not reach the clipboard here. Select the text and copy manually.', true); return; }
+  el.classList.add('done');
+  setTimeout(() => el.classList.remove('done'), 1100);
+}
+/* The scraped address usually already ends with the city — don't append it twice. */
+function fullAddress(l){
+  const a = clean(l.address), c = clean(l.city);
+  if(!a) return c;
+  if(!c || a.toLowerCase().includes(c.toLowerCase())) return a;
+  return a + ', ' + c;
+}
+function leadAsText(l){
+  return [
+    l.clinic,
+    l.doctor    && `Doctor: ${l.doctor}`,
+    l.specialty && `Specialty: ${l.specialty}`,
+    l.phone     && `Phone: ${l.phone}`,
+    l.email     && `Email: ${l.email}`,
+    l.website   ? `Website: ${l.website}` : (l.web === 'none' ? 'Website: none' : ''),
+    fullAddress(l) && `Address: ${fullAddress(l)}`,
+    l.google    && `Google: ${l.google}`,
+    `Status: ${stageLabel(l.stage)}`,
+    `Owner: ${l.owner}`,
+    `Source: ${l.source}`,
+    l.notes     && `Notes: ${l.notes}`
+  ].filter(Boolean).join('\n');
+}
+
+function intake(raw, silent){
+  const lead = makeLead(raw);
+  const res = checkDuplicate(lead, state.leads);
+
+  if(res.verdict === 'reject'){
+    lead.stage = 'rejected';
+    lead.duplicateOf = res.best.lead.id;
+    lead.matchedOn = res.best.fields;
+    logEvent(lead, `Rejected as a duplicate of ${titleOf(res.best.lead)} — matched on ${res.best.fields.map(labelOf).join(', ').toLowerCase()}`);
+    logEvent(res.best.lead, `A duplicate entry was blocked: ${titleOf(lead)} from ${lead.source}`);
+    anim.pulse = lead.id; anim.pulseKind = 'stamped'; anim.flashRejected = true;
+  }else if(res.verdict === 'flag'){
+    lead.flagged = true;
+    lead.duplicateOf = res.best.lead.id;
+    lead.matchedOn = res.best.fields;
+    logEvent(lead, `Added with one shared signal (${labelOf(res.best.fields[0]).toLowerCase()}) against ${titleOf(res.best.lead)}`);
+  }else{
+    logEvent(lead, `Added from ${lead.source}`);
+  }
+
+  state.leads.push(lead);
+  if(!silent) render();
+  return {lead, res};
+}
+
+/* =========================================================
+   Seed data — clinic outreach
+   ========================================================= */
+function seed(){
+  const rows = [
+    ['Smile Craft Dental','Dr. Anjali Deshpande','Dental','+91 98200 11223','front@smilecraft.in','smilecraft.in',
+     'Lane 5, Koregaon Park, Pune 411001','Pune','https://maps.google.com/?cid=10293847561',
+     'Google Maps','Alex','High','wants_demo','Site is a one-page template from 2016. Asked to see what a rebuild looks like.','has',2],
+    ['Aster Skin & Hair Clinic','Dr. Rohit Kulkarni','Dermatology','+91 99870 45612','hello@asterskin.in','asterskin.in',
+     'Baner Road, Baner, Pune 411045','Pune','https://maps.google.com/?cid=88213470091',
+     'Instagram DM','Jordan','Medium','voicemail','Left a voicemail Tuesday. Runs two branches, one shared site.','has',1],
+    ['Northline Physio','Dr. Sanjay Rao','Physiotherapy','+91 91230 77881','','',
+     'Nyati Empire, Viman Nagar, Pune 411014','Pune','https://maps.google.com/?cid=55120983744',
+     'Cold call','Alex','High','no_answer','Front desk said call back Thursday after 4. No website at all — easy pitch.','none',3],
+    ['Bright Harbor Dental','Dr. Sofia Alvarez','Dental','+1 512 555 0142','office@brightharbordental.com','brightharbordental.com',
+     '2100 South Lamar Blvd, Austin, TX 78704','Austin','https://maps.google.com/?cid=71204558830',
+     'Cold email','Jordan','High','demo_sent','Mockup sent Friday. Wants online booking on the new site before their Q4 push.','has',2],
+    ['Lumen Eye Care','Dr. Priya Nair','Ophthalmology','+91 99000 44556','contact@lumeneye.in','lumeneye.in',
+     'Panampilly Nagar, Kochi 682036','Kochi','https://maps.google.com/?cid=39887100254',
+     'Referral','Jordan','High','closed_won','Signed. New site and Google profile go live next month.','has',3],
+    ['Kite Orthodontics','Dr. Aisha Rahman','Orthodontics','+91 98330 22114','','',
+     'Linking Road, Bandra West, Mumbai 400050','Mumbai','https://maps.google.com/?cid=64003992218',
+     'Google Maps','Alex','High','not_called','Instagram only, no site, 400 reviews. Prime target.','none',0],
+    ['Becker Zahnarztpraxis','Dr. Tom Becker','Dental','+49 151 23456789','praxis@beckerzahn.de','beckerzahn.de',
+     'Leopoldstrasse 42, Munich 80802','Munich','https://maps.google.com/?cid=20114558873',
+     'Website form','Jordan','Medium','not_interested','Said they already have an agency on retainer.','has',1],
+    ['Grayscale Skin','Dr. Lena Fischer','Dermatology','+49 30 55510177','','',
+     'Kastanienallee 12, Berlin 10435','Berlin','https://maps.google.com/?cid=90233118876',
+     'Cold email','Unassigned','Low','closed_lost','No budget, revisit next year.','unknown',1]
+  ];
+  const now = Date.now();
+  rows.forEach((r,i) => {
+    const lead = makeLead({
+      clinic:r[0], doctor:r[1], specialty:r[2], phone:r[3], email:r[4], website:r[5],
+      address:r[6], city:r[7], google:r[8], source:r[9], owner:r[10], priority:r[11],
+      stage:r[12], notes:r[13], web:r[14], attempts:r[15],
+      createdAt: new Date(now - (rows.length - i) * 7.2e6).toISOString()
+    });
+    logEvent(lead, `Added from ${lead.source}`);
+    if(lead.stage !== defaultStage()) logEvent(lead, `Marked ${stageLabel(lead.stage)}`);
+    state.leads.push(lead);
+  });
+
+  /* Two entries the check should have caught, already sitting in Rejected. */
+  intake({clinic:'Smilecraft Dental Clinic', doctor:'Anjali Deshpande', specialty:'Dental',
+          phone:'098200 11223', address:'Lane No. 5, Koregaon Park, Pune', city:'Pune',
+          google:'https://maps.google.com/?cid=10293847561', source:'Cold call'}, true);
+  intake({clinic:'Aster Skin and Hair', doctor:'Dr Rohit Kulkarni', specialty:'Dermatology',
+          email:'hello@asterskin.in', address:'Baner Rd, Baner, Pune', city:'Pune',
+          source:'Referral'}, true);
+
+  anim.flashRejected = false;
+  anim.pulse = null;
+}
+
+/* =========================================================
+   Rendering
+   ========================================================= */
+const $ = id => document.getElementById(id);
+const board = $('board');
+const rejView = $('rejView');
+const PIN = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 1.6c-2.4 0-4.3 1.9-4.3 4.3 0 3.1 4.3 8.5 4.3 8.5s4.3-5.4 4.3-8.5c0-2.4-1.9-4.3-4.3-4.3z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="5.9" r="1.5" stroke="currentColor" stroke-width="1.4"/></svg>';
+const CHEV = '<svg width="11" height="7" viewBox="0 0 11 7" fill="none"><path d="M1 1.2l4.5 4.4L10 1.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const COPY = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="5.4" y="5.4" width="8.2" height="8.2" rx="1.8" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 5.4V4.2c0-1-.8-1.8-1.8-1.8H4.2c-1 0-1.8.8-1.8 1.8v4.6c0 1 .8 1.8 1.8 1.8h1.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+const PHONE = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M5.2 2.4H3.4c-.8 0-1.4.7-1.3 1.5.3 2.6 1.4 5 3.1 6.8 1.7 1.8 4 3 6.5 3.3.8.1 1.5-.5 1.5-1.3v-1.8c0-.7-.5-1.2-1.1-1.3l-1.6-.3c-.5-.1-1 .1-1.3.5l-.5.7c-1.4-.8-2.6-2-3.4-3.4l.7-.5c.4-.3.6-.8.5-1.3l-.3-1.6c-.1-.6-.6-1.1-1.3-1.1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
+const CHAT = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13.8 7.7c0 3-2.6 5.4-5.9 5.4-.9 0-1.8-.2-2.6-.5l-3.1.9.9-2.9c-.5-.9-.8-1.9-.8-2.9 0-3 2.6-5.4 5.9-5.4s5.6 2.4 5.6 5.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
+const MAIL = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="2" y="3.4" width="12" height="9.2" rx="1.8" stroke="currentColor" stroke-width="1.4"/><path d="M2.6 4.6L8 8.6l5.4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const OPEN = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6.4 3.2H4.2c-1 0-1.8.8-1.8 1.8v6.8c0 1 .8 1.8 1.8 1.8H11c1 0 1.8-.8 1.8-1.8V9.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M9.6 2.4h4v4M13.4 2.6L7.8 8.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const LOCK = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><rect x="3.4" y="7" width="9.2" height="6.4" rx="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M5.6 7V5.3a2.4 2.4 0 0 1 4.8 0V7" stroke="currentColor" stroke-width="1.4"/></svg>';
+const TRASH = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3.2 4.4h9.6M6.4 4.4V3.2c0-.5.4-.9.9-.9h1.4c.5 0 .9.4.9.9v1.2M4.5 4.4l.5 8c0 .6.5 1 1 1h4c.5 0 1-.4 1-1l.5-8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function passesFilter(l){
+  const f = state.filters;
+  if(f.city && l.city !== f.city) return false;
+  if(f.specialty && l.specialty !== f.specialty) return false;
+  if(f.web && l.web !== f.web) return false;
+  if(f.mine && l.owner !== state.me) return false;
+  if(f.source && l.source !== f.source) return false;
+  if(f.owner && l.owner !== f.owner) return false;
+  if(f.priority && l.priority !== f.priority) return false;
+  if(f.q){
+    const hay = [l.clinic,l.doctor,l.specialty,l.email,l.phone,l.website,l.address,l.city,l.notes].join(' ').toLowerCase();
+    if(!hay.includes(f.q.toLowerCase())) return false;
+  }
+  return true;
+}
+
+/* The board shows workflow columns only. Rejected duplicates get their own
+   full-width section, because a 296px column cannot show why something was rejected. */
+function renderBoard(visible){
+  board.innerHTML = '';
+
+  STAGES.filter(st => !st.locked).forEach((stage, si) => {
+    const items = visible.filter(l => l.stage === stage.id)
+                         .sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    const col = document.createElement('section');
+    col.className = 'col'
+      + (stage.id === 'rejected' ? ' rejected' : '')
+      + (state.collapsed.has(stage.id) ? ' collapsed' : '')
+      + (anim.booted ? '' : ' enter');
+    col.style.setProperty('--i', si);
+    col.dataset.stage = stage.id;
+
+    const head = document.createElement('div');
+    head.className = 'col-head';
+    head.innerHTML =
+      `<span class="dot" style="background:${stage.color}"></span>` +
+      `<h2>${stage.short}</h2>` +
+      `<span class="pill${(stage.id === 'rejected' && anim.flashRejected) ? ' flash' : ''}">${items.length}</span>` +
+      `<span class="chev">${CHEV}</span>`;
+    head.title = stage.label + (state.collapsed.has(stage.id) ? ' — click to show' : ' — click to hide');
+    head.addEventListener('click', () => {
+      state.collapsed.has(stage.id) ? state.collapsed.delete(stage.id) : state.collapsed.add(stage.id);
+      render();
+    });
+    col.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'col-body';
+    if(!items.length){
+      const e = document.createElement('div');
+      e.className = 'empty';
+      e.textContent = stage.id === 'rejected'
+        ? 'No duplicates blocked yet. Anything matching an existing clinic lands here.'
+        : 'Nothing here. Drag a card across or add a lead.';
+      body.appendChild(e);
+    }
+    items.forEach((l,i) => body.appendChild(cardEl(l,i)));
+    col.appendChild(body);
+
+    col.addEventListener('dragover', e => { e.preventDefault(); col.classList.add('drop'); });
+    col.addEventListener('dragleave', e => { if(!col.contains(e.relatedTarget)) col.classList.remove('drop'); });
+    col.addEventListener('drop', e => {
+      e.preventDefault(); col.classList.remove('drop');
+      state.collapsed.delete(stage.id);
+      moveLead(e.dataTransfer.getData('text/plain'), stage.id);
+    });
+
+    board.appendChild(col);
+  });
+
+  anim.booted = true;
+  anim.pulse = null;
+}
+
+function render(){
+  applyLock();
+  const visible = state.leads.filter(passesFilter);
+  const rejected = state.view === 'rejected';
+  board.style.display   = rejected ? 'none' : '';
+  rejView.style.display = rejected ? '' : 'none';
+  document.querySelectorAll('.viewseg button').forEach(b =>
+    b.classList.toggle('on', (b.dataset.view === 'rejected') === rejected));
+
+  if(rejected) renderRejected(visible); else renderBoard(visible);
+
+  renderCounts();
+  refreshOptions();
+  anim.flashRejected = false;
+  anim.pulse = null;
+  if(state.selected) renderDrawer();
+}
+
+/* ---------- rejected review ---------- */
+function renderRejected(visible){
+  const items = visible.filter(l => l.stage === 'rejected')
+                       .sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  const total = state.leads.filter(l => l.stage === 'rejected').length;
+
+  rejView.innerHTML = `<div class="rejinner">
+    <div class="rejhead">
+      <div>
+        <h2>${total} duplicate${total === 1 ? '' : 's'} blocked</h2>
+        <p>These never entered the pipeline. Each one shows exactly which normalised values collided and which existing clinic it collided with.</p>
+      </div>
+      <div class="grow"></div>
+      ${total ? `<button class="btn btn-sm btn-ghost" id="rejClear">Discard all</button>` : ''}
+    </div>
+    ${items.length ? items.map((l,i) => rejCard(l,i)).join('') : `<div class="rejempty">
+       <b>${total ? 'No duplicates match your filters' : 'Nothing has been rejected yet'}</b>
+       ${total ? 'Clear the filters to see all ' + total + ' of them.'
+               : 'When an import matches an existing clinic, it lands here with the reason attached instead of entering the board.'}
+     </div>`}
+  </div>`;
+
+  const clearBtn = $('rejClear');
+  if(clearBtn) clearBtn.onclick = () => discardAll(clearBtn);
+  rejView.querySelectorAll('[data-rej]').forEach(btn => {
+    const l = state.leads.find(x => x.id === btn.dataset.rej);
+    if(!l) return;
+    if(btn.dataset.act === 'open')    btn.onclick = () => openDrawer(l.id);
+    if(btn.dataset.act === 'origin')  btn.onclick = () => openDrawer(l.duplicateOf);
+    if(btn.dataset.act === 'restore') btn.onclick = () => { moveLead(l.id, defaultStage()); };
+    if(btn.dataset.act === 'discard') btn.onclick = () => discardLead(l.id);
+  });
+}
+
+function rejCard(l, i){
+  const other = state.leads.find(x => x.id === l.duplicateOf);
+  const cf = l.fp || fingerprint(l);
+  const of = other ? (other.fp || fingerprint(other)) : {};
+  const trace = (l.matchedOn || []).map((k,n) =>
+    `<div class="trace-row" style="--i:${n}">
+       <span class="f">${labelOf(k)}</span>
+       <span class="a">${esc(cf[k] || '—')}</span>
+       <span class="eq">=</span>
+       <span class="b">${esc(of[k] || '—')}</span>
+     </div>`).join('');
+
+  return `<article class="rejcard" style="--i:${i}">
+    <div class="rejtop">
+      <div style="flex:1;min-width:0">
+        <h3>${esc(titleOf(l))}</h3>
+        <div class="meta">${[l.doctor, l.city, l.phone, 'via ' + l.source].filter(Boolean).map(esc).join(' · ')}</div>
+      </div>
+      <span class="rejwhen">${shortDate(l.updatedAt)}</span>
+    </div>
+
+    <div class="why">
+      Rejected because
+      ${(l.matchedOn || []).map(k => `<span class="sig">${labelOf(k)}</span>`).join('')}
+      match${(l.matchedOn || []).length === 1 ? 'es' : ''} an existing clinic.
+    </div>
+
+    <div class="rejgrid">
+      <div>
+        <div class="col-t">What collided — this entry, then the one already on the board</div>
+        <div class="trace">${trace || '<div class="hint" style="margin:0">No trace recorded.</div>'}</div>
+      </div>
+      <div>
+        <div class="col-t">Kept on the board</div>
+        <div class="against">
+          <div class="n">${other ? esc(titleOf(other)) : 'Original no longer exists'}</div>
+          <div class="t" style="margin:4px 0 0">${other ? esc([other.doctor, other.city, stageLabel(other.stage)].filter(Boolean).join(' · ')) + ' · ' + other.id : ''}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rejacts">
+      <button class="act" data-rej="${l.id}" data-act="open">${OPEN} Open this entry</button>
+      ${other ? `<button class="act" data-rej="${l.id}" data-act="origin">${PIN} Open the original</button>` : ''}
+      <button class="act call" data-rej="${l.id}" data-act="restore">Not a duplicate — restore</button>
+      <button class="act" data-rej="${l.id}" data-act="discard">${TRASH} Discard</button>
+    </div>
+  </article>`;
+}
+
+function discardLead(id){
+  const l = state.leads.find(x => x.id === id);
+  if(!l) return;
+  const other = state.leads.find(x => x.id === l.duplicateOf);
+  if(other) logEvent(other, `Blocked duplicate ${titleOf(l)} was discarded`);
+  state.leads = state.leads.filter(x => x.id !== id);
+  anim.seen.delete(id);
+  if(state.selected === id) closeDrawer(); else render();
+  toast(`${titleOf(l)} discarded.`);
+}
+
+/* Two-step, because this one is not undoable. */
+function discardAll(btn){
+  const ids = state.leads.filter(l => l.stage === 'rejected').map(l => l.id);
+  if(!ids.length) return;
+  if(btn.dataset.armed !== '1'){
+    btn.dataset.armed = '1';
+    btn.textContent = `Discard all ${ids.length}? Click again`;
+    setTimeout(() => { btn.dataset.armed = ''; btn.textContent = 'Discard all'; }, 4000);
+    return;
+  }
+  state.leads = state.leads.filter(l => l.stage !== 'rejected');
+  ids.forEach(id => anim.seen.delete(id));
+  render();
+  toast(`${ids.length} duplicate${ids.length === 1 ? '' : 's'} discarded.`);
+}
+
+function cardEl(l, idx){
+  const el = document.createElement('article');
+  const fresh = !anim.seen.has(l.id);
+  const mine = canEdit(l);
+  el.className = 'card' + (mine ? '' : ' locked')
+    + (state.selected === l.id ? ' sel' : '')
+    + (fresh ? ' enter' : '')
+    + (anim.pulse === l.id ? ' ' + anim.pulseKind : '');
+  el.style.setProperty('--i', idx);
+  el.draggable = mine;
+  el.dataset.id = l.id;
+  anim.seen.add(l.id);
+
+  const initials = (l.owner && l.owner !== UNASSIGNED) ? l.owner[0] : '';
+  const av = initials
+    ? `${mine ? '' : `<span class="lockmark" title="${esc(l.owner)} owns this lead">${LOCK}</span>`}<div class="av" style="background:${ownerColor(l.owner)}" title="${esc(l.owner)}">${esc(initials)}</div>`
+    : `<div class="av none" title="Unassigned — anyone can claim it">?</div>`;
+
+  let badge = '';
+  if(l.stage === 'rejected' && l.duplicateOf){
+    const of = state.leads.find(x => x.id === l.duplicateOf);
+    badge = `<span class="tag dupe">Duplicate of ${of ? esc(titleOf(of)) : l.duplicateOf}</span>`;
+  }else if(l.flagged){
+    badge = `<span class="tag warn">1 shared signal</span>`;
+  }
+
+  el.innerHTML =
+    `<div class="card-top">
+       <div style="flex:1">
+         <h3>${esc(l.clinic || 'Unnamed clinic')}</h3>
+         ${l.doctor ? `<div class="doc">${esc(l.doctor)}</div>` : ''}
+       </div>${av}
+     </div>
+     ${l.address ? `<div class="addr">${esc(l.address)}</div>` : ''}
+     <div class="card-meta">
+       ${l.specialty ? `<span class="tag">${esc(l.specialty)}</span>` : ''}
+       ${l.city ? `<span class="tag">${esc(l.city)}</span>` : ''}
+       ${l.web === 'none' ? '<span class="tag nosite">No website</span>' : ''}
+       ${l.attempts ? `<span class="tag">${l.attempts} call${l.attempts === 1 ? '' : 's'}</span>` : ''}
+       ${l.priority === 'High' ? '<span class="tag hi">High</span>' : ''}
+       ${badge}
+     </div>
+     ${(l.google || l.phone || l.email) ? `<div class="card-actions">
+        ${l.google ? `<a class="glink" href="${esc(l.google)}" target="_blank" rel="noopener noreferrer">${PIN} Google listing</a>` : ''}
+        ${l.phone ? `<a class="mini call" href="${esc(telHref(l.phone))}" title="Call ${esc(l.phone)}">${PHONE}</a>` : ''}
+        ${l.phone ? `<a class="mini wa" href="${esc(waHref(l.phone))}" target="_blank" rel="noopener noreferrer" title="WhatsApp ${esc(l.phone)}">${CHAT}</a>` : ''}
+        ${l.email ? `<a class="mini mail" href="mailto:${esc(l.email)}" title="Email ${esc(l.email)}">${MAIL}</a>` : ''}
+      </div>` : ''}`;
+
+  el.querySelectorAll('.card-actions a').forEach(a => a.addEventListener('click', e => e.stopPropagation()));
+
+  el.addEventListener('click', () => openDrawer(l.id));
+  el.addEventListener('pointermove', e => {
+    const r = el.getBoundingClientRect();
+    el.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+    el.style.setProperty('--my', (e.clientY - r.top) + 'px');
+  });
+  el.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('text/plain', l.id);
+    e.dataTransfer.effectAllowed = 'move';
+    requestAnimationFrame(() => el.classList.add('dragging'));
+  });
+  el.addEventListener('dragend', () => el.classList.remove('dragging'));
+  return el;
+}
+
+/* rAF count-up so the rail numbers move instead of snapping */
+function animateCount(el, key, to){
+  const from = anim.counts[key] == null ? to : anim.counts[key];
+  anim.counts[key] = to;
+  if(from === to){ el.textContent = String(to); return; }
+  el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick');
+  const t0 = performance.now(), dur = 480;
+  (function step(t){
+    const p = Math.min(1, (t - t0) / dur);
+    const e = 1 - Math.pow(1 - p, 3);
+    el.textContent = String(Math.round(from + (to - from) * e));
+    if(p < 1) requestAnimationFrame(step);
+  })(t0);
+}
+
+function renderCounts(){
+  const active = state.leads.filter(l => l.stage !== 'rejected');
+  animateCount($('cTotal'),'total', active.length);
+  animateCount($('cWon'),'won', active.filter(l => l.stage === 'closed_won').length);
+  animateCount($('cDup'),'dup', state.leads.filter(l => l.stage === 'rejected').length);
+  animateCount($('cOpen'),'open', active.filter(l => l.web === 'none').length);
+  const rej = state.leads.filter(l => l.stage === 'rejected').length;
+  const badge = $('rejBadge');
+  badge.textContent = rej;
+  if(anim.flashRejected){ badge.classList.remove('flash'); void badge.offsetWidth; badge.classList.add('flash'); }
+}
+
+/* City and specialty lists grow with the data instead of being hardcoded. */
+function refreshOptions(){
+  const derived = key => state.leads.map(l => l[key]).filter(Boolean);
+  const merge = (custom, key) => [...new Set([...custom, ...derived(key)])].sort();
+  const cities = merge(state.lists.cities, 'city');
+  const specs  = merge(state.lists.specialties, 'specialty');
+  syncSelect($('fCity'), cities, 'All cities', state.filters.city);
+  syncSelect($('fSpecialty'), specs, 'All specialties', state.filters.specialty);
+  syncSelect($('fSource'), SOURCES, 'All sources', state.filters.source);
+  syncSelect($('fOwner'), ownerNames(), 'All owners', state.filters.owner);
+  syncSelect($('fPriority'), PRIORITIES, 'All priorities', state.filters.priority);
+  syncPlain($('iSource'), SOURCES, SOURCES[0]);
+  syncPlain($('iPriority'), PRIORITIES, PRIORITIES[Math.floor(PRIORITIES.length/2)]);
+  $('cityList').innerHTML = cities.map(c => `<option value="${esc(c)}">`).join('');
+  $('specialtyList').innerHTML = specs.map(s => `<option value="${esc(s)}">`).join('');
+  renderMe();
+  renderOwnerChips();
+}
+function renderMe(){
+  const out = signedOut();
+  $('meWrap').hidden = out;
+  if(out){ $('meMenu').hidden = true; return; }
+
+  const m = state.team.find(x => x.name === state.me);
+  const av = $('meAv');
+  av.style.cssText = 'width:22px;height:22px;border-radius:99px;display:grid;place-items:center;font-size:10px;font-weight:700;color:#0A0A0F;background:' + (m ? m.color : 'var(--raise)');
+  av.textContent = m ? m.name[0] : (devActive() ? 'D' : '?');
+  $('meName').textContent = state.me || 'Dev';
+  $('meMenu').innerHTML =
+    `<div class="t">Signed in on this device only. Refreshing signs you out.</div>
+     <button id="meOut"><span class="dotav none">&#10005;</span>Sign out</button>`;
+  $('meOut').onclick = signOut;
+}
+
+/* The owner picker is chips, not a dropdown — you should see who you are handing it to. */
+function renderOwnerChips(){
+  const wrap = $('iOwnerChips'), hidden = $('iOwner');
+  if(!hidden.value) hidden.value = state.me || UNASSIGNED;
+  wrap.innerHTML = [...state.team.map(m => ({name:m.name, color:m.color})), {name:UNASSIGNED}]
+    .map(o => `<button type="button" class="chip${o.name === hidden.value ? ' on' : ''}" data-owner="${esc(o.name)}">
+        <span class="dotav${o.color ? '' : ' none'}"${o.color ? ` style="background:${o.color}"` : ''}>${o.color ? esc(o.name[0]) : '?'}</span>
+        ${esc(o.name)}${o.name === state.me ? ' (you)' : ''}</button>`).join('');
+  wrap.querySelectorAll('[data-owner]').forEach(b => b.onclick = () => {
+    hidden.value = b.dataset.owner;
+    renderOwnerChips();
+  });
+}
+
+function syncPlain(el, values, fallback){
+  const want = values.map(v => `<option>${esc(v)}</option>`).join('');
+  if(el.innerHTML === want) return;
+  const keep = el.value;
+  el.innerHTML = want;
+  el.value = values.includes(keep) ? keep : (values.includes(fallback) ? fallback : values[0] || '');
+}
+function syncSelect(el, values, allLabel, current){
+  const want = `<option value="">${allLabel}</option>` + values.map(v => `<option>${esc(v)}</option>`).join('');
+  if(el.innerHTML === want) return;
+  el.innerHTML = want;
+  el.value = values.includes(current) ? current : '';
+}
+
+function moveLead(id, stage){
+  const l = state.leads.find(x => x.id === id);
+  if(!l || l.stage === stage) return;
+  if(!canEdit(l)){ toast(`${l.owner} owns this lead. Ask them, or unlock dev mode.`, true); return; }
+  const from = l.stage;
+  l.stage = stage;
+  if(isAttemptStage(stage)) l.attempts += 1;
+  logEvent(l, from === 'rejected'
+    ? `Restored out of Rejected into ${stageLabel(stage)}`
+    : `${stageLabel(stage)}${isAttemptStage(stage) ? ` — call ${l.attempts}` : ''}`);
+  if(from === 'rejected'){ l.duplicateOf = null; l.matchedOn = []; l.flagged = false; }
+  anim.pulse = l.id;
+  anim.pulseKind = stage === 'rejected' ? 'stamped' : 'landed';
+  render();
+  toast(`${titleOf(l)} — ${stageLabel(stage)}`);
+}
+
+/* =========================================================
+   Drawer
+   ========================================================= */
+function openDrawer(id){
+  state.selected = id;
+  $('drawer').classList.add('on');
+  $('drawer').setAttribute('aria-hidden','false');
+  $('scrim').classList.add('on');
+  render();
+}
+function closeDrawer(){
+  state.selected = null; anim.drawerFor = null;
+  $('drawer').classList.remove('on');
+  $('drawer').setAttribute('aria-hidden','true');
+  $('scrim').classList.remove('on');
+  render();
+}
+function renderDrawer(){
+  const l = state.leads.find(x => x.id === state.selected);
+  if(!l) return closeDrawer();
+
+  const firstPaint = anim.drawerFor !== l.id;
+  anim.drawerFor = l.id;
+
+  $('dName').textContent = l.clinic || 'Unnamed clinic';
+  $('dSub').textContent  = [l.doctor, l.specialty].filter(Boolean).join(' · ') || '—';
+
+  const dup = l.duplicateOf ? state.leads.find(x => x.id === l.duplicateOf) : null;
+  let dupBlock = '';
+  if(dup && l.stage === 'rejected'){
+    dupBlock = verdictHTML('reject', l, dup, l.matchedOn,
+      'This entry never entered the pipeline. Move it out of Rejected only if it is genuinely a different location.');
+  }else if(dup && l.flagged){
+    dupBlock = verdictHTML('flag', l, dup, l.matchedOn,
+      'Only one signal matched, so it was let through. Worth a look before you call.');
+  }
+
+  const mine = canEdit(l);
+  $('dEdit').style.display = mine ? '' : 'none';
+
+  const body = $('dBody');
+  body.className = 'drawer-body' + (firstPaint ? ' stagger' : '');
+  body.innerHTML =
+    (mine ? '' : `<div class="rolock" style="--i:0">${LOCK}<div><b>${esc(l.owner)} owns this lead</b>
+       You can read it, call it and copy the details, but only ${esc(l.owner)} can change it. Unlock dev mode to override.</div></div>`) +
+    (dupBlock ? `<div style="--i:0">${dupBlock}</div>` : '') +
+
+    `<div class="sect" style="--i:1">
+       <h4>Contact</h4>
+       ${l.phone ? `
+         <div class="contact-line">${esc(l.phone)}</div>
+         <div class="acts">
+           <a class="act call" href="${esc(telHref(l.phone))}">${PHONE} Call</a>
+           <a class="act wa" href="${esc(waHref(l.phone))}" target="_blank" rel="noopener noreferrer">${CHAT} WhatsApp</a>
+           <button class="act" data-copy="${esc(l.phone)}">${COPY} Copy</button>
+         </div>` : `<div class="hint" style="margin:0">No phone number on file.</div>`}
+
+       ${l.email ? `
+         <div class="contact-line" style="margin-top:16px">${esc(l.email)}</div>
+         <div class="acts">
+           <a class="act mail" href="mailto:${esc(l.email)}">${MAIL} Email</a>
+           <button class="act" data-copy="${esc(l.email)}">${COPY} Copy</button>
+         </div>` : ''}
+     </div>
+
+     <div class="sect" style="--i:2">
+       <h4>Location</h4>
+       ${l.address ? `<div class="addr-block">${esc(l.address)}${l.city ? `<div class="city">${esc(l.city)}</div>` : ''}</div>` : ''}
+       ${l.google
+          ? `<a class="glink wide" href="${esc(l.google)}" target="_blank" rel="noopener noreferrer">${PIN} Open Google listing</a>`
+          : `<div class="hint" style="margin:0">No Google listing on file. Paste the Maps link to unlock the strongest duplicate check.</div>`}
+       <div class="acts">
+         ${l.address ? `<button class="act" data-copy="${esc(fullAddress(l))}">${COPY} Copy address</button>` : ''}
+         ${l.google ? `<button class="act" data-copy="${esc(l.google)}">${COPY} Copy link</button>` : ''}
+       </div>
+     </div>
+
+     <div class="sect" style="--i:3">
+       <h4>Details</h4>
+       <div class="rows">
+         <div class="row"><span class="k">Status</span>
+           <button class="copy" data-copy="${esc(stageLabel(l.stage))}">
+             <span class="swatch" style="background:${stageColor(l.stage)}"></span>${stageLabel(l.stage)}<span class="ci">${COPY}</span>
+           </button>
+         </div>
+         ${copyRow('Doctor', l.doctor)}
+         ${copyRow('Clinic', l.clinic)}
+         ${copyRow('Specialty', l.specialty)}
+         ${copyRow('Website', l.website || (l.web === 'none' ? 'No website' : ''))}
+         ${copyRow('City', l.city)}
+         ${copyRow('Call attempts', String(l.attempts))}
+         ${copyRow('Owner', l.owner)}
+         ${copyRow('Source', l.source)}
+         ${copyRow('Added', shortDate(l.createdAt))}
+         ${copyRow('Lead ID', l.id)}
+       </div>
+       <div class="acts">
+         <button class="act" data-copy="${esc(leadAsText(l))}">${COPY} Copy everything</button>
+       </div>
+     </div>
+
+     <div class="sect" style="--i:4">
+       <h4>Assignment</h4>
+       <div class="ctrl-grid">
+         <label class="fld"><span>Owner</span>${selectHTML('dOwner', ownerNames(), l.owner)}</label>
+         <label class="fld"><span>Status</span>${selectHTML('dStage', STAGES.map(s=>s.label), stageLabel(l.stage))}</label>
+         <label class="fld"><span>Priority</span>${selectHTML('dPriority', PRIORITIES, l.priority)}</label>
+         <label class="fld"><span>Specialty</span><input class="in" id="dSpecialty" value="${esc(l.specialty)}"></label>
+       </div>
+     </div>
+
+     <div class="sect" style="--i:5">
+       <h4>Notes</h4>
+       <textarea class="in" id="dNotes" placeholder="Who answered, what they said, what to do next.">${esc(l.notes)}</textarea>
+     </div>
+
+     ${devActive() ? `<div class="sect" style="--i:6">
+       <h4>Dev tools</h4>
+       <dl class="keys">
+         ${SIGNALS.map(sig => `<dt>${sig.label}</dt><dd>${esc((l.fp || fingerprint(l))[sig.key] || '—')}</dd>`).join('')}
+       </dl>
+       <div class="acts">
+         ${l.stage !== 'rejected' ? `<button class="act" id="dForce">Force reject</button>` : ''}
+         <button class="act" id="dDelete" style="color:var(--danger);border-color:rgba(255,77,77,.4)">${TRASH} Delete lead</button>
+       </div>
+     </div>` : ''}
+
+     <div class="sect" style="--i:7">
+       <h4>Activity</h4>
+       <div class="log">
+         ${l.log.map(e => `<div class="log-item"><span class="when">${shortDate(e.at)}</span><span class="what">${esc(e.text)}</span></div>`).join('')}
+       </div>
+     </div>`;
+
+  if(!mine){
+    ['dOwner','dStage','dPriority','dSpecialty','dNotes'].forEach(id => { const el = $(id); if(el) el.disabled = true; });
+    return;
+  }
+  $('dOwner').addEventListener('change', e => { l.owner = e.target.value; logEvent(l, `Assigned to ${l.owner}`); render(); });
+  $('dStage').addEventListener('change', e => {
+    const s = STAGES.find(x => x.label === e.target.value);
+    if(s) moveLead(l.id, s.id);
+  });
+  $('dPriority').addEventListener('change', e => { l.priority = e.target.value; render(); });
+  $('dSpecialty').addEventListener('change', e => { l.specialty = e.target.value.trim(); render(); });
+  $('dNotes').addEventListener('change', e => { l.notes = e.target.value; logEvent(l,'Notes updated'); });
+  if(devActive()){
+    const del = $('dDelete'), force = $('dForce');
+    if(del)   del.onclick   = e => armed(e.target, 'Delete lead', () => deleteLead(l.id));
+    if(force) force.onclick = () => forceReject(l.id);
+  }
+}
+
+function copyRow(label, value){
+  const v = clean(value);
+  return `<div class="row"><span class="k">${label}</span>` +
+    (v
+      ? `<button class="copy" data-copy="${esc(v)}">${esc(v)}<span class="ci">${COPY}</span></button>`
+      : `<span class="copy empty">—</span>`) +
+    `</div>`;
+}
+
+function selectHTML(id, options, current){
+  return `<select class="in" id="${id}">` +
+    options.map(o => `<option${o === current ? ' selected' : ''}>${esc(o)}</option>`).join('') + `</select>`;
+}
+
+/* The match trace — every rejection shows its work. */
+function verdictHTML(kind, cand, other, fields, note){
+  const cf = cand.fp || fingerprint(cand);
+  const of = other.fp || fingerprint(other);
+  const rows = fields.map((k,i) =>
+    `<div class="trace-row" style="--i:${i}">
+       <span class="f">${labelOf(k)}</span>
+       <span class="a">${esc(cf[k])}</span>
+       <span class="eq">=</span>
+       <span class="b">${esc(of[k])}</span>
+     </div>`).join('');
+  const title = kind === 'reject'
+    ? `Rejected — ${fields.length} signal${fields.length > 1 ? 's' : ''} matched an existing clinic`
+    : 'Let through with 1 shared signal';
+  const glyph = kind === 'reject' ? '&#10005;' : '!';
+  return `<div class="verdict ${kind}">
+      <div class="verdict-head"><span class="glyph">${glyph}</span> ${title}</div>
+      <div class="verdict-body">
+        ${note}
+        <div class="trace">${rows}</div>
+        <div class="against">
+          <div class="t">Matched against</div>
+          <div class="n">${esc(titleOf(other))} · ${esc(other.city || other.doctor || '')} · ${other.id}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* =========================================================
+   Intake modal
+   ========================================================= */
+let mode = 'one';
+let editingId = null;
+
+/* Editing reuses the intake form so fields are defined in exactly one place. */
+function openEdit(id){
+  const l = state.leads.find(x => x.id === id);
+  if(!l) return;
+  if(!canEdit(l)){ toast(`${l.owner} owns this lead.`, true); return; }
+  editingId = l.id;
+  setTab('one');
+  $('iClinic').value = l.clinic;   $('iDoctor').value = l.doctor;
+  $('iSpecialty').value = l.specialty; $('iPhone').value = l.phone;
+  $('iEmail').value = l.email;     $('iSite').value = l.website;
+  $('iWeb').value = l.web;         $('iAddress').value = l.address;
+  $('iCity').value = l.city;       $('iGoogle').value = l.google;
+  $('iSource').value = l.source;   $('iOwner').value = l.owner; renderOwnerChips();
+  $('iPriority').value = l.priority; $('iNotes').value = l.notes;
+  $('mTitle').textContent = 'Edit lead';
+  $('mSub').textContent = `${titleOf(l)} · ${l.id}`;
+  $('mSave').textContent = 'Save changes';
+  $('tabOne').parentElement.style.display = 'none';
+  $('oneVerdict').innerHTML = '';
+  $('modal').classList.add('on');
+  setTimeout(() => $('iClinic').focus(), 220);
+}
+
+function submitEdit(){
+  const l = state.leads.find(x => x.id === editingId);
+  if(!l) return closeModal();
+  if(!canEdit(l)){ toast(`${l.owner} owns this lead.`, true); return closeModal(); }
+  const raw = readForm();
+  if(!clean(raw.clinic) && !clean(raw.doctor) && !clean(raw.phone)){
+    toast('A lead needs at least a clinic, a doctor or a phone number.', true); return;
+  }
+
+  const before = {clinic:l.clinic, doctor:l.doctor, phone:l.phone, email:l.email,
+                  website:l.website, address:l.address, google:l.google, web:l.web};
+  Object.assign(l, {
+    clinic:clean(raw.clinic), doctor:clean(raw.doctor), specialty:clean(raw.specialty),
+    phone:clean(raw.phone), email:clean(raw.email), website:clean(raw.website),
+    address:clean(raw.address), city:clean(raw.city), google:clean(raw.google),
+    source:raw.source, owner:raw.owner, priority:raw.priority, notes:clean(raw.notes),
+    web: clean(raw.website) ? 'has' : (raw.web || 'unknown')
+  });
+  l.fp = fingerprint(l);
+
+  const changed = Object.keys(before).filter(k => before[k] !== l[k]);
+  logEvent(l, changed.length ? `Edited: ${changed.join(', ')}` : 'Details reviewed, nothing changed');
+
+  /* Re-check, but never auto-reject a lead that is already in the pipeline —
+     flag it and let the human decide. */
+  const res = checkDuplicate(l, state.leads);
+  if(res.verdict === 'reject' && l.stage !== 'rejected'){
+    l.flagged = true;
+    l.duplicateOf = res.best.lead.id;
+    l.matchedOn = res.best.fields;
+    logEvent(l, `Edit created a duplicate match against ${titleOf(res.best.lead)} — left in place for review`);
+    toast(`Heads up: this now matches ${titleOf(res.best.lead)}.`, true);
+  }else if(res.verdict === 'accept'){
+    l.flagged = false; l.duplicateOf = null; l.matchedOn = [];
+  }
+
+  editingId = null;
+  closeModal();
+  render();
+  if(res.verdict !== 'reject') toast('Changes saved.');
+}
+function openModal(which){
+  editingId = null;
+  $('tabOne').parentElement.style.display = '';
+  if(which === 'one'){
+    clearForm();
+    $('iWeb').value = 'unknown';
+    $('iPriority').value = 'Medium';
+    $('iSource').selectedIndex = 0;
+    $('iOwner').value = state.me || UNASSIGNED;
+    renderOwnerChips();
+  }
+  setTab(which);
+  $('modal').classList.add('on');
+  $('oneVerdict').innerHTML = '';
+  $('manyVerdict').innerHTML = '';
+  if(which === 'one') setTimeout(() => $('iClinic').focus(), 220);
+}
+function closeModal(){ editingId = null; $('modal').classList.remove('on'); }
+function setTab(which){
+  mode = which;
+  $('tabOne').classList.toggle('on', which === 'one');
+  $('tabMany').classList.toggle('on', which === 'many');
+  $('glide').style.transform = which === 'one' ? 'translateX(0)' : 'translateX(100%)';
+  $('paneOne').style.display = which === 'one' ? '' : 'none';
+  $('paneMany').style.display = which === 'many' ? '' : 'none';
+  $('mTitle').textContent = which === 'one' ? 'Add a lead' : 'Import a batch';
+  $('mSub').textContent = which === 'one'
+    ? 'Every lead runs through the duplicate check before it lands on the board.'
+    : 'Each row is checked one at a time, against the board and against the rows above it.';
+  $('mSave').textContent = which === 'one' ? 'Check and add' : 'Check and import';
+}
+
+function readForm(){
+  return {
+    clinic:$('iClinic').value, doctor:$('iDoctor').value, specialty:$('iSpecialty').value,
+    phone:$('iPhone').value, email:$('iEmail').value, website:$('iSite').value, web:$('iWeb').value,
+    address:$('iAddress').value, city:$('iCity').value, google:$('iGoogle').value,
+    source:$('iSource').value, owner:$('iOwner').value, priority:$('iPriority').value,
+    notes:$('iNotes').value
+  };
+}
+function clearForm(){
+  ['iClinic','iDoctor','iSpecialty','iPhone','iEmail','iSite','iAddress','iCity','iGoogle','iNotes']
+    .forEach(id => $(id).value = '');
+}
+
+function submitOne(){
+  const raw = readForm();
+  if(!clean(raw.clinic) && !clean(raw.doctor) && !clean(raw.phone)){
+    toast('A lead needs at least a clinic, a doctor or a phone number.', true); return;
+  }
+  const {lead, res} = intake(raw);
+
+  if(res.verdict === 'reject'){
+    $('oneVerdict').innerHTML = verdictHTML('reject', lead, res.best.lead, res.best.fields,
+      'It is on the board under Rejected, not in the pipeline.');
+    toast('Rejected as a duplicate — see the Rejected tab for the reason.', true);
+  }else if(res.verdict === 'flag'){
+    $('oneVerdict').innerHTML = verdictHTML('flag', lead, res.best.lead, res.best.fields,
+      'Added to New. Check it before you call.');
+    toast('Added with a flag.'); clearForm();
+  }else{
+    $('oneVerdict').innerHTML =
+      `<div class="verdict pass"><div class="verdict-head"><span class="glyph">&#10003;</span> Clean — no matching signals</div>
+       <div class="verdict-body">${esc(titleOf(lead))} was added to New.</div></div>`;
+    toast('Lead added.'); clearForm();
+  }
+}
+
+/* Addresses contain commas, so pipes and tabs win when present. */
+function parseBulk(text){
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if(!lines.length) return [];
+  const head = lines[0].toLowerCase();
+  if(/\bclinic\b/.test(head) && /\b(doctor|phone|address)\b/.test(head)) lines.shift();
+  return lines.map(line => {
+    const sep = /[|\t]/.test(line) ? /\s*[|\t]\s*/ : /\s*,\s*/;
+    const c = line.split(sep);
+    return {
+      clinic:c[0]||'', doctor:c[1]||'', phone:c[2]||'', email:c[3]||'',
+      address:c[4]||'', city:c[5]||'', google:c[6]||'', source:'Google Maps'
+    };
+  });
+}
+
+function submitMany(){
+  const rows = parseBulk($('iBulk').value);
+  if(!rows.length){ toast('Nothing to import.', true); return; }
+
+  const out = {added:0, flagged:0, rejected:0, rows:[]};
+  rows.forEach(r => {
+    const {lead, res} = intake(r, true);
+    if(res.verdict === 'reject'){
+      out.rejected++;
+      out.rows.push({cls:'dup', nm:titleOf(lead), rs:`matched ${res.best.fields.map(labelOf).join(' + ').toLowerCase()} on ${titleOf(res.best.lead)}`});
+    }else if(res.verdict === 'flag'){
+      out.flagged++;
+      out.rows.push({cls:'flg', nm:titleOf(lead), rs:`shares ${labelOf(res.best.fields[0]).toLowerCase()} with ${titleOf(res.best.lead)}`});
+    }else{
+      out.added++;
+      out.rows.push({cls:'ok', nm:titleOf(lead), rs:'clean'});
+    }
+  });
+  if(out.rejected) anim.flashRejected = true;
+  render();
+
+  $('manyVerdict').innerHTML =
+    `<div class="summary">
+       <div class="sbox ok" style="--i:0"><div class="n">${out.added}</div><div class="l">added clean</div></div>
+       <div class="sbox flg" style="--i:1"><div class="n">${out.flagged}</div><div class="l">added with a flag</div></div>
+       <div class="sbox dup" style="--i:2"><div class="n">${out.rejected}</div><div class="l">rejected</div></div>
+     </div>
+     <div class="report">${out.rows.map((r,i) =>
+       `<div class="rrow ${r.cls}" style="--i:${i}"><span class="nm">${esc(r.nm)}</span><span class="rs">${esc(r.rs)}</span></div>`).join('')}</div>`;
+  $('iBulk').value = '';
+  toast(`${rows.length} rows checked — ${out.rejected} rejected.`, out.rejected > 0);
+}
+
+const SAMPLE = [
+  'clinic | doctor | phone | email | address | city | google link',
+  'Smile Craft Dental | Dr. Anjali Deshpande | +91 98200 11223 | | Lane 5, Koregaon Park | Pune | https://maps.google.com/?cid=10293847561',
+  'Serene Dental Studio | Dr. Vikram Shah | +91 98765 43210 | front@serenedental.in | FC Road, Shivajinagar | Pune | https://maps.google.com/?cid=77410029934',
+  'Aster Skin & Hair | Dr Rohit Kulkarni | | hello@asterskin.in | Baner Rd, Baner | Pune |',
+  'Meridian Physiotherapy | Dr. Kavita Joshi | +91 90112 33445 | | Aundh Road, Aundh | Pune | https://maps.google.com/?cid=31558800127',
+  'Bright Harbor Dental | Dr. Sofia Alvarez | +1 512 555 0142 | | 2100 S Lamar Blvd | Austin | ',
+  'Vista Eye Centre | Dr. Imran Sheikh | +91 88220 91100 | care@vistaeye.in | MG Road, Camp | Pune | https://maps.google.com/?cid=44120983311'
+].join('\n');
+
+/* =========================================================
+   Team editor
+   ========================================================= */
+function renderTeam(){
+  const list = $('teamList');
+  list.innerHTML = state.team.map((m,i) => {
+    const s = memberStats(m.name);
+    const isMe = m.name === state.me;
+    return `<div class="mcard${isMe ? ' me' : ''}" data-i="${i}">
+      <div class="mhead">
+        <button class="sw" style="background:${m.color}" title="Change colour"></button>
+        <input class="nm" value="${esc(m.name)}" aria-label="Teammate name">
+        ${isMe ? '<span class="youtag">YOU</span>' : ''}
+        <button class="iconbtn rm" title="Remove ${esc(m.name)}">${TRASH}</button>
+      </div>
+      <div class="mstats">
+        <div class="mstat"><div class="n">${s.leads}</div><div class="l">Leads</div></div>
+        <div class="mstat"><div class="n">${s.calls}</div><div class="l">Calls</div></div>
+        <div class="mstat"><div class="n">${s.demos}</div><div class="l">Demos</div></div>
+        <div class="mstat win"><div class="n">${s.won}</div><div class="l">Won</div></div>
+        <div class="mstat"><div class="n">${s.lost}</div><div class="l">Lost</div></div>
+        <div class="mstat"><div class="n">${s.rate}%</div><div class="l">Win rate</div></div>
+        <div class="mstat"><div class="n">${s.nosite}</div><div class="l">No website</div></div>
+        <div class="mstat dup"><div class="n">${s.rejected}</div><div class="l">Rejected</div></div>
+      </div>
+      <div class="mcode">
+        Code ${(devActive() || isMe)
+          ? `<code>${esc(m.code || '----')}</code>
+             <button data-copy="${esc(m.code || '')}">Copy</button>
+             <button class="regen">New code</button>`
+          : `<code class="masked">••••</code><span style="font-size:11.5px">hidden</span>`}
+      </div>
+      <div class="badges">
+        ${ACHIEVEMENTS.map(a => {
+          const have = a.read(s), got = have >= a.need;
+          return `<span class="bdg${got ? ' got' : ''}" title="${a.label}: ${have} of ${a.need}">
+            ${got ? '&#10003;' : ''} ${a.label} <span class="pr">${got ? a.need : have + '/' + a.need}</span></span>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('') || `<div class="hint" style="margin:0">No teammates yet. Everything sits in Unassigned and anyone can edit it.</div>`;
+
+  list.querySelectorAll('.mcard').forEach(row => {
+    const i = Number(row.dataset.i);
+    row.querySelector('.sw').addEventListener('click', () => {
+      const cur = PALETTE.indexOf(state.team[i].color);
+      state.team[i].color = PALETTE[(cur + 1) % PALETTE.length];
+      renderTeam(); render();
+    });
+    row.querySelector('.nm').addEventListener('change', e => renameMember(i, e.target.value));
+    row.querySelector('.rm').addEventListener('click', () => removeMember(i));
+    const regen = row.querySelector('.regen');
+    if(regen) regen.addEventListener('click', () => {
+      const was = state.team[i].code;
+      state.team[i].code = genCode();
+      if(state.me === state.team[i].name) toast(`New code ${state.team[i].code}. The old one (${was}) no longer works.`);
+      renderTeam();
+    });
+  });
+  applySettingsLock();
+}
+
+function renameMember(i, raw){
+  const next = clean(raw), prev = state.team[i].name;
+  if(!next || next === prev){ renderTeam(); return; }
+  if(next === UNASSIGNED || state.team.some((m,j) => j !== i && m.name === next)){
+    toast('That name is already taken.', true); renderTeam(); return;
+  }
+  state.team[i].name = next;
+  let moved = 0;
+  state.leads.forEach(l => {
+    if(l.owner === prev){ l.owner = next; moved++; logEvent(l, `Owner renamed from ${prev} to ${next}`); }
+  });
+  if(state.filters.owner === prev) state.filters.owner = next;
+  if(state.me === prev) state.me = next;
+  renderTeam(); render();
+  toast(`Renamed to ${next}${moved ? ` — ${moved} lead${moved === 1 ? '' : 's'} moved` : ''}.`);
+}
+
+function removeMember(i){
+  const m = state.team[i];
+  const owned = state.leads.filter(l => l.owner === m.name);
+  state.team.splice(i, 1);
+  owned.forEach(l => { l.owner = UNASSIGNED; logEvent(l, `Unassigned — ${m.name} was removed from the team`); });
+  if(state.filters.owner === m.name) state.filters.owner = '';
+  if(state.me === m.name) state.me = (state.team[0] || {}).name || '';
+  renderTeam(); render();
+  toast(owned.length
+    ? `${m.name} removed — ${owned.length} lead${owned.length === 1 ? '' : 's'} sent back to Unassigned.`
+    : `${m.name} removed.`);
+}
+
+function addMember(){
+  const name = clean($('tNew').value);
+  if(!name){ toast('Give the teammate a name first.', true); return; }
+  if(name === UNASSIGNED || state.team.some(m => m.name === name)){
+    toast('That name is already taken.', true); return;
+  }
+  const code = genCode();
+  state.team.push({name, color: nextColor(), code});
+  $('tNew').value = '';
+  renderTeam(); render();
+  toast(`${name} added — code ${code}.`);
+}
+
+/* ---- statuses ---- */
+const UP   = '<svg width="9" height="6" viewBox="0 0 9 6" fill="none"><path d="M1 5l3.5-3.5L8 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const DOWN = '<svg width="9" height="6" viewBox="0 0 9 6" fill="none"><path d="M1 1l3.5 3.5L8 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function renderStatuses(){
+  const wrap = $('statusList');
+  const movable = STAGES.filter(s => !s.locked).length;
+  wrap.innerHTML = STAGES.map((s,i) => {
+    const n = state.leads.filter(l => l.stage === s.id).length;
+    return `<div class="lrow${s.locked ? ' locked' : ''}" data-i="${i}">
+      <button class="sw" style="background:${s.color}" title="Change colour"${s.locked ? ' disabled' : ''}></button>
+      <input class="t s" value="${esc(s.short)}" placeholder="Column"${s.locked ? ' disabled' : ''}>
+      <input class="t" value="${esc(s.label)}" placeholder="Full name"${s.locked ? ' disabled' : ''}>
+      <button class="pipbtn${s.attempt ? ' on' : ''}" title="Count a move here as a call attempt"${s.locked ? ' disabled' : ''}>Call</button>
+      <span class="use">${n}</span>
+      <div class="ord">
+        <button class="up"${(i === 0 || s.locked) ? ' disabled' : ''}>${UP}</button>
+        <button class="dn"${(i >= movable - 1 || s.locked) ? ' disabled' : ''}>${DOWN}</button>
+      </div>
+      <button class="iconbtn rm"${s.locked ? ' disabled' : ''} title="Remove">${TRASH}</button>
+    </div>`;
+  }).join('');
+
+  wrap.querySelectorAll('.lrow').forEach(row => {
+    const i = Number(row.dataset.i), s = STAGES[i];
+    if(s.locked) return;
+    row.querySelector('.sw').onclick = () => {
+      s.color = PALETTE[(PALETTE.indexOf(s.color) + 1) % PALETTE.length];
+      renderStatuses(); render();
+    };
+    const [short, label] = row.querySelectorAll('input.t');
+    short.onchange = e => { s.short = clean(e.target.value) || s.short; renderStatuses(); render(); };
+    label.onchange = e => { s.label = clean(e.target.value) || s.label; renderStatuses(); render(); };
+    row.querySelector('.pipbtn').onclick = () => { s.attempt = !s.attempt; renderStatuses(); };
+    row.querySelector('.up').onclick = () => { [STAGES[i-1], STAGES[i]] = [STAGES[i], STAGES[i-1]]; renderStatuses(); render(); };
+    row.querySelector('.dn').onclick = () => { [STAGES[i+1], STAGES[i]] = [STAGES[i], STAGES[i+1]]; renderStatuses(); render(); };
+    row.querySelector('.rm').onclick = () => removeStatus(i);
+  });
+  applySettingsLock();
+}
+
+function removeStatus(i){
+  const s = STAGES[i];
+  if(STAGES.filter(x => !x.locked).length <= 1){ toast('Keep at least one status.', true); return; }
+  STAGES.splice(i, 1);
+  const fallback = defaultStage();
+  const moved = state.leads.filter(l => l.stage === s.id);
+  moved.forEach(l => { l.stage = fallback; logEvent(l, `Moved to ${stageLabel(fallback)} — the ${s.label} status was removed`); });
+  state.collapsed.delete(s.id);
+  renderStatuses(); render();
+  toast(moved.length
+    ? `${s.short} removed — ${moved.length} lead${moved.length === 1 ? '' : 's'} moved to ${stageShort(fallback)}.`
+    : `${s.short} removed.`);
+}
+
+function addStatus(){
+  const name = clean($('stNew').value);
+  if(!name){ toast('Name the status first.', true); return; }
+  const id = name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'') || 'status_' + Date.now();
+  if(STAGES.some(s => s.id === id)){ toast('That status already exists.', true); return; }
+  const at = STAGES.findIndex(s => s.locked);
+  STAGES.splice(at < 0 ? STAGES.length : at, 0,
+    {id, short:name, label:name, color:PALETTE[STAGES.length % PALETTE.length], attempt:false});
+  $('stNew').value = '';
+  renderStatuses(); render();
+  toast(`${name} added.`);
+}
+
+/* ---- filter lists ---- */
+let activeList = 'sources';
+const LIST_DEFS = {
+  sources:     {get:() => SOURCES,    set:v => SOURCES = v,    field:'source',    label:'source'},
+  priorities:  {get:() => PRIORITIES, set:v => PRIORITIES = v, field:'priority',  label:'priority'},
+  specialties: {get:() => [...new Set([...state.lists.specialties, ...state.leads.map(l => l.specialty).filter(Boolean)])].sort(),
+                set:v => state.lists.specialties = v, field:'specialty', label:'specialty'},
+  cities:      {get:() => [...new Set([...state.lists.cities, ...state.leads.map(l => l.city).filter(Boolean)])].sort(),
+                set:v => state.lists.cities = v, field:'city', label:'city'}
+};
+
+function renderLists(){
+  const def = LIST_DEFS[activeList], items = def.get();
+  $('listRows').innerHTML = items.map((v,i) => {
+    const n = state.leads.filter(l => l[def.field] === v).length;
+    return `<div class="lrow" data-i="${i}">
+      <input class="t" value="${esc(v)}">
+      <span class="use">${n} lead${n === 1 ? '' : 's'}</span>
+      <button class="iconbtn rm" title="Remove">${TRASH}</button>
+    </div>`;
+  }).join('') || `<div class="hint" style="margin:0">Nothing in this list yet.</div>`;
+
+  $('listRows').querySelectorAll('.lrow').forEach(row => {
+    const i = Number(row.dataset.i), prev = def.get()[i];
+    row.querySelector('input.t').onchange = e => renameListItem(prev, clean(e.target.value));
+    row.querySelector('.rm').onclick = () => removeListItem(prev);
+  });
+  document.querySelectorAll('.settabs ~ #paneLists [data-list]').forEach(b =>
+    b.classList.toggle('on', b.dataset.list === activeList));
+  applySettingsLock();
+}
+
+function renameListItem(prev, next){
+  const def = LIST_DEFS[activeList];
+  if(!next || next === prev){ renderLists(); return; }
+  if(def.get().includes(next)){ toast('That option already exists.', true); renderLists(); return; }
+  def.set(def.get().map(v => v === prev ? next : v));
+  let moved = 0;
+  state.leads.forEach(l => { if(l[def.field] === prev){ l[def.field] = next; moved++; } });
+  if(state.filters[def.field] === prev) state.filters[def.field] = next;
+  renderLists(); render();
+  toast(`Renamed to ${next}${moved ? ` — ${moved} lead${moved === 1 ? '' : 's'} updated` : ''}.`);
+}
+
+/* An option still attached to leads is not deleted silently — that is data loss. */
+function removeListItem(v){
+  const def = LIST_DEFS[activeList];
+  const n = state.leads.filter(l => l[def.field] === v).length;
+  if(n){ toast(`${n} lead${n === 1 ? ' uses' : 's use'} ${v}. Rename it or move those leads first.`, true); return; }
+  if(def.get().length <= 1){ toast('Keep at least one option.', true); return; }
+  def.set(def.get().filter(x => x !== v));
+  renderLists(); render();
+  toast(`${v} removed.`);
+}
+
+function addListItem(){
+  const def = LIST_DEFS[activeList], v = clean($('lsNew').value);
+  if(!v){ toast('Type an option first.', true); return; }
+  if(def.get().includes(v)){ toast('That option already exists.', true); return; }
+  def.set([...def.get(), v]);
+  $('lsNew').value = '';
+  renderLists(); render();
+  toast(`${v} added.`);
+}
+
+/* =========================================================
+   Dev mode
+
+   HONEST WARNING: this code is checked in the browser. Anyone who opens
+   devtools can set state.dev.until themselves, and the hash below is
+   obfuscation, not encryption. Treat this as a guardrail that stops the
+   team from fat-fingering a destructive button — not as access control.
+   Real gating belongs in a server role claim (Supabase RLS), not here.
+   ========================================================= */
+/* Two dev codes: a short session and a long one. Hashes are djb2 of the code. */
+const DEV_CODES = [
+  {hash: 2088289560, minutes: 10},   // 110a
+  {hash: 2088289568, minutes: 60}    // 110i
+];
+const DEV_MAX_TRIES = 5;
+const DEV_COOLDOWN_MS = 60_000;
+const devCodeMinutes = raw => (DEV_CODES.find(c => c.hash === djb2(raw)) || {}).minutes || 0;
+
+function djb2(str){
+  let h = 5381;
+  for(let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return h >>> 0;
+}
+const devActive = () => Date.now() < state.dev.until;
+const devLeft   = () => Math.max(0, state.dev.until - Date.now());
+
+function devUnlock(){
+  const now = Date.now();
+  if(now < state.dev.lockedUntil){
+    toast(`Too many attempts. Wait ${Math.ceil((state.dev.lockedUntil - now)/1000)}s.`, true);
+    return;
+  }
+  const input = $('devCode');
+  const mins = devCodeMinutes(clean(input.value).toLowerCase());
+  if(!mins){
+    state.dev.tries += 1;
+    input.value = '';
+    const box = $('devBody').querySelector('.devlock');
+    if(box){ box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake'); }
+    if(state.dev.tries >= DEV_MAX_TRIES){
+      state.dev.lockedUntil = now + DEV_COOLDOWN_MS;
+      state.dev.tries = 0;
+      toast('Locked for 60 seconds.', true);
+    }else{
+      toast(`Wrong code. ${DEV_MAX_TRIES - state.dev.tries} left.`, true);
+    }
+    return;
+  }
+  state.dev.tries = 0;
+  input.value = '';
+  startDevSession(false, mins);
+}
+
+function startDevSession(extend, minutes){
+  const mins = minutes || state.dev.minutes || 10;
+  state.dev.minutes = mins;
+  state.dev.until = Date.now() + mins * 60_000;
+  clearInterval(state.dev.timer);
+  state.dev.timer = setInterval(devTick, 1000);
+  renderDev(); devTick(); render(); refreshSettings(); applySettingsLock();
+  toast(extend ? `Extended — ${mins} more minutes.` : `Dev mode on for ${mins} minutes.`);
+}
+
+function devLock(silent){
+  state.dev.until = 0;
+  clearInterval(state.dev.timer);
+  state.dev.timer = null;
+  $('devPill').hidden = true;
+  renderDev(); render(); refreshSettings(); applySettingsLock();
+  if(!silent) toast('Dev mode locked.');
+}
+
+function devTick(){
+  const ms = devLeft();
+  if(ms <= 0){ devLock(true); toast('Dev mode expired.'); return; }
+  const pill = $('devPill');
+  pill.hidden = false;
+  pill.classList.toggle('low', ms < 60_000);
+  const total = Math.ceil(ms / 1000);
+  $('devClock').textContent = `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;
+  const c = $('devCountdown');
+  if(c) c.textContent = $('devClock').textContent;
+}
+
+function renderDev(){
+  const body = $('devBody');
+  if(!devActive()){
+    body.innerHTML = `<div class="devlock">
+      <div class="devwarn">
+        <b>This is a guardrail, not security</b>
+        The code is checked in the browser, so anyone with devtools can bypass it. It exists to keep destructive buttons away from the team, not to protect data. Move this to a server role before real customer data lands here.
+      </div>
+      <label class="fld"><span>Access code</span>
+        <div class="row2" style="margin:0">
+          <input class="in" id="devCode" type="password" placeholder="Enter code" autocomplete="off">
+          <button class="btn btn-sm btn-primary" id="devGo">Unlock</button>
+        </div>
+      </label>
+      <div class="hint">The session length depends on which code you use. It locks itself automatically when the timer runs out.</div>
+    </div>`;
+    $('devGo').onclick = devUnlock;
+    $('devCode').addEventListener('keydown', e => { if(e.key === 'Enter') devUnlock(); });
+    return;
+  }
+
+  const rej = state.leads.filter(l => l.stage === 'rejected').length;
+  body.innerHTML = `
+    <div class="devwarn"><b>Unlocked — <span id="devCountdown">10:00</span> left</b>
+      Delete and reset are permanent. Nothing here is undoable.</div>
+    <div class="devgrid">
+      <button class="btn btn-sm" id="devRescan">Re-scan every lead for duplicates</button>
+      <button class="btn btn-sm" id="devExtend">Extend ${state.dev.minutes} minutes</button>
+      <button class="btn btn-sm" id="devCopy">Copy all data as JSON</button>
+      <button class="btn btn-sm" id="devDownload">Download JSON backup</button>
+      <button class="btn btn-sm btn-danger" id="devPurge">Discard ${rej} rejected</button>
+      <button class="btn btn-sm btn-danger" id="devWipe">Delete every lead</button>
+      <button class="btn btn-sm" id="devSeed">Reload demo data</button>
+      <button class="btn btn-sm btn-ghost" id="devLock">Lock now</button>
+    </div>
+    <label class="fld"><span>Restore from a JSON backup</span>
+      <textarea class="in" id="devJson" style="min-height:78px;font-size:12px" placeholder="Paste a backup here"></textarea>
+    </label>
+    <button class="btn btn-sm" id="devRestore" style="margin-top:9px">Restore</button>
+    <div class="hint">While dev mode is on, every lead also gets Delete and Force reject buttons, plus its raw match keys.</div>
+    <div id="devOut"></div>`;
+
+  $('devRescan').onclick   = () => devRescan();
+  $('devExtend').onclick   = () => startDevSession(true);
+  $('devCopy').onclick     = async () => flashCopied($('devCopy'), await copyText(exportJSON()));
+  $('devDownload').onclick = devDownload;
+  $('devPurge').onclick    = e => armed(e.target, `Discard ${rej} rejected`, () => {
+    state.leads = state.leads.filter(l => l.stage !== 'rejected');
+    render(); renderDev(); toast(`${rej} rejected discarded.`);
+  });
+  $('devWipe').onclick     = e => armed(e.target, 'Delete every lead', () => {
+    const n = state.leads.length;
+    state.leads = []; state.seq = 0; anim.seen.clear();
+    closeDrawer(); renderDev(); toast(`${n} leads deleted.`);
+  });
+  $('devSeed').onclick     = () => {
+    state.leads = []; state.seq = 0; anim.seen.clear();
+    seed(); render(); renderDev(); toast('Demo data reloaded.');
+  };
+  $('devLock').onclick     = () => devLock();
+  $('devRestore').onclick  = devRestore;
+}
+
+/* Two clicks for anything permanent. */
+function armed(btn, label, run){
+  if(btn.dataset.armed !== '1'){
+    btn.dataset.armed = '1';
+    const was = btn.textContent;
+    btn.textContent = 'Click again to confirm';
+    setTimeout(() => { if(btn.dataset.armed === '1'){ btn.dataset.armed = ''; btn.textContent = was || label; } }, 4000);
+    return;
+  }
+  btn.dataset.armed = '';
+  run();
+}
+
+/* Re-run the current rules across the whole board. Useful after changing
+   the threshold — the old board was built under the old rules. */
+function devRescan(apply){
+  const kept = [];
+  const hits = [];
+  [...state.leads]
+    .filter(l => l.stage !== 'rejected')
+    .sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .forEach(l => {
+      const res = checkDuplicate(l, kept);
+      if(res.verdict === 'reject') hits.push({lead:l, best:res.best});
+      else kept.push(l);
+    });
+
+  if(apply){
+    hits.forEach(({lead, best}) => {
+      lead.stage = 'rejected';
+      lead.duplicateOf = best.lead.id;
+      lead.matchedOn = best.fields;
+      logEvent(lead, `Re-scan under the current rules matched ${titleOf(best.lead)} on ${best.fields.map(labelOf).join(', ').toLowerCase()}`);
+    });
+    anim.flashRejected = true;
+    render(); renderDev();
+    toast(`${hits.length} moved to Rejected.`);
+    return;
+  }
+
+  const out = $('devOut');
+  if(!hits.length){
+    out.innerHTML = `<div class="devout">Clean. No lead on the board collides with another under the current rules.</div>`;
+    return;
+  }
+  out.innerHTML = `<div class="devout">
+      <span class="k">${hits.length} lead${hits.length === 1 ? '' : 's'} would be rejected</span> under the current rules:
+      <div style="margin-top:8px">${hits.map(h =>
+        `<div>${esc(titleOf(h.lead))} → ${esc(titleOf(h.best.lead))} <span style="color:var(--danger)">(${h.best.fields.map(labelOf).join(' + ').toLowerCase()})</span></div>`).join('')}</div>
+      <button class="btn btn-sm btn-danger" id="devApply" style="margin-top:11px">Move all ${hits.length} to Rejected</button>
+    </div>`;
+  $('devApply').onclick = e => armed(e.target, `Move all ${hits.length} to Rejected`, () => devRescan(true));
+}
+
+function exportJSON(){
+  return JSON.stringify({
+    version: 1, exportedAt: stamp(),
+    team: state.team, country: state.country, rules: state.rules,
+    lists: state.lists, stages: STAGES, sources: SOURCES, priorities: PRIORITIES,
+    leads: state.leads.map(({fp, ...rest}) => rest)
+  }, null, 2);
+}
+
+function devDownload(){
+  try{
+    const url = URL.createObjectURL(new Blob([exportJSON()], {type:'application/json'}));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pinsite-leads-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast('Backup downloaded.');
+  }catch(e){
+    toast('Download blocked here. Use Copy all data as JSON instead.', true);
+  }
+}
+
+function devRestore(){
+  const raw = clean($('devJson').value);
+  if(!raw){ toast('Paste a backup first.', true); return; }
+  let data;
+  try{ data = JSON.parse(raw); }
+  catch(e){ toast('That is not valid JSON.', true); return; }
+  if(!Array.isArray(data.leads)){ toast('No leads array in that backup.', true); return; }
+
+  state.leads = data.leads.map(l => { const lead = {...l}; lead.fp = fingerprint(lead); return lead; });
+  if(Array.isArray(data.team) && data.team.length) state.team = data.team;
+  if(Array.isArray(data.stages) && data.stages.length) STAGES = data.stages;
+  if(Array.isArray(data.sources) && data.sources.length) SOURCES = data.sources;
+  if(Array.isArray(data.priorities) && data.priorities.length) PRIORITIES = data.priorities;
+  if(data.lists) state.lists = data.lists;
+  if(data.rules) state.rules = data.rules;
+  if(data.country) state.country = data.country;
+  state.seq = state.leads.length;
+  anim.seen.clear();
+  closeDrawer(); renderDev(); ruleHint();
+  toast(`Restored ${state.leads.length} leads.`);
+}
+
+function deleteLead(id){
+  const l = state.leads.find(x => x.id === id);
+  if(!l) return;
+  state.leads = state.leads.filter(x => x.id !== id);
+  anim.seen.delete(id);
+  closeDrawer();
+  toast(`${titleOf(l)} deleted.`);
+}
+
+function forceReject(id){
+  const l = state.leads.find(x => x.id === id);
+  if(!l || l.stage === 'rejected') return;
+  l.stage = 'rejected';
+  l.matchedOn = l.matchedOn || [];
+  logEvent(l, 'Marked as a duplicate by hand in dev mode');
+  anim.flashRejected = true;
+  render();
+  toast(`${titleOf(l)} moved to Rejected.`);
+}
+
+/* Everything in Settings is view-only by default. Dev mode is what makes it editable. */
+/* Changing dev state changes what the panes are allowed to show, so repaint them. */
+function refreshSettings(){
+  if(!$('setModal').classList.contains('on')) return;
+  renderTeam(); renderStatuses(); renderLists();
+  applySettingsLock();
+}
+
+function applySettingsLock(){
+  const locked = !devActive();
+  ['Team','Statuses','Lists','Rules','Calling'].forEach(n => {
+    const el = $('pane' + n);
+    if(!el) return;
+    el.classList.toggle('rolocked', locked);
+    el.querySelectorAll('input, select, textarea, button').forEach(c => { c.disabled = locked; });
+    let bar = el.querySelector('.lockbar');
+    if(locked && !bar){
+      bar = document.createElement('div');
+      bar.className = 'lockbar';
+      bar.innerHTML = LOCK + '<span>View only. Unlock dev mode to change anything here.</span>';
+      el.insertBefore(bar, el.children[2] || null);
+    }else if(!locked && bar){
+      bar.remove();
+    }
+  });
+}
+
+function openSettings(pane){
+  renderTeam(); renderStatuses(); renderLists(); renderDev();
+  $('tCountry').value = state.country;
+  $('rThreshold').value = String(state.rules.threshold);
+  $('rGoogle').checked = state.rules.googleAlone;
+  $('rPhone').checked  = state.rules.phoneAlone;
+  $('rEmail').checked  = state.rules.emailAlone;
+  setSettingsPane(pane || 'Team');
+  $('setModal').classList.add('on');
+}
+function setSettingsPane(name){
+  document.querySelectorAll('.settabs button').forEach(b => b.classList.toggle('on', b.dataset.pane === name));
+  ['Team','Statuses','Lists','Rules','Calling','Dev'].forEach(n =>
+    $('pane' + n).style.display = n === name ? '' : 'none');
+}
+document.querySelectorAll('.viewseg button').forEach(b => b.onclick = () => {
+  state.view = b.dataset.view;
+  anim.booted = false;          // let the new view play its entrance
+  render();
+});
+
+$('codeGo').onclick = submitCode;
+$('codeIn').addEventListener('keydown', e => { if(e.key === 'Enter') submitCode(); });
+$('mePill').onclick = e => { e.stopPropagation(); $('meMenu').hidden = !$('meMenu').hidden; };
+document.addEventListener('click', e => {
+  if(!e.target.closest('.mewrap')) $('meMenu').hidden = true;
+});
+$('btnMine').onclick = () => {
+  state.filters.mine = !state.filters.mine;
+  $('btnMine').classList.toggle('btn-primary', state.filters.mine);
+  render();
+};
+$('devLockNow').onclick = () => devLock();
+
+/* =========================================================
+   Wiring
+   ========================================================= */
+function esc(s){
+  return (s == null ? '' : String(s))
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+let toastTimer;
+function toast(msg, isErr){
+  const t = $('toast');
+  $('toastMsg').textContent = msg;
+  t.classList.toggle('err', !!isErr);
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), 2800);
+}
+
+function ruleHint(){
+  const r = state.rules;
+  const solo = [r.googleAlone && 'Google listing', r.phoneAlone && 'phone', r.emailAlone && 'email'].filter(Boolean);
+  $('mFootHint').textContent =
+    `Duplicate rule: ${r.threshold} or more matching signals` +
+    (solo.length ? `, or a matching ${solo.join(', ')} on its own` : '') + '.';
+}
+
+function bind(){
+  $('btnAdd').onclick  = () => { if(requireSignIn()) openModal('one'); };
+  $('btnBulk').onclick = () => { if(requireSignIn()) openModal('many'); };
+  $('mClose').onclick  = closeModal;
+  $('mCancel').onclick = closeModal;
+  $('tabOne').onclick  = () => setTab('one');
+  $('tabMany').onclick = () => setTab('many');
+  $('mSave').onclick   = () => editingId ? submitEdit() : (mode === 'one' ? submitOne() : submitMany());
+  $('dEdit').onclick   = () => { if(state.selected) openEdit(state.selected); };
+  $('btnSample').onclick = () => { $('iBulk').value = SAMPLE; };
+
+  $('dClose').onclick = closeDrawer;
+  $('scrim').onclick  = closeDrawer;
+
+  $('q').addEventListener('input', e => { state.filters.q = e.target.value; render(); });
+  [['fCity','city'],['fSpecialty','specialty'],['fWeb','web'],['fSource','source'],['fOwner','owner'],['fPriority','priority']]
+    .forEach(([id,key]) => {
+      $(id).addEventListener('change', e => {
+        state.filters[key] = e.target.value;
+        e.target.classList.toggle('on', !!e.target.value);
+        render();
+      });
+    });
+  $('btnClear').onclick = () => {
+    state.filters = {q:'',city:'',specialty:'',web:'',source:'',owner:'',priority:'',mine:false};
+    $('btnMine').classList.remove('btn-primary');
+    $('q').value = '';
+    ['fCity','fSpecialty','fWeb','fSource','fOwner','fPriority'].forEach(id => { $(id).value = ''; $(id).classList.remove('on'); });
+    render();
+  };
+
+  /* ---- settings sheet ---- */
+  $('btnSettings').onclick = () => openSettings('Team');
+  $('setClose').onclick = () => $('setModal').classList.remove('on');
+  $('setDone').onclick  = () => { $('setModal').classList.remove('on'); toast('Settings saved.'); };
+  document.querySelectorAll('.settabs button').forEach(b => b.onclick = () => setSettingsPane(b.dataset.pane));
+
+  /* team */
+  $('tAdd').onclick = addMember;
+  $('tNew').addEventListener('keydown', e => { if(e.key === 'Enter') addMember(); });
+
+  /* statuses */
+  $('stAdd').onclick = addStatus;
+  $('stNew').addEventListener('keydown', e => { if(e.key === 'Enter') addStatus(); });
+
+  /* filter lists */
+  $('lsAdd').onclick = addListItem;
+  $('lsNew').addEventListener('keydown', e => { if(e.key === 'Enter') addListItem(); });
+  document.querySelectorAll('#paneLists [data-list]').forEach((b,i) => {
+    b.onclick = () => {
+      activeList = b.dataset.list;
+      $('listGlide').style.transform = `translateX(${i * 100}%)`;
+      document.querySelectorAll('#paneLists [data-list]').forEach(x => x.classList.toggle('on', x === b));
+      renderLists();
+    };
+  });
+
+  /* duplicate rules apply live — no save button to forget */
+  const applyRules = () => {
+    state.rules.threshold   = Number($('rThreshold').value);
+    state.rules.googleAlone = $('rGoogle').checked;
+    state.rules.phoneAlone  = $('rPhone').checked;
+    state.rules.emailAlone  = $('rEmail').checked;
+    ruleHint();
+  };
+  ['rThreshold','rGoogle','rPhone','rEmail'].forEach(id => $(id).addEventListener('change', applyRules));
+
+  /* calling */
+  $('tCountry').addEventListener('change', e => {
+    state.country = clean(e.target.value).replace(/\D/g,'') || '91';
+    e.target.value = state.country;
+    render();
+  });
+
+  /* One delegated handler covers every copy target, current and future. */
+  document.addEventListener('click', async e => {
+    const t = e.target.closest('[data-copy]');
+    if(!t) return;
+    e.preventDefault();
+    flashCopied(t, await copyText(t.getAttribute('data-copy')));
+  });
+
+  document.addEventListener('keydown', e => {
+    if(signedOut()){ if(e.key === 'Enter') submitCode(); return; }
+    if(e.key === 'Escape'){ closeModal(); $('setModal').classList.remove('on'); closeDrawer(); }
+    if(e.key === 'n' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); openModal('one'); }
+  });
+}
+
+bind();
+ruleHint();
+seed();
+render();
+</script>
+</body>
+</html>
