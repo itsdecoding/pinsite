@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 /* =========================================================
    Pinsite design system
@@ -601,6 +602,22 @@ code.masked{color:var(--dim);letter-spacing:.3em}
 .chip .dotav.none{background:var(--raise);color:var(--dim)}
 
 
+.cloudpill{
+  display:inline-flex;align-items:center;gap:7px;height:31px;padding:0 12px;border-radius:9px;
+  background:var(--card);border:1px solid var(--line);color:var(--muted);
+  font-size:12px;font-weight:500;white-space:nowrap;cursor:pointer;
+  transition:border-color .18s,background .18s,color .18s;
+}
+.cloudpill:hover{border-color:var(--line-strong);color:var(--text)}
+.cloudpill .dot{width:7px;height:7px;border-radius:99px;background:var(--muted);transition:background .18s,box-shadow .18s}
+.cloudpill.connected{color:var(--text);border-color:rgba(46,204,113,.3)}
+.cloudpill.connected .dot{background:var(--ok);box-shadow:0 0 7px rgba(46,204,113,.6)}
+.cloudpill.error{color:var(--danger);border-color:rgba(255,77,77,.3)}
+.cloudpill.error .dot{background:var(--danger);box-shadow:0 0 7px rgba(255,77,77,.6)}
+.cloudpill.syncing{color:var(--warn);border-color:rgba(255,176,32,.3)}
+.cloudpill.syncing .dot{background:var(--warn);animation:cloudSyncPulse .9s infinite alternate}
+@keyframes cloudSyncPulse{0%{opacity:.3;transform:scale(.8)}100%{opacity:1;transform:scale(1.1)}}
+
 .devpill{
   display:inline-flex;align-items:center;gap:8px;height:31px;padding:0 12px;border-radius:9px;
   background:rgba(255,176,32,.13);border:1px solid rgba(255,176,32,.42);color:var(--warn);
@@ -816,6 +833,10 @@ code.masked{color:var(--dim);letter-spacing:.3em}
       Dev <span class="clock" id="devClock">10:00</span>
       <button class="lock" id="devLockNow" title="Lock now">&#10005;</button>
     </div>
+    <button class="cloudpill" id="cloudPill" title="Supabase connection status · Click to configure">
+      <span class="dot" id="cloudDot"></span>
+      <span id="cloudLabel">Cloud</span>
+    </button>
     <button class="btn" id="btnSettings" title="Team, statuses, lists and rules"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.6l.9 1.5 1.7-.3.3 1.7 1.5.9-.9 1.5.9 1.5-1.5.9-.3 1.7-1.7-.3L8 14.4l-.9-1.5-1.7.3-.3-1.7-1.5-.9.9-1.5-.9-1.5 1.5-.9.3-1.7 1.7.3L8 1.6z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>Settings</button>
     <button class="btn" id="btnBulk"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 10.4V2.2M5.2 4.8L8 2l2.8 2.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.4 10.2v2.2c0 .8.6 1.4 1.4 1.4h8.4c.8 0 1.4-.6 1.4-1.4v-2.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Import batch</button>
     <button class="btn btn-primary" id="btnAdd"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3.2v9.6M3.2 8h9.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Add lead</button>
@@ -944,6 +965,7 @@ code.masked{color:var(--dim);letter-spacing:.3em}
           <button data-pane="Lists">Filter lists</button>
           <button data-pane="Rules">Duplicate rules</button>
           <button data-pane="Calling">Calling</button>
+          <button data-pane="Database">Database</button>
           <button data-pane="Dev">Dev mode</button>
         </nav>
 
@@ -1040,6 +1062,46 @@ code.masked{color:var(--dim);letter-spacing:.3em}
             <input class="in" id="tCountry" placeholder="91" style="max-width:130px">
           </label>
         </div>
+
+        <div class="setpane" id="paneDatabase" style="display:none">
+          <h5>Database / Supabase</h5>
+          <div class="lead">Connect Pinsite to your Supabase Postgres database. Leads and updates are persisted to the cloud and synced in realtime.</div>
+
+          <div id="dbStatusCard" style="padding:12px 14px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid var(--line);margin-bottom:16px;display:flex;align-items:center;gap:12px">
+            <span class="dot" id="dbStatusDot" style="width:10px;height:10px;border-radius:99px;background:var(--warn);flex:0 0 10px"></span>
+            <div style="flex:1">
+              <div id="dbStatusTitle" style="font-weight:600;font-size:13px">Checking Supabase connection...</div>
+              <div id="dbStatusSub" style="font-size:12px;color:var(--muted);margin-top:2px">Connecting to Supabase...</div>
+            </div>
+          </div>
+
+          <div class="grid2" style="gap:12px">
+            <label class="fld span2">
+              <span>Supabase Project URL</span>
+              <input class="in" id="sbUrlIn" placeholder="https://xyz.supabase.co" spellcheck="false">
+            </label>
+            <label class="fld span2">
+              <span>Supabase Anon Public Key / Publishable Key</span>
+              <input class="in" id="sbKeyIn" placeholder="eyJhbGci... or sb_publishable_..." type="password" spellcheck="false">
+            </label>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+            <button class="btn btn-sm btn-primary" id="sbSaveBtn">Save &amp; Reconnect</button>
+            <button class="btn btn-sm" id="sbCopySqlBtn">Copy SQL Schema</button>
+            <button class="btn btn-sm btn-ghost" id="sbResetBtn">Reset to Default</button>
+          </div>
+
+          <div class="hint" style="margin-top:18px;line-height:1.6">
+            <b>Setup Instructions:</b>
+            <ol style="margin:6px 0 0 16px;padding:0">
+              <li>Open your project at <a href="https://supabase.com/dashboard" target="_blank" style="color:var(--accent);text-decoration:underline">supabase.com/dashboard</a>. (If paused, click <b>Restore</b>).</li>
+              <li>Click <b>Copy SQL Schema</b> above.</li>
+              <li>Go to <b>SQL Editor</b> in your Supabase dashboard, paste, and click <b>Run</b>.</li>
+              <li>Pinsite will automatically sync leads and listen for live updates!</li>
+            </ol>
+          </div>
+        </div>
       </div>
     </div>
     <div class="sheet-foot"><span class="grow"></span><button class="btn btn-sm btn-primary" id="setDone">Done</button></div>
@@ -1050,6 +1112,271 @@ code.masked{color:var(--dim);letter-spacing:.3em}
 
 <script>
 'use strict';
+
+/* =========================================================
+   Supabase Database Client & Realtime Sync
+   ========================================================= */
+const DEFAULT_SB_URL = 'https://tulnyoldbpwqdjpkqcxf.supabase.co';
+const DEFAULT_SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR1bG55b2xkYnB3cWRqcGtxY3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5NjQyMTcsImV4cCI6MjEwNDU0MDIxN30.KcVgfpgubkBNb8st0VtFOOyQ7W_Cs6NFQ65N9uxQjDc';
+
+let sbClient = null;
+let sbConnected = false;
+let sbRealtimeChannel = null;
+
+function getSupabaseConfig(){
+  return {
+    url: localStorage.getItem('pinsite_sb_url') || DEFAULT_SB_URL,
+    key: localStorage.getItem('pinsite_sb_key') || DEFAULT_SB_KEY
+  };
+}
+
+function initSupabase(){
+  const cfg = getSupabaseConfig();
+  if(window.supabase && cfg.url && cfg.key){
+    try {
+      sbClient = window.supabase.createClient(cfg.url, cfg.key);
+    } catch(e) {
+      console.warn('Supabase createClient error:', e);
+      sbClient = null;
+    }
+  } else {
+    sbClient = null;
+  }
+}
+
+function setCloudStatus(status, text, detail){
+  const pill = $('cloudPill');
+  const label = $('cloudLabel');
+  if(pill && label){
+    pill.classList.remove('connected', 'error', 'syncing');
+    if(status === 'connected'){
+      pill.classList.add('connected');
+      label.textContent = text || 'Cloud Synced';
+      sbConnected = true;
+    } else if(status === 'error'){
+      pill.classList.add('error');
+      label.textContent = text || 'Cloud Offline';
+      sbConnected = false;
+    } else if(status === 'syncing'){
+      pill.classList.add('syncing');
+      label.textContent = text || 'Syncing...';
+    } else {
+      label.textContent = text || 'Cloud';
+    }
+  }
+
+  const stTitle = $('dbStatusTitle');
+  const stSub = $('dbStatusSub');
+  const stDot = $('dbStatusDot');
+  if(stTitle){
+    stTitle.textContent = text || (status === 'connected' ? 'Connected to Supabase' : 'Offline / Error');
+    if(stSub) stSub.textContent = detail || '';
+    if(stDot){
+      stDot.style.background = status === 'connected' ? 'var(--ok)' : (status === 'error' ? 'var(--danger)' : 'var(--warn)');
+      stDot.style.boxShadow = status === 'connected' ? '0 0 8px rgba(46,204,113,.5)' : (status === 'error' ? '0 0 8px rgba(255,77,77,.5)' : 'none');
+    }
+  }
+}
+
+function leadToRow(l){
+  return {
+    id: l.id,
+    clinic: l.clinic || '',
+    doctor: l.doctor || '',
+    specialty: l.specialty || '',
+    phone: l.phone || '',
+    email: l.email || '',
+    website: l.website || '',
+    address: l.address || '',
+    city: l.city || '',
+    google: l.google || '',
+    web: l.web || 'unknown',
+    attempts: Number(l.attempts) || 0,
+    source: l.source || '',
+    owner: l.owner || UNASSIGNED,
+    priority: l.priority || 'Medium',
+    notes: l.notes || '',
+    stage: l.stage || defaultStage(),
+    created_at: l.createdAt || stamp(),
+    updated_at: l.updatedAt || stamp(),
+    duplicate_of: l.duplicateOf || null,
+    matched_on: l.matchedOn || [],
+    flagged: !!l.flagged,
+    log: Array.isArray(l.log) ? l.log : []
+  };
+}
+
+function rowToLead(r){
+  const lead = {
+    id: r.id,
+    clinic: r.clinic || '',
+    doctor: r.doctor || '',
+    specialty: r.specialty || '',
+    phone: r.phone || '',
+    email: r.email || '',
+    website: r.website || '',
+    address: r.address || '',
+    city: r.city || '',
+    google: r.google || '',
+    web: r.web || 'unknown',
+    attempts: Number(r.attempts) || 0,
+    source: r.source || SOURCES[0],
+    owner: r.owner || UNASSIGNED,
+    priority: r.priority || 'Medium',
+    notes: r.notes || '',
+    stage: r.stage || defaultStage(),
+    createdAt: r.created_at || stamp(),
+    updatedAt: r.updated_at || stamp(),
+    duplicateOf: r.duplicate_of || null,
+    matchedOn: Array.isArray(r.matched_on) ? r.matched_on : [],
+    flagged: !!r.flagged,
+    log: Array.isArray(r.log) ? r.log : []
+  };
+  lead.fp = fingerprint(lead);
+  return lead;
+}
+
+async function syncFromCloud(){
+  initSupabase();
+  const cfg = getSupabaseConfig();
+  if(!sbClient){
+    setCloudStatus('error', 'No Config', 'Supabase library or credentials missing');
+    return false;
+  }
+  setCloudStatus('syncing', 'Connecting...', `Connecting to ${cfg.url}`);
+  try {
+    const { data, error } = await sbClient
+      .from('leads')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if(error){
+      console.warn('Supabase fetch error:', error);
+      const isDnsOrPaused = error.message && (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('resolve'));
+      const msg = isDnsOrPaused ? 'Project Paused / Offline' : (error.code === '42P01' ? 'Table missing' : 'Cloud Error');
+      const det = isDnsOrPaused
+        ? 'Domain not resolving. If free tier, project may be paused in dashboard.'
+        : (error.code === '42P01' ? 'Table "leads" does not exist yet. Run SQL Schema in SQL Editor.' : error.message);
+      setCloudStatus('error', msg, det);
+      return false;
+    }
+
+    if(Array.isArray(data)){
+      state.leads = data.map(rowToLead);
+      state.seq = Math.max(0, ...state.leads.map(l => parseInt((l.id||'').replace(/\D/g,'')) || 0));
+      setCloudStatus('connected', `Cloud Synced (${data.length})`, `Connected to ${cfg.url} · ${data.length} leads loaded`);
+      render();
+      subscribeRealtime();
+      return true;
+    }
+  } catch(err){
+    console.warn('Supabase connection exception:', err);
+    setCloudStatus('error', 'Cloud Offline', err.message || 'Check network connection or project status');
+  }
+  return false;
+}
+
+function subscribeRealtime(){
+  if(!sbClient || sbRealtimeChannel) return;
+  try {
+    sbRealtimeChannel = sbClient
+      .channel('pinsite:leads')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, payload => {
+        handleRealtimeLead(payload);
+      })
+      .subscribe();
+  } catch(e){
+    console.warn('Realtime subscription error:', e);
+  }
+}
+
+function handleRealtimeLead(payload){
+  const { eventType, new: newRow, old: oldRow } = payload;
+  if(eventType === 'INSERT' && newRow){
+    const lead = rowToLead(newRow);
+    if(!state.leads.some(l => l.id === lead.id)){
+      state.leads.push(lead);
+      render();
+    }
+  } else if(eventType === 'UPDATE' && newRow){
+    const lead = rowToLead(newRow);
+    const idx = state.leads.findIndex(l => l.id === lead.id);
+    if(idx !== -1){
+      state.leads[idx] = lead;
+      render();
+    }
+  } else if(eventType === 'DELETE' && oldRow && oldRow.id){
+    state.leads = state.leads.filter(l => l.id !== oldRow.id);
+    render();
+  }
+}
+
+async function dbUpsertLead(lead){
+  if(!sbClient || !sbConnected) return;
+  try {
+    const row = leadToRow(lead);
+    const { error } = await sbClient.from('leads').upsert(row);
+    if(error) console.error('Supabase upsert error:', error);
+  } catch(e) {
+    console.error('Supabase upsert failed:', e);
+  }
+}
+
+async function dbUpsertMany(leads){
+  if(!sbClient || !sbConnected || !leads.length) return;
+  try {
+    const rows = leads.map(leadToRow);
+    const { error } = await sbClient.from('leads').upsert(rows);
+    if(error) console.error('Supabase batch upsert error:', error);
+  } catch(e) {
+    console.error('Supabase batch upsert failed:', e);
+  }
+}
+
+async function dbDeleteLead(id){
+  if(!sbClient || !sbConnected) return;
+  try {
+    const { error } = await sbClient.from('leads').delete().eq('id', id);
+    if(error) console.error('Supabase delete error:', error);
+  } catch(e) {
+    console.error('Supabase delete failed:', e);
+  }
+}
+
+const SQL_SCHEMA = `-- Pinsite Leads Schema
+create table if not exists public.leads (
+  id text primary key,
+  clinic text default '',
+  doctor text default '',
+  specialty text default '',
+  phone text default '',
+  email text default '',
+  website text default '',
+  address text default '',
+  city text default '',
+  google text default '',
+  web text default 'unknown',
+  attempts integer default 0,
+  source text default '',
+  owner text default 'Unassigned',
+  priority text default 'Medium',
+  notes text default '',
+  stage text default 'not_called',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  duplicate_of text,
+  matched_on jsonb default '[]'::jsonb,
+  flagged boolean default false,
+  log jsonb default '[]'::jsonb
+);
+
+alter table public.leads enable row level security;
+
+drop policy if exists "Allow public all access on leads" on public.leads;
+create policy "Allow public all access on leads"
+  on public.leads for all to anon using (true) with check (true);
+
+alter publication supabase_realtime add table public.leads;`;
 
 /* =========================================================
    Configuration
@@ -1439,7 +1766,10 @@ function intake(raw, silent){
   }
 
   state.leads.push(lead);
-  if(!silent) render();
+  if(!silent){
+    render();
+    dbUpsertLead(lead);
+  }
   return {lead, res};
 }
 
@@ -1841,6 +2171,7 @@ function moveLead(id, stage){
   anim.pulseKind = stage === 'rejected' ? 'stamped' : 'landed';
   render();
   toast(`${titleOf(l)} — ${stageLabel(stage)}`);
+  dbUpsertLead(l);
 }
 
 /* =========================================================
@@ -2106,6 +2437,7 @@ function submitEdit(){
   editingId = null;
   closeModal();
   render();
+  dbUpsertLead(l);
   if(res.verdict !== 'reject') toast('Changes saved.');
 }
 function openModal(which){
@@ -2198,8 +2530,10 @@ function submitMany(){
   if(!rows.length){ toast('Nothing to import.', true); return; }
 
   const out = {added:0, flagged:0, rejected:0, rows:[]};
+  const batchLeads = [];
   rows.forEach(r => {
     const {lead, res} = intake(r, true);
+    batchLeads.push(lead);
     if(res.verdict === 'reject'){
       out.rejected++;
       out.rows.push({cls:'dup', nm:titleOf(lead), rs:`matched ${res.best.fields.map(labelOf).join(' + ').toLowerCase()} on ${titleOf(res.best.lead)}`});
@@ -2213,6 +2547,7 @@ function submitMany(){
   });
   if(out.rejected) anim.flashRejected = true;
   render();
+  dbUpsertMany(batchLeads);
 
   $('manyVerdict').innerHTML =
     `<div class="summary">
@@ -2597,11 +2932,13 @@ function renderDev(){
   $('devDownload').onclick = devDownload;
   $('devPurge').onclick    = e => armed(e.target, `Discard ${rej} rejected`, () => {
     state.leads = state.leads.filter(l => l.stage !== 'rejected');
+    if(sbClient && sbConnected) sbClient.from('leads').delete().eq('stage', 'rejected').then();
     render(); renderDev(); toast(`${rej} rejected discarded.`);
   });
   $('devWipe').onclick     = e => armed(e.target, 'Delete every lead', () => {
     const n = state.leads.length;
     state.leads = []; state.seq = 0; anim.seen.clear();
+    if(sbClient && sbConnected) sbClient.from('leads').delete().neq('id', '___').then();
     closeDrawer(); renderDev(); toast(`${n} leads deleted.`);
   });
   $('devLock').onclick     = () => devLock();
@@ -2713,7 +3050,9 @@ function deleteLead(id){
   state.leads = state.leads.filter(x => x.id !== id);
   anim.seen.delete(id);
   closeDrawer();
+  render();
   toast(`${titleOf(l)} deleted.`);
+  dbDeleteLead(id);
 }
 
 function forceReject(id){
@@ -2725,6 +3064,7 @@ function forceReject(id){
   anim.flashRejected = true;
   render();
   toast(`${titleOf(l)} moved to Rejected.`);
+  dbUpsertLead(l);
 }
 
 /* Everything in Settings is view-only by default. Dev mode is what makes it editable. */
@@ -2761,13 +3101,18 @@ function openSettings(pane){
   $('rGoogle').checked = state.rules.googleAlone;
   $('rPhone').checked  = state.rules.phoneAlone;
   $('rEmail').checked  = state.rules.emailAlone;
+  const cfg = getSupabaseConfig();
+  if($('sbUrlIn')) $('sbUrlIn').value = cfg.url;
+  if($('sbKeyIn')) $('sbKeyIn').value = cfg.key;
   setSettingsPane(pane || 'Team');
   $('setModal').classList.add('on');
 }
 function setSettingsPane(name){
   document.querySelectorAll('.settabs button').forEach(b => b.classList.toggle('on', b.dataset.pane === name));
-  ['Team','Statuses','Lists','Rules','Calling','Dev'].forEach(n =>
-    $('pane' + n).style.display = n === name ? '' : 'none');
+  ['Team','Statuses','Lists','Rules','Calling','Database','Dev'].forEach(n => {
+    const el = $('pane' + n);
+    if(el) el.style.display = n === name ? '' : 'none';
+  });
 }
 document.querySelectorAll('.viewseg button').forEach(b => b.onclick = () => {
   state.view = b.dataset.view;
@@ -2887,6 +3232,39 @@ function bind(){
     render();
   });
 
+  /* database / supabase */
+  const cloudBtn = $('cloudPill');
+  if(cloudBtn) cloudBtn.onclick = () => openSettings('Database');
+
+  const sbSaveBtn = $('sbSaveBtn');
+  if(sbSaveBtn) sbSaveBtn.onclick = async () => {
+    const u = clean($('sbUrlIn').value);
+    const k = clean($('sbKeyIn').value);
+    if(!u || !k){ toast('Please provide both URL and Key.', true); return; }
+    localStorage.setItem('pinsite_sb_url', u);
+    localStorage.setItem('pinsite_sb_key', k);
+    toast('Connecting to Supabase...');
+    const ok = await syncFromCloud();
+    toast(ok ? 'Connected to Supabase!' : 'Connection failed. Check details.', !ok);
+  };
+
+  const sbCopySqlBtn = $('sbCopySqlBtn');
+  if(sbCopySqlBtn) sbCopySqlBtn.onclick = async () => {
+    await copyText(SQL_SCHEMA);
+    toast('SQL Schema copied to clipboard!');
+  };
+
+  const sbResetBtn = $('sbResetBtn');
+  if(sbResetBtn) sbResetBtn.onclick = async () => {
+    localStorage.removeItem('pinsite_sb_url');
+    localStorage.removeItem('pinsite_sb_key');
+    const cfg = getSupabaseConfig();
+    if($('sbUrlIn')) $('sbUrlIn').value = cfg.url;
+    if($('sbKeyIn')) $('sbKeyIn').value = cfg.key;
+    toast('Reset to default credentials.');
+    await syncFromCloud();
+  };
+
   /* One delegated handler covers every copy target, current and future. */
   document.addEventListener('click', async e => {
     const t = e.target.closest('[data-copy]');
@@ -2906,6 +3284,7 @@ bind();
 ruleHint();
 seed();
 render();
+syncFromCloud();
 </script>
 </body>
 </html>
