@@ -42,5 +42,13 @@ create policy "Allow public all access on leads"
   using (true)
   with check (true);
 
--- 4. Enable Supabase Realtime for live multi-user sync
-alter publication supabase_realtime add table public.leads;
+-- 4. Enable Supabase Realtime for live multi-user sync (idempotent)
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'leads'
+  ) then
+    alter publication supabase_realtime add table public.leads;
+  end if;
+end $$;
