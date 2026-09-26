@@ -13,8 +13,8 @@ export default function WorkspaceLayout({
       {/* Floating Island Sidebar (Desktop) */}
       <FloatingSidebar />
 
-      {/* Main Canvas Area */}
-      <div className="flex-1 lg:pl-68 flex flex-col min-h-screen">
+      {/* Main Canvas Area (pl-72 gives 288px clearance for the 256px floating sidebar + 32px breathing room) */}
+      <div className="flex-1 lg:pl-72 flex flex-col min-h-screen">
         <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-24 lg:pb-12">
           {/* Top Command Palette ⌘K */}
           <CommandBar />
