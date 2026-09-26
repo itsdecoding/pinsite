@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
 import {
   Phone,
   PhoneCall,
@@ -52,6 +53,7 @@ const OUTCOMES = [
 
 export default function CallerQueuePage() {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [totalPoolCount, setTotalPoolCount] = useState<number | null>(null);
   const [activeLeadIndex, setActiveLeadIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -80,6 +82,15 @@ export default function CallerQueuePage() {
         return;
       }
 
+      // 1. Check total unassigned/assigned pool in the database
+      const { count: poolCount } = await supabase
+        .from("leads")
+        .select("*", { count: "exact", head: true })
+        .is("deleted_at", null);
+
+      setTotalPoolCount(poolCount || 0);
+
+      // 2. Fetch leads assigned to current caller
       const { data, error } = await supabase
         .from("leads")
         .select("*")
@@ -95,58 +106,7 @@ export default function CallerQueuePage() {
         setLeads(data);
         await set("cached_leads", data);
       } else {
-        // Fallback sample queue
-        const fallbackQueue: Lead[] = [
-          {
-            id: "lead-1",
-            name: "Apex Dental Studio",
-            phone: "+919820011223",
-            normalized_phone: "+919820011223",
-            website: "https://apexdental.in",
-            has_website: true,
-            address: "Bandra West",
-            niche: "Dental Clinic",
-            area: "Mumbai",
-            score: 95,
-            status: "assigned",
-            attempts_count: 0,
-            next_callback_at: null,
-            last_called_at: null,
-          },
-          {
-            id: "lead-2",
-            name: "Luxe Heritage Hotels",
-            phone: "+919820022334",
-            normalized_phone: "+919820022334",
-            website: "https://luxeheritage.com",
-            has_website: true,
-            address: "Colaba",
-            niche: "Hospitality",
-            area: "Mumbai",
-            score: 91,
-            status: "assigned",
-            attempts_count: 1,
-            next_callback_at: "2026-09-26T16:00:00Z",
-            last_called_at: null,
-          },
-          {
-            id: "lead-3",
-            name: "Nova Corporate Law",
-            phone: "+919820033445",
-            normalized_phone: "+919820033445",
-            website: null,
-            has_website: false,
-            address: "BKC",
-            niche: "Legal",
-            area: "Mumbai",
-            score: 87,
-            status: "assigned",
-            attempts_count: 0,
-            next_callback_at: null,
-            last_called_at: null,
-          },
-        ];
-        setLeads(fallbackQueue);
+        setLeads([]);
       }
     } catch (err: any) {
       console.warn("Fallback to offline cache:", err);
@@ -296,19 +256,38 @@ export default function CallerQueuePage() {
 
       {/* Main Workspace */}
       {!currentLead ? (
-        <div className="p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
-          <CheckCircle className="w-12 h-12 text-feedback-success mx-auto mb-3" />
-          <h2 className="text-lg font-bold text-[#111110] dark:text-[#F5F3EF]">Batch Complete!</h2>
-          <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1">
-            All assigned leads have been called. Next daily 100-lead top-up executes at 06:00 AM IST.
-          </p>
-          <button
-            onClick={loadLeads}
-            className="mt-6 px-5 py-2.5 bg-[#F95721] text-white rounded-full font-semibold text-xs transition-transform active:scale-95"
-          >
-            Refresh Queue
-          </button>
-        </div>
+        totalPoolCount === 0 ? (
+          <div className="p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
+            <div className="w-12 h-12 rounded-full bg-[#F95721]/10 text-[#F95721] flex items-center justify-center mx-auto mb-3">
+              <Phone className="w-6 h-6" />
+            </div>
+            <h2 className="text-lg font-bold text-[#111110] dark:text-[#F5F3EF]">No leads in pool</h2>
+            <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1 max-w-sm mx-auto">
+              No leads currently exist in the database. Upload a lead CSV in Lead Ingestion to populate your agency outreach pool.
+            </p>
+            <Link
+              href="/manager/ingestion"
+              className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm"
+            >
+              <span>Upload Lead CSV</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        ) : (
+          <div className="p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
+            <CheckCircle className="w-12 h-12 text-feedback-success mx-auto mb-3" />
+            <h2 className="text-lg font-bold text-[#111110] dark:text-[#F5F3EF]">Queue Complete</h2>
+            <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1 max-w-sm mx-auto">
+              All assigned leads for this session have been dialed. Next daily 100-lead top-up executes at 06:00 AM IST.
+            </p>
+            <button
+              onClick={loadLeads}
+              className="mt-6 px-5 py-2.5 bg-[#F95721] text-white rounded-full font-semibold text-xs transition-transform active:scale-95"
+            >
+              Refresh Queue
+            </button>
+          </div>
+        )
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Active Lead Hero Card (2 cols) */}

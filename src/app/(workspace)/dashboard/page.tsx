@@ -51,12 +51,14 @@ export default function ManagerDashboardPage() {
   const [redistributeSuccess, setRedistributeSuccess] = useState<string | null>(null);
   const [redistributeError, setRedistributeError] = useState<string | null>(null);
 
+  const [totalCallersCount, setTotalCallersCount] = useState(0);
+
   const [metrics, setMetrics] = useState({
-    dialsToday: 235,
-    connectsToday: 89,
-    activeCallers: 11,
-    dbMb: 28.4,
-    emailsSent: 18,
+    dialsToday: 0,
+    connectsToday: 0,
+    activeCallers: 0,
+    dbMb: 0,
+    emailsSent: 0,
   });
 
   const supabase = createClient();
@@ -66,31 +68,43 @@ export default function ManagerDashboardPage() {
     try {
       // 1. Fetch system health
       const { data: healthData } = await supabase.rpc("get_system_health");
-      if (healthData) {
-        setHealth(healthData as SystemHealth);
-        setMetrics((prev) => ({
-          ...prev,
-          dbMb: (healthData as SystemHealth).db_size_mb || 28.4,
-          emailsSent: (healthData as SystemHealth).emails_sent_today || 18,
-          activeCallers: (healthData as SystemHealth).active_callers || 11,
-        }));
+      const sysHealth = healthData as SystemHealth | null;
+      if (sysHealth) {
+        setHealth(sysHealth);
       }
 
-      // 2. Fetch today's calls count
+      // 2. Fetch today's calls count & connects
+      const todayStr = new Date().toISOString().split("T")[0];
       const { count: callCount } = await supabase
         .from("calls")
         .select("*", { count: "exact", head: true })
-        .gte("called_at", new Date().toISOString().split("T")[0]);
+        .gte("called_at", todayStr);
 
-      if (callCount !== null && callCount > 0) {
-        setMetrics((prev) => ({
-          ...prev,
-          dialsToday: callCount,
-          connectsToday: Math.round(callCount * 0.38),
-        }));
-      }
+      const { count: connectCount } = await supabase
+        .from("calls")
+        .select("*", { count: "exact", head: true })
+        .gte("called_at", todayStr)
+        .in("disposition", ["interested", "callback", "connected", "dm_reached"]);
 
-      // 3. Fetch Priority Leads for the left workspace card
+      // 3. Fetch Callers count
+      const { count: callersCount } = await supabase
+        .from("profiles")
+        .select("*", { count: "exact", head: true })
+        .eq("role", "caller")
+        .eq("active", true);
+
+      const realCallersCount = callersCount || 0;
+      setTotalCallersCount(realCallersCount);
+
+      setMetrics({
+        dialsToday: callCount || 0,
+        connectsToday: connectCount || 0,
+        activeCallers: realCallersCount,
+        dbMb: sysHealth?.db_size_mb || 0,
+        emailsSent: sysHealth?.emails_sent_today || 0,
+      });
+
+      // 4. Fetch Priority Leads for the left workspace card
       const { data: leadsData } = await supabase
         .from("leads")
         .select("id, name, niche, score, status, next_callback_at")
@@ -98,18 +112,9 @@ export default function ManagerDashboardPage() {
         .order("score", { ascending: false })
         .limit(4);
 
-      if (leadsData && leadsData.length > 0) {
-        setPriorityLeads(leadsData);
-      } else {
-        setPriorityLeads([
-          { id: "1", name: "Apex Dental Studio", niche: "Dental Clinic", score: 98, status: "ready", next_callback_at: null },
-          { id: "2", name: "Luxe Hospitality Group", niche: "Hotels & Resorts", score: 94, status: "callback", next_callback_at: "Today, 4:30 PM" },
-          { id: "3", name: "Nova Law Associates", niche: "Corporate Law", score: 91, status: "ready", next_callback_at: null },
-          { id: "4", name: "Zenith Dermatology", niche: "Healthcare", score: 88, status: "ready", next_callback_at: null },
-        ]);
-      }
+      setPriorityLeads(leadsData || []);
 
-      // 4. Inactive Callers detection
+      // 5. Inactive Callers detection
       const { data: callers } = await supabase
         .from("profiles")
         .select("id, full_name")
@@ -117,14 +122,14 @@ export default function ManagerDashboardPage() {
         .eq("is_available", true)
         .eq("active", true);
 
-      if (callers) {
+      if (callers && callers.length > 0) {
         const flagged: InactiveCallerAlert[] = [];
         for (const c of callers) {
           const { count: dials } = await supabase
             .from("calls")
             .select("*", { count: "exact", head: true })
             .eq("caller_id", c.id)
-            .gte("called_at", new Date().toISOString().split("T")[0]);
+            .gte("called_at", todayStr);
 
           if (dials === 0) {
             const { count: uncalled } = await supabase
@@ -139,6 +144,8 @@ export default function ManagerDashboardPage() {
           }
         }
         setInactiveCallers(flagged);
+      } else {
+        setInactiveCallers([]);
       }
     } catch (e) {
       console.warn("Error loading dashboard data:", e);
@@ -186,7 +193,7 @@ export default function ManagerDashboardPage() {
             Make every lead count.
           </h1>
           <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1.5 max-w-xl">
-            Review daily queue velocity, redistribute capacity, and monitor infrastructure across our 11 callers and 5 developers.
+            Review daily queue velocity, redistribute capacity, and monitor infrastructure across your outreach squad and developers.
           </p>
         </div>
 
@@ -220,37 +227,58 @@ export default function ManagerDashboardPage() {
               </Link>
             </div>
 
-            {/* List items */}
-            <div className="divide-y divide-[#ECE8E1]/60 dark:divide-[#2D2924]/60 mt-2">
-              {priorityLeads.map((lead) => (
-                <div key={lead.id} className="py-3.5 flex items-center justify-between gap-4 group">
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF] group-hover:text-[#F95721] transition-colors truncate">
-                      {lead.name}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] text-[#6E6B66] dark:text-[#8A8680]">
-                        {lead.niche}
-                      </span>
-                      <span className="text-[10px] text-[#6E6B66] dark:text-[#8A8680]">•</span>
-                      <span className="text-[10px] font-mono font-semibold text-[#F95721]">
-                        Score {lead.score}
-                      </span>
-                    </div>
-                  </div>
-
-                  <span
-                    className={`px-3 py-1 rounded-full text-[10px] font-mono font-semibold uppercase tracking-wider ${
-                      lead.status === "callback"
-                        ? "bg-[#F95721]/10 text-[#F95721] border border-[#F95721]/20"
-                        : "bg-black/5 dark:bg-white/5 text-[#6E6B66] dark:text-[#8A8680]"
-                    }`}
-                  >
-                    {lead.status === "callback" ? "Callback" : "Ready"}
-                  </span>
+            {/* List items or empty state */}
+            {priorityLeads.length === 0 ? (
+              <div className="py-10 flex flex-col items-center justify-center text-center px-4">
+                <div className="w-10 h-10 rounded-full bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-center text-[#6E6B66] dark:text-[#8A8680] mb-3">
+                  <Database className="w-5 h-5 text-[#F95721]" />
                 </div>
-              ))}
-            </div>
+                <p className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                  No leads in pool
+                </p>
+                <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-1 max-w-xs">
+                  Upload a CSV to stage unassigned leads for dialers.
+                </p>
+                <Link
+                  href="/manager/ingestion"
+                  className="mt-4 px-4 py-2 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm inline-flex items-center gap-1.5"
+                >
+                  <span>Import Leads CSV</span>
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
+              </div>
+            ) : (
+              <div className="divide-y divide-[#ECE8E1]/60 dark:divide-[#2D2924]/60 mt-2">
+                {priorityLeads.map((lead) => (
+                  <div key={lead.id} className="py-3.5 flex items-center justify-between gap-4 group">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF] group-hover:text-[#F95721] transition-colors truncate">
+                        {lead.name}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] text-[#6E6B66] dark:text-[#8A8680]">
+                          {lead.niche}
+                        </span>
+                        <span className="text-[10px] text-[#6E6B66] dark:text-[#8A8680]">•</span>
+                        <span className="text-[10px] font-mono font-semibold text-[#F95721]">
+                          Score {lead.score}
+                        </span>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`px-3 py-1 rounded-full text-[10px] font-mono font-semibold uppercase tracking-wider ${
+                        lead.status === "callback"
+                          ? "bg-[#F95721]/10 text-[#F95721] border border-[#F95721]/20"
+                          : "bg-black/5 dark:bg-white/5 text-[#6E6B66] dark:text-[#8A8680]"
+                      }`}
+                    >
+                      {lead.status === "callback" ? "Callback" : "Ready"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="pt-4 border-t border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between text-[11px] text-[#6E6B66] dark:text-[#8A8680]">
@@ -305,12 +333,29 @@ export default function ManagerDashboardPage() {
                     </button>
                   </div>
                 ))
+              ) : totalCallersCount === 0 ? (
+                <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                      0 callers onboarded
+                    </p>
+                    <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
+                      Invite callers to activate outbound dial queues.
+                    </p>
+                  </div>
+                  <Link
+                    href="/manager/invites"
+                    className="px-3.5 py-1.5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-[11px] shadow-sm flex items-center gap-1.5 transition-all shrink-0 self-start sm:self-auto active:scale-95"
+                  >
+                    <span>Invite Callers &rarr;</span>
+                  </Link>
+                </div>
               ) : (
                 <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex items-center gap-3">
                   <CheckCircle2 className="w-5 h-5 text-feedback-success shrink-0" />
                   <div className="text-xs">
                     <p className="font-bold text-[#111110] dark:text-[#F5F3EF]">
-                      All 11 callers actively dialing
+                      All {totalCallersCount} caller{totalCallersCount > 1 ? "s" : ""} actively dialing
                     </p>
                     <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
                       Zero idle queues detected. Pipeline throughput is steady.

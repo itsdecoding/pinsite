@@ -73,7 +73,7 @@ export default function LeadIngestionPage() {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer dev_ingestion_api_key_secret_123`,
+                Authorization: `Bearer ${process.env.NEXT_PUBLIC_INGESTION_API_KEY || "ingest_secret_token_123"}`,
                 "x-source": "csv_upload",
               },
               body: JSON.stringify(chunk),

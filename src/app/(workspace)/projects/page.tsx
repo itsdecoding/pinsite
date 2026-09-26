@@ -13,6 +13,7 @@ import {
   Loader2,
   CheckCircle2,
   ArrowRight,
+  X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { EntityComments } from "@/components/comms/EntityComments";
@@ -33,6 +34,11 @@ interface Task {
   };
 }
 
+interface Developer {
+  id: string;
+  full_name: string;
+}
+
 const COLUMNS: { id: Task["status"]; label: string; color: string }[] = [
   { id: "todo", label: "To Do", color: "bg-slate-400" },
   { id: "in_progress", label: "In Progress", color: "bg-blue-500" },
@@ -43,8 +49,20 @@ const COLUMNS: { id: Task["status"]; label: string; color: string }[] = [
 
 export default function ProjectsKanbanPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [developers, setDevelopers] = useState<Developer[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+
+  // New Task Modal state
+  const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newClientName, setNewClientName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newStatus, setNewStatus] = useState<Task["status"]>("todo");
+  const [newDueDate, setNewDueDate] = useState("");
+  const [newDevId, setNewDevId] = useState("");
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [createTaskError, setCreateTaskError] = useState<string | null>(null);
 
   const [hoursToAdd, setHoursToAdd] = useState("");
   const [isLoggingTime, setIsLoggingTime] = useState(false);
@@ -78,62 +96,64 @@ export default function ProjectsKanbanPage() {
         .is("deleted_at", null);
 
       if (error) throw error;
-      if (data && data.length > 0) {
-        setTasks(data as any);
-      } else {
-        // Fallback sample tasks
-        setTasks([
-          {
-            id: "task-1",
-            project_id: "p-1",
-            title: "Configure Tailwind design tokens & font stack",
-            description: "Deploy Simpliscale light/dark mode tokens",
-            status: "done",
-            due_date: "2026-09-28T18:00:00Z",
-            hours_logged: 3.5,
-            completed_at: "2026-09-26T12:00:00Z",
-            projects: {
-              client_name: "Simpliscale",
-              staging_url: "https://staging.agency-os.vercel.app",
-              production_url: "https://agency-os.vercel.app",
-            },
-          },
-          {
-            id: "task-2",
-            project_id: "p-1",
-            title: "Build Floating Island Sidebar",
-            description: "Implement 24px rounded island sidebar with solid orange active pill",
-            status: "in_progress",
-            due_date: "2026-09-29T18:00:00Z",
-            hours_logged: 2.0,
-            completed_at: null,
-            projects: {
-              client_name: "Simpliscale",
-              staging_url: "https://staging.agency-os.vercel.app",
-              production_url: null,
-            },
-          },
-          {
-            id: "task-3",
-            project_id: "p-2",
-            title: "Supabase Realtime Channel & DM mesh",
-            description: "Deploy unread tracking and member mention picker",
-            status: "todo",
-            due_date: "2026-09-30T18:00:00Z",
-            hours_logged: 0,
-            completed_at: null,
-            projects: {
-              client_name: "Luxe Hospitality",
-              staging_url: null,
-              production_url: null,
-            },
-          },
-        ]);
-      }
+      setTasks(data && data.length > 0 ? (data as any) : []);
+
+      // Load active developers for assignment
+      const { data: devs } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .eq("role", "developer")
+        .eq("active", true);
+
+      if (devs) setDevelopers(devs);
     } catch (err: any) {
       console.warn("Error loading tasks:", err);
+      setTasks([]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleCreateTask(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
+
+    setIsCreatingTask(true);
+    setCreateTaskError(null);
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          client_name: newClientName.trim() || "General Project",
+          description: newDescription.trim() || null,
+          status: newStatus,
+          due_date: newDueDate ? new Date(newDueDate).toISOString() : null,
+          dev_id: newDevId || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to create task");
+      }
+
+      const { task } = await res.json();
+      setTasks((prev) => [task, ...prev]);
+
+      // Reset form & close modal
+      setNewTitle("");
+      setNewClientName("");
+      setNewDescription("");
+      setNewStatus("todo");
+      setNewDueDate("");
+      setNewDevId("");
+      setIsNewTaskModalOpen(false);
+    } catch (err: any) {
+      setCreateTaskError(err.message || "Failed to create task");
+    } finally {
+      setIsCreatingTask(false);
     }
   }
 
@@ -240,7 +260,7 @@ export default function ProjectsKanbanPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924] pt-2">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924] pt-2">
         <div>
           <span className="text-[11px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
             DEVELOPMENT KANBAN
@@ -249,9 +269,20 @@ export default function ProjectsKanbanPage() {
             Engineered for velocity.
           </h1>
           <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1">
-            Task execution board for 5 dedicated web developers.
+            Task execution board for your development squad and client deliverables.
           </p>
         </div>
+
+        <button
+          onClick={() => {
+            setCreateTaskError(null);
+            setIsNewTaskModalOpen(true);
+          }}
+          className="py-2.5 px-5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs shadow-sm flex items-center gap-2 transition-all active:scale-[0.98] shrink-0"
+        >
+          <Plus className="w-4 h-4 stroke-[2.5]" />
+          <span>New Task</span>
+        </button>
       </div>
 
       {/* 5-Column Kanban Board */}
@@ -443,6 +474,154 @@ export default function ProjectsKanbanPage() {
               {/* Comments Thread */}
               <EntityComments entityType="task" entityId={activeTask.id} />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Task Modal */}
+      {isNewTaskModalOpen && (
+        <div className="fixed inset-0 z-[250] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-6 sm:p-8 shadow-2xl animate-in fade-in zoom-in-95 duration-150 space-y-6">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924]">
+              <div>
+                <span className="text-[10px] font-mono tracking-widest uppercase text-[#F95721] font-bold">
+                  SPRINT TASK
+                </span>
+                <h3 className="text-xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-0.5">
+                  Create New Task
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsNewTaskModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Error Banner */}
+            {createTaskError && (
+              <div className="p-3.5 rounded-2xl bg-feedback-error/10 border border-feedback-error/20 text-feedback-error text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{createTaskError}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleCreateTask} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-mono font-semibold uppercase text-[#6E6B66] dark:text-[#8A8680] mb-1.5">
+                  Task Title *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="e.g. Build Mobile Hero Component"
+                  className="w-full text-xs px-3.5 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-mono font-semibold uppercase text-[#6E6B66] dark:text-[#8A8680] mb-1.5">
+                  Client / Project Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newClientName}
+                  onChange={(e) => setNewClientName(e.target.value)}
+                  placeholder="e.g. Apex Dental Studio or PinSite Core"
+                  className="w-full text-xs px-3.5 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-mono font-semibold uppercase text-[#6E6B66] dark:text-[#8A8680] mb-1.5">
+                  Description
+                </label>
+                <textarea
+                  rows={3}
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="Task context, staging requirements, deliverables..."
+                  className="w-full text-xs p-3 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none transition-colors resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-mono font-semibold uppercase text-[#6E6B66] dark:text-[#8A8680] mb-1.5">
+                    Initial Column Status
+                  </label>
+                  <select
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value as Task["status"])}
+                    className="w-full text-xs px-3 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none transition-colors"
+                  >
+                    <option value="todo">To Do</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="review">Review</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="done">Done</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-mono font-semibold uppercase text-[#6E6B66] dark:text-[#8A8680] mb-1.5">
+                    Due Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newDueDate}
+                    onChange={(e) => setNewDueDate(e.target.value)}
+                    className="w-full text-xs px-3 py-2 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none transition-colors"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-mono font-semibold uppercase text-[#6E6B66] dark:text-[#8A8680] mb-1.5">
+                  Assign Developer
+                </label>
+                <select
+                  value={newDevId}
+                  onChange={(e) => setNewDevId(e.target.value)}
+                  className="w-full text-xs px-3 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none transition-colors"
+                >
+                  <option value="">Unassigned</option>
+                  {developers.map((dev) => (
+                    <option key={dev.id} value={dev.id}>
+                      {dev.full_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#ECE8E1] dark:border-[#2D2924]">
+                <button
+                  type="button"
+                  onClick={() => setIsNewTaskModalOpen(false)}
+                  className="px-5 py-2.5 rounded-full border border-[#ECE8E1] dark:border-[#2D2924] text-xs font-semibold text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingTask || !newTitle.trim()}
+                  className="px-6 py-2.5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs shadow-sm flex items-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
+                >
+                  {isCreatingTask ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  )}
+                  <span>Create Task</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
