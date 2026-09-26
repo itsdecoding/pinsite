@@ -1,9 +1,74 @@
 -- Agency OS — Sprint 1 Master Schema Migration (v1.7 Frozen Specification)
 -- Target: Supabase PostgreSQL
--- Tables (20): profiles, invites, dnc_blacklist, idempotency_keys, leads, 
---              assignment_history, calls, deals, projects, tasks, scores_daily,
---              channels, channel_members, channel_reads, messages, dm_threads, 
---              dm_messages, entity_comments, notifications, email_queue.
+
+--------------------------------------------------------------------------------
+-- 0. CLEAN RESET: Wipe previous tables, views, triggers & crons safely
+--------------------------------------------------------------------------------
+
+-- Unschedules existing pg_cron jobs if any exist
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    PERFORM cron.unschedule(jobid) FROM cron.job;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  -- ignore if cron not active
+END $$;
+
+-- Drop triggers on auth.users
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS trg_handle_new_user ON auth.users;
+
+-- Drop all old application tables with CASCADE (deletes foreign keys & indexes)
+DROP TABLE IF EXISTS public.email_queue CASCADE;
+DROP TABLE IF EXISTS public.notifications CASCADE;
+DROP TABLE IF EXISTS public.entity_comments CASCADE;
+DROP TABLE IF EXISTS public.dm_messages CASCADE;
+DROP TABLE IF EXISTS public.dm_threads CASCADE;
+DROP TABLE IF EXISTS public.messages CASCADE;
+DROP TABLE IF EXISTS public.channel_reads CASCADE;
+DROP TABLE IF EXISTS public.channel_members CASCADE;
+DROP TABLE IF EXISTS public.channels CASCADE;
+DROP TABLE IF EXISTS public.scores_daily CASCADE;
+DROP TABLE IF EXISTS public.tasks CASCADE;
+DROP TABLE IF EXISTS public.projects CASCADE;
+DROP TABLE IF EXISTS public.deals CASCADE;
+DROP TABLE IF EXISTS public.calls CASCADE;
+DROP TABLE IF EXISTS public.assignment_history CASCADE;
+DROP TABLE IF EXISTS public.leads CASCADE;
+DROP TABLE IF EXISTS public.idempotency_keys CASCADE;
+DROP TABLE IF EXISTS public.dnc_blacklist CASCADE;
+DROP TABLE IF EXISTS public.invites CASCADE;
+DROP TABLE IF EXISTS public.profiles CASCADE;
+
+-- Drop old views
+DROP VIEW IF EXISTS public.profiles_public CASCADE;
+
+-- Drop old functions
+DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
+DROP FUNCTION IF EXISTS public.prevent_role_self_change() CASCADE;
+DROP FUNCTION IF EXISTS public.caller_update_lead(UUID, lead_status, TIMESTAMPTZ, TEXT, INTEGER) CASCADE;
+DROP FUNCTION IF EXISTS public.dev_update_task(UUID, task_status, NUMERIC, TEXT) CASCADE;
+DROP FUNCTION IF EXISTS public.redistribute_caller_leads(UUID, TEXT) CASCADE;
+DROP FUNCTION IF EXISTS public.get_system_health() CASCADE;
+DROP FUNCTION IF EXISTS public.claim_email_batch(INT) CASCADE;
+DROP FUNCTION IF EXISTS public.assign_daily_leads() CASCADE;
+DROP FUNCTION IF EXISTS public.detect_inactive_callers() CASCADE;
+DROP FUNCTION IF EXISTS public.recycle_stale_leads() CASCADE;
+DROP FUNCTION IF EXISTS public.dispatch_due_notifications() CASCADE;
+DROP FUNCTION IF EXISTS public.aggregate_daily_scores() CASCADE;
+DROP FUNCTION IF EXISTS public.dispatch_email_queue() CASCADE;
+DROP FUNCTION IF EXISTS public.flush_held_emails() CASCADE;
+DROP FUNCTION IF EXISTS public.is_channel_member(UUID, UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.user_commented_on_entity(TEXT, UUID, UUID) CASCADE;
+
+-- Drop old custom types / enums with CASCADE
+DROP TYPE IF EXISTS public.email_status CASCADE;
+DROP TYPE IF EXISTS public.entity_type CASCADE;
+DROP TYPE IF EXISTS public.task_status CASCADE;
+DROP TYPE IF EXISTS public.deal_stage CASCADE;
+DROP TYPE IF EXISTS public.lead_status CASCADE;
+DROP TYPE IF EXISTS public.user_role CASCADE;
 
 -- Extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
