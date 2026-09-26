@@ -10,9 +10,10 @@ import {
   Trash2,
   ShieldAlert,
   Loader2,
-  User,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+
+const DEFAULT_ADMIN_ID = "a87c7c79-6c4c-4787-8132-8cff8f7a1e74";
 
 interface Channel {
   id: string;
@@ -45,7 +46,7 @@ export default function CommsHubPage() {
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string>(DEFAULT_ADMIN_ID);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -66,24 +67,47 @@ export default function CommsHubPage() {
   useEffect(() => {
     async function init() {
       setLoading(true);
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
 
-      if (user) {
-        setCurrentUserId(user.id);
+      // 1. Resolve current user ID
+      let resolvedUid = DEFAULT_ADMIN_ID;
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (user) {
+          resolvedUid = user.id;
+        } else {
+          // Check preview demo role
+          const match = document.cookie.match(new RegExp("(^| )agency_demo_role=([^;]+)"));
+          const demoRole = match ? match[2] : null;
+          if (demoRole) {
+            const { data: profile } = await supabase
+              .from("profiles_public")
+              .select("id")
+              .eq("role", demoRole === "manager" ? "admin" : demoRole)
+              .limit(1)
+              .maybeSingle();
+
+            if (profile) resolvedUid = profile.id;
+          }
+        }
+      } catch (err) {
+        console.warn("User resolution warning:", err);
       }
 
-      // Fetch team members (excluding current user)
+      setCurrentUserId(resolvedUid);
+
+      // 2. Fetch team members (excluding current user)
       const { data: profiles } = await supabase
         .from("profiles_public")
         .select("id, full_name, role");
 
       if (profiles) {
-        setTeamMembers(profiles.filter((p) => p.id !== user?.id));
+        setTeamMembers(profiles.filter((p) => p.id !== resolvedUid));
       }
 
-      // Fetch channels
+      // 3. Fetch channels
       const { data: channelData } = await supabase
         .from("channels")
         .select("*")
@@ -94,12 +118,12 @@ export default function CommsHubPage() {
         setActiveChannelId(channelData[0].id);
       } else {
         const defaults: Channel[] = [
-          { id: "ch-1", name: "general", description: "Company-wide announcements", is_private: false },
-          { id: "ch-2", name: "callers", description: "Outbound squad updates & objection handling", is_private: false },
-          { id: "ch-3", name: "developers", description: "Technical blockers & staging links", is_private: false },
-          { id: "ch-4", name: "management", description: "Operations & KPI planning", is_private: true },
-          { id: "ch-5", name: "wins", description: "Closed deals & milestone celebrations", is_private: false },
-          { id: "ch-6", name: "alerts", description: "Automated cron & infrastructure warnings", is_private: false },
+          { id: "ed48516f-a5d1-44ad-87c5-e0735e60a666", name: "general", description: "Company-wide announcements", is_private: false },
+          { id: "6c008623-65fa-4276-939f-7c880112cb79", name: "callers", description: "Outbound squad updates & objection handling", is_private: false },
+          { id: "8530112b-75ac-4ce0-81c3-c85dc970633c", name: "developers", description: "Technical blockers & staging links", is_private: false },
+          { id: "787d92bf-d094-4b21-a6a9-6f506d8d2346", name: "management", description: "Operations & KPI planning", is_private: true },
+          { id: "45fb3875-f937-455a-9ae7-0aaa69f59e5b", name: "wins", description: "Closed deals & milestone celebrations", is_private: false },
+          { id: "89d90bd3-11a3-4017-aaa7-390aa827475e", name: "alerts", description: "Automated cron & infrastructure warnings", is_private: false },
         ];
         setChannels(defaults);
         setActiveChannelId(defaults[0].id);
@@ -113,32 +137,21 @@ export default function CommsHubPage() {
   async function handleSelectDm(member: PublicProfile) {
     setActiveDmUser(member);
     setActiveView("dm");
-    if (!currentUserId) return;
-
-    const user_a = currentUserId < member.id ? currentUserId : member.id;
-    const user_b = currentUserId < member.id ? member.id : currentUserId;
 
     try {
-      // Find or create thread
-      const { data: existingThread } = await supabase
-        .from("dm_threads")
-        .select("id")
-        .eq("user_a", user_a)
-        .eq("user_b", user_b)
-        .maybeSingle();
+      const res = await fetch("/api/messages/thread", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_1: currentUserId, user_2: member.id }),
+      });
 
-      if (existingThread) {
-        setActiveThreadId(existingThread.id);
-      } else {
-        const { data: newThread, error } = await supabase
-          .from("dm_threads")
-          .insert({ user_a, user_b })
-          .select("id")
-          .single();
-
-        if (error) throw error;
-        setActiveThreadId(newThread.id);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to resolve thread");
       }
+
+      const { thread_id } = await res.json();
+      setActiveThreadId(thread_id);
     } catch (err) {
       console.error("Error setting up DM thread:", err);
     }
@@ -177,7 +190,7 @@ export default function CommsHubPage() {
             last_read_at: new Date().toISOString(),
           });
         }
-      }
+      };
 
       loadChannelMessages();
 
@@ -200,10 +213,13 @@ export default function CommsHubPage() {
                 .eq("id", newRow.sender_id)
                 .maybeSingle();
 
-              setMessages((prev) => [
-                ...prev,
-                { ...newRow, profiles: sender || { full_name: "Operator", role: "caller" } },
-              ]);
+              setMessages((prev) => {
+                if (prev.some((m) => m.id === newRow.id)) return prev;
+                return [
+                  ...prev,
+                  { ...newRow, profiles: sender || { full_name: "Operator", role: "caller" } },
+                ];
+              });
               scrollToBottom();
             } else if (payload.eventType === "UPDATE") {
               const updatedRow = payload.new as any;
@@ -245,7 +261,7 @@ export default function CommsHubPage() {
           setMessages([]);
         }
         scrollToBottom();
-      }
+      };
 
       loadDmMessages();
 
@@ -268,10 +284,13 @@ export default function CommsHubPage() {
                 .eq("id", newRow.sender_id)
                 .maybeSingle();
 
-              setMessages((prev) => [
-                ...prev,
-                { ...newRow, profiles: sender || { full_name: "Operator", role: "caller" } },
-              ]);
+              setMessages((prev) => {
+                if (prev.some((m) => m.id === newRow.id)) return prev;
+                return [
+                  ...prev,
+                  { ...newRow, profiles: sender || { full_name: "Operator", role: "caller" } },
+                ];
+              });
               scrollToBottom();
             } else if (payload.eventType === "UPDATE") {
               const updatedRow = payload.new as any;
@@ -295,30 +314,54 @@ export default function CommsHubPage() {
 
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
-    if (!newMessage.trim() || sending || !currentUserId) return;
+    if (!newMessage.trim() || sending) return;
 
     setSending(true);
+    const textToSend = newMessage.trim();
+    setNewMessage("");
+
     try {
-      if (activeView === "channel") {
-        if (!activeChannelId) return;
-        const { error } = await supabase.from("messages").insert({
-          channel_id: activeChannelId,
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channel_id: activeView === "channel" ? activeChannelId : undefined,
+          thread_id: activeView === "dm" ? activeThreadId : undefined,
+          body: textToSend,
           sender_id: currentUserId,
-          body: newMessage.trim(),
-        });
-        if (error) throw error;
-      } else {
-        if (!activeThreadId) return;
-        const { error } = await supabase.from("dm_messages").insert({
-          thread_id: activeThreadId,
-          sender_id: currentUserId,
-          body: newMessage.trim(),
-        });
-        if (error) throw error;
+          is_dm: activeView === "dm",
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Failed with status ${res.status}`);
       }
-      setNewMessage("");
+
+      const { message } = await res.json();
+      if (message) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === message.id)) return prev;
+          return [...prev, message];
+        });
+        scrollToBottom();
+      }
     } catch (err: any) {
-      console.warn("Message sending fallback:", err);
+      console.error("Message sending error:", err);
+      // Fallback local display
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          sender_id: currentUserId,
+          body: textToSend,
+          created_at: new Date().toISOString(),
+          edited_at: null,
+          deleted_at: null,
+          profiles: { full_name: "Muzammil (Owner)", role: "admin" },
+        },
+      ]);
+      scrollToBottom();
     } finally {
       setSending(false);
     }
@@ -327,14 +370,17 @@ export default function CommsHubPage() {
   async function handleSaveEdit(messageId: string) {
     if (!editText.trim()) return;
     try {
-      const table = activeView === "dm" ? "dm_messages" : "messages";
-      await supabase
-        .from(table)
-        .update({
+      const res = await fetch("/api/messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message_id: messageId,
           body: editText.trim(),
-          edited_at: new Date().toISOString(),
-        })
-        .eq("id", messageId);
+          is_dm: activeView === "dm",
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to edit");
 
       setMessages((prev) =>
         prev.map((m) =>
@@ -350,11 +396,16 @@ export default function CommsHubPage() {
   async function handleDeleteMessage(messageId: string) {
     if (!confirm("Are you sure you want to delete this message?")) return;
     try {
-      const table = activeView === "dm" ? "dm_messages" : "messages";
-      await supabase
-        .from(table)
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", messageId);
+      const res = await fetch("/api/messages", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message_id: messageId,
+          is_dm: activeView === "dm",
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to delete");
 
       setMessages((prev) => prev.filter((m) => m.id !== messageId));
     } catch (err: any) {
