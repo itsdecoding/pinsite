@@ -623,6 +623,8 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
+DECLARE
+  v_normalized_phone TEXT;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.leads
@@ -631,8 +633,18 @@ BEGIN
     RAISE EXCEPTION 'Not authorized to update this lead';
   END IF;
 
+  SELECT normalized_phone INTO v_normalized_phone FROM public.leads WHERE id = p_lead_id;
+
+  -- If DNC selected, atomically blacklist phone hash (DPDP compliance)
+  IF p_status = 'dnc' AND v_normalized_phone IS NOT NULL THEN
+    INSERT INTO public.dnc_blacklist (phone_hash, reason)
+    VALUES (encode(digest(v_normalized_phone, 'sha256'), 'hex'), 'caller_dnc_request')
+    ON CONFLICT (phone_hash) DO NOTHING;
+  END IF;
+
   UPDATE public.leads
   SET status = p_status,
+      dnc_flag = CASE WHEN p_status = 'dnc' THEN TRUE ELSE dnc_flag END,
       next_callback_at = COALESCE(p_callback_at, next_callback_at),
       last_called_at = NOW(),
       attempts_count = attempts_count + 1,
@@ -911,7 +923,14 @@ BEGIN
   SET status = 'pending', retry_count = retry_count + 1
   WHERE status = 'sending' AND claimed_at < NOW() - INTERVAL '5 minutes' AND retry_count < 3;
 
-  -- 4. Mark permanently failed if retry_count >= 3
+  -- 4. Retry transient 'failed' emails created in the last 24 hours
+  UPDATE public.email_queue
+  SET status = 'pending', retry_count = retry_count + 1
+  WHERE status = 'failed' 
+    AND retry_count < 3 
+    AND created_at > NOW() - INTERVAL '24 hours';
+
+  -- 5. Mark permanently failed if retry_count >= 3
   UPDATE public.email_queue
   SET status = 'failed', error_message = 'Dispatch timeout after 3 attempts'
   WHERE status = 'sending' AND claimed_at < NOW() - INTERVAL '5 minutes' AND retry_count >= 3;
@@ -930,15 +949,16 @@ DECLARE
   v_task RECORD;
   v_user_email TEXT;
 BEGIN
-  -- 1. Scan Callbacks due within 15 minutes
+  -- 1. Scan Callbacks due within 15 minutes (O(1) state match)
   FOR v_lead IN 
     SELECT id, name, assigned_to, next_callback_at 
     FROM public.leads 
     WHERE next_callback_at BETWEEN NOW() AND NOW() + INTERVAL '15 minutes'
-      AND (next_callback_notified_at IS NULL OR next_callback_notified_at < next_callback_at)
+      AND (next_callback_notified_at IS DISTINCT FROM next_callback_at)
       AND assigned_to IS NOT NULL AND deleted_at IS NULL
   LOOP
-    UPDATE public.leads SET next_callback_notified_at = NOW() WHERE id = v_lead.id;
+    -- Lock notification to this specific callback timestamp
+    UPDATE public.leads SET next_callback_notified_at = next_callback_at WHERE id = v_lead.id;
 
     INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id, link)
     VALUES (v_lead.assigned_to, 'urgent_callback', 'Upcoming Callback in 15m', 'Callback scheduled for ' || v_lead.name, 'lead', v_lead.id, '/queue');
@@ -956,10 +976,11 @@ BEGIN
     FROM public.tasks 
     WHERE due_date BETWEEN NOW() AND NOW() + INTERVAL '2 hours'
       AND status != 'done'
-      AND (task_due_notified_at IS NULL OR task_due_notified_at < due_date)
+      AND (task_due_notified_at IS DISTINCT FROM due_date)
       AND dev_id IS NOT NULL AND deleted_at IS NULL
   LOOP
-    UPDATE public.tasks SET task_due_notified_at = NOW() WHERE id = v_task.id;
+    -- Lock notification to this specific due timestamp
+    UPDATE public.tasks SET task_due_notified_at = due_date WHERE id = v_task.id;
 
     INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id, link)
     VALUES (v_task.dev_id, 'task_due_soon', 'Task Due in 2 Hours', 'Task "' || v_task.title || '" is due soon.', 'task', v_task.id, '/projects');
@@ -1216,6 +1237,15 @@ CREATE POLICY "channels_select" ON public.channels FOR SELECT TO authenticated
     OR current_user_role() IN ('manager', 'admin')
   );
 
+DROP POLICY IF EXISTS "channels_manager_insert" ON public.channels;
+CREATE POLICY "channels_manager_insert" ON public.channels FOR INSERT TO authenticated
+  WITH CHECK (current_user_role() IN ('manager', 'admin'));
+
+DROP POLICY IF EXISTS "channels_manager_update" ON public.channels;
+CREATE POLICY "channels_manager_update" ON public.channels FOR UPDATE TO authenticated
+  USING (current_user_role() IN ('manager', 'admin'))
+  WITH CHECK (current_user_role() IN ('manager', 'admin'));
+
 DROP POLICY IF EXISTS "channel_members_select" ON public.channel_members;
 CREATE POLICY "channel_members_select" ON public.channel_members FOR SELECT TO authenticated
   USING (user_id = auth.uid() OR current_user_role() IN ('manager', 'admin'));
@@ -1286,6 +1316,16 @@ DROP POLICY IF EXISTS "dm_messages_update_own" ON public.dm_messages;
 CREATE POLICY "dm_messages_update_own" ON public.dm_messages FOR UPDATE TO authenticated
   USING (sender_id = auth.uid())
   WITH CHECK (sender_id = auth.uid());
+
+DROP POLICY IF EXISTS "dm_messages_mark_read" ON public.dm_messages;
+CREATE POLICY "dm_messages_mark_read" ON public.dm_messages FOR UPDATE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.dm_threads t 
+      WHERE t.id = thread_id AND (t.user_a = auth.uid() OR t.user_b = auth.uid())
+    )
+  )
+  WITH CHECK (read_at IS NOT NULL);
 
 -- 14. ENTITY COMMENTS (Zero-Recursion)
 DROP POLICY IF EXISTS "entity_comments_select" ON public.entity_comments;
