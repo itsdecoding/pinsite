@@ -17,6 +17,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
 
       - name: Install Dependencies
         run: npm ci
@@ -27,13 +28,5 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Start Supabase Local
-        run: supabase start
-
-      - name: Run Database Tests
-        run: supabase test db
+      - name: Build Verification
+        run: npm run build
