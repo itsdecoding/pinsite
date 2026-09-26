@@ -1,0 +1,42 @@
+name: Automated Database Backup
+
+on:
+  schedule:
+    # 02:00 AM IST is 20:30 UTC
+    - cron: '30 20 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL Client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Execute pg_dump & Compress
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          BACKUP_DATE=$(date +'%Y-%m-%d_%H-%M-%S')
+          BACKUP_FILE="agency_os_backup_${BACKUP_DATE}.sql.gz"
+          echo "Dumping database..."
+          pg_dump "$SUPABASE_DB_URL" --no-owner --no-privileges | gzip > "$BACKUP_FILE"
+          echo "Backup file generated: $BACKUP_FILE (Size: $(du -h $BACKUP_FILE | cut -f1))"
+          echo "BACKUP_FILE=$BACKUP_FILE" >> $GITHUB_ENV
+
+      - name: Upload to Supabase Storage (/backups)
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          curl -X POST \
+            "${SUPABASE_URL}/storage/v1/object/backups/${BACKUP_FILE}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/gzip" \
+            --data-binary @"${BACKUP_FILE}"
+          echo "Backup successfully uploaded to Supabase Storage /backups"
