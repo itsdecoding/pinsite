@@ -27,10 +27,7 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const demoRole = request.cookies.get("agency_demo_role")?.value;
   const pathname = request.nextUrl.pathname;
   const isPublicRoute =
     pathname.startsWith("/login") ||
@@ -38,6 +35,41 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/unauthorized") ||
     pathname.startsWith("/api") ||
     pathname === "/";
+
+  // Demo mode support for local previews
+  if (demoRole) {
+    const role = demoRole;
+    if (pathname === "/" || pathname === "/login" || pathname === "/signup") {
+      const url = request.nextUrl.clone();
+      if (role === "caller") url.pathname = "/queue";
+      else if (role === "developer") url.pathname = "/projects";
+      else url.pathname = "/dashboard";
+      return NextResponse.redirect(url);
+    }
+
+    if (role === "caller" && (pathname.startsWith("/dashboard") || pathname.startsWith("/projects") || pathname.startsWith("/manager"))) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/unauthorized";
+      return NextResponse.redirect(url);
+    }
+
+    if (role === "developer" && (pathname.startsWith("/dashboard") || pathname.startsWith("/queue") || pathname.startsWith("/manager"))) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/unauthorized";
+      return NextResponse.redirect(url);
+    }
+
+    return supabaseResponse;
+  }
+
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch (err) {
+    // If Supabase credentials are placeholder or network fails
+    user = null;
+  }
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();

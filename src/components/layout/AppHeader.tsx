@@ -15,26 +15,49 @@ export function AppHeader() {
 
   useEffect(() => {
     async function loadUser() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      // Check for demo mode cookie
+      const match = document.cookie.match(new RegExp("(^| )agency_demo_role=([^;]+)"));
+      const demoRole = match ? match[2] : null;
+      if (demoRole) {
+        setProfile({
+          full_name:
+            demoRole === "manager"
+              ? "Muzammil (Owner)"
+              : demoRole === "caller"
+              ? "Lead Caller (Operator)"
+              : "Lead Dev (Full-Stack)",
+          role: demoRole,
+        });
+        return;
+      }
 
-      const { data } = await supabase
-        .from("profiles")
-        .select("full_name, role")
-        .eq("id", user.id)
-        .maybeSingle();
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) return;
 
-      if (data) {
-        setProfile(data);
+        const { data } = await supabase
+          .from("profiles")
+          .select("full_name, role")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (data) {
+          setProfile(data);
+        }
+      } catch (err) {
+        // Supabase placeholder error fallback
       }
     }
     loadUser();
-  }, []);
+  }, [supabase]);
 
   async function handleLogout() {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {}
+    document.cookie = "agency_demo_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     router.push("/login");
   }
 
