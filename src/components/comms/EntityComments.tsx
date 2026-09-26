@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
-import { Send, AtSign, Loader2, User } from "lucide-react";
+import { Send, AtSign, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 interface EntityCommentsProps {
@@ -32,20 +32,17 @@ export function EntityComments({ entityType, entityId }: EntityCommentsProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [publicProfiles, setPublicProfiles] = useState<PublicProfile[]>([]);
   const [showMentionPicker, setShowMentionPicker] = useState(false);
-  const [mentionQuery, setMentionQuery] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const supabase = createClient();
 
   useEffect(() => {
-    // 1. Fetch public profiles for mentions
     async function loadProfiles() {
       const { data } = await supabase.from("profiles_public").select("id, full_name, role");
       if (data) setPublicProfiles(data);
     }
     loadProfiles();
 
-    // 2. Fetch comments for this entity
     async function loadComments() {
       const { data } = await supabase
         .from("entity_comments")
@@ -65,7 +62,6 @@ export function EntityComments({ entityType, entityId }: EntityCommentsProps) {
     }
     loadComments();
 
-    // 3. Subscribe to Realtime comments
     const channel = supabase
       .channel(`comments-${entityType}-${entityId}`)
       .on(
@@ -97,7 +93,6 @@ export function EntityComments({ entityType, entityId }: EntityCommentsProps) {
     };
   }, [entityType, entityId]);
 
-  // Insert mention into textarea
   function insertMention(profile: PublicProfile) {
     const mentionTag = `@[${profile.id}:${profile.full_name}] `;
     setNewComment((prev) => prev + mentionTag);
@@ -105,7 +100,6 @@ export function EntityComments({ entityType, entityId }: EntityCommentsProps) {
     textareaRef.current?.focus();
   }
 
-  // Parse body text and render mentions as styled badges
   function renderCommentBody(text: string) {
     const mentionRegex = /@\[([a-f0-9-]+):([^\]]+)\]/g;
     const parts = [];
@@ -120,7 +114,7 @@ export function EntityComments({ entityType, entityId }: EntityCommentsProps) {
       parts.push(
         <span
           key={match.index}
-          className="inline-flex items-center px-1.5 py-0.2 bg-accent-subtle border border-accent-border text-accent-primary text-xs font-medium rounded mx-0.5"
+          className="inline-flex items-center px-2 py-0.5 bg-[#F95721]/10 text-[#F95721] font-semibold text-xs rounded-full mx-0.5"
         >
           @{name}
         </span>
@@ -146,7 +140,6 @@ export function EntityComments({ entityType, entityId }: EntityCommentsProps) {
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Authentication required");
 
-      // 1. Insert comment
       const { data: insertedComment, error: commentError } = await supabase
         .from("entity_comments")
         .insert({
@@ -160,7 +153,6 @@ export function EntityComments({ entityType, entityId }: EntityCommentsProps) {
 
       if (commentError) throw commentError;
 
-      // 2. Parse @[uuid:name] mentions and dispatch notifications
       const mentionRegex = /@\[([a-f0-9-]+):([^\]]+)\]/g;
       let match;
       while ((match = mentionRegex.exec(newComment)) !== null) {
@@ -187,38 +179,43 @@ export function EntityComments({ entityType, entityId }: EntityCommentsProps) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background-surface rounded-lg border border-border-subtle overflow-hidden">
-      <div className="px-4 py-2.5 bg-background-elevated/50 border-b border-border-subtle flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary font-mono">
-          Entity Activity & Thread
+    <div className="flex flex-col h-full rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] bg-white dark:bg-[#1C1A17] overflow-hidden">
+      <div className="px-5 py-3 border-b border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-wider text-[#111110] dark:text-[#F5F3EF] font-mono">
+          Internal Discussion & Notes
         </span>
-        <span className="text-[11px] text-text-muted">{comments.length} comments</span>
+        <span className="text-[11px] font-mono text-[#F95721] font-semibold">
+          {comments.length} notes
+        </span>
       </div>
 
-      <div className="flex-1 p-4 overflow-y-auto space-y-3 min-h-[160px] max-h-[300px]">
+      <div className="flex-1 p-4 overflow-y-auto space-y-3 min-h-[160px] max-h-[280px]">
         {comments.length === 0 ? (
-          <div className="text-center py-8 text-xs text-text-muted">
-            No activity notes yet. Leave an internal comment or @mention a team member.
+          <div className="text-center py-8 text-xs text-[#6E6B66] dark:text-[#8A8680]">
+            No notes yet. Type a comment or @mention a teammate.
           </div>
         ) : (
           comments.map((c) => (
-            <div key={c.id} className="text-xs space-y-1 bg-background-card p-3 rounded-lg border border-border-subtle">
+            <div
+              key={c.id}
+              className="text-xs space-y-1 bg-black/5 dark:bg-white/5 p-3 rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924]"
+            >
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-text-primary flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-accent-primary" />
+                <span className="font-bold text-[#111110] dark:text-[#F5F3EF] flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#F95721]" />
                   {c.profiles?.full_name || "Operator"}
-                  <span className="text-[10px] uppercase font-mono text-text-muted px-1 rounded bg-background-elevated">
+                  <span className="text-[10px] uppercase font-mono text-[#6E6B66] dark:text-[#8A8680] px-1.5 py-0.2 rounded-full bg-black/5 dark:bg-white/10">
                     {c.profiles?.role || "team"}
                   </span>
                 </span>
-                <span className="text-[10px] text-text-muted">
+                <span className="text-[10px] text-[#9E9A93] dark:text-[#635F59]">
                   {new Date(c.created_at).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
                 </span>
               </div>
-              <div className="text-text-secondary leading-relaxed pt-1">
+              <div className="text-[#6E6B66] dark:text-[#8A8680] leading-relaxed pt-1">
                 {renderCommentBody(c.body)}
               </div>
             </div>
@@ -226,22 +223,21 @@ export function EntityComments({ entityType, entityId }: EntityCommentsProps) {
         )}
       </div>
 
-      {/* Input Form with Mention Helper */}
-      <form onSubmit={handleSend} className="p-3 bg-background-elevated/30 border-t border-border-subtle relative">
+      <form onSubmit={handleSend} className="p-3 border-t border-[#ECE8E1] dark:border-[#2D2924] relative bg-black/[0.02] dark:bg-white/[0.02]">
         {showMentionPicker && (
-          <div className="absolute bottom-full left-3 mb-2 w-56 bg-background-elevated border border-border-subtle rounded-lg shadow-popover z-50 max-h-48 overflow-y-auto divide-y divide-border-subtle">
-            <div className="px-3 py-1.5 text-[10px] uppercase font-mono text-text-muted bg-background-surface">
-              Select Operator
+          <div className="absolute bottom-full left-3 mb-2 w-56 bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl shadow-island dark:shadow-islandDark z-50 max-h-48 overflow-y-auto divide-y divide-[#ECE8E1]/60 dark:divide-[#2D2924]/60">
+            <div className="px-3 py-1.5 text-[10px] uppercase font-mono text-[#6E6B66] dark:text-[#8A8680]">
+              Mention Operator
             </div>
             {publicProfiles.map((p) => (
               <button
                 type="button"
                 key={p.id}
                 onClick={() => insertMention(p)}
-                className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-accent-subtle hover:text-accent-primary flex items-center justify-between"
+                className="w-full text-left px-3 py-2 text-xs text-[#111110] dark:text-[#F5F3EF] hover:bg-[#F95721] hover:text-white flex items-center justify-between"
               >
                 <span>{p.full_name}</span>
-                <span className="text-[10px] text-text-muted uppercase font-mono">{p.role}</span>
+                <span className="text-[10px] opacity-75 uppercase font-mono">{p.role}</span>
               </button>
             ))}
           </div>
@@ -253,15 +249,15 @@ export function EntityComments({ entityType, entityId }: EntityCommentsProps) {
             rows={2}
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Type comment or press @ to mention..."
-            className="w-full text-xs bg-background-input border border-border-subtle focus:border-border-focus rounded-md p-2.5 text-text-primary placeholder:text-text-placeholder outline-none resize-none"
+            placeholder="Type note or @ to mention..."
+            className="w-full text-xs bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-xl p-2.5 text-[#111110] dark:text-[#F5F3EF] placeholder:text-[#6E6B66] outline-none resize-none"
           />
 
           <div className="flex items-center justify-between mt-2">
             <button
               type="button"
               onClick={() => setShowMentionPicker((prev) => !prev)}
-              className="text-xs text-text-secondary hover:text-accent-primary flex items-center gap-1 px-2 py-1 rounded hover:bg-background-elevated transition-colors"
+              className="text-xs text-[#6E6B66] dark:text-[#8A8680] hover:text-[#F95721] flex items-center gap-1 px-2.5 py-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
             >
               <AtSign className="w-3.5 h-3.5" />
               <span>Mention</span>
@@ -270,7 +266,7 @@ export function EntityComments({ entityType, entityId }: EntityCommentsProps) {
             <button
               type="submit"
               disabled={isSubmitting || !newComment.trim()}
-              className="px-3 py-1.5 bg-accent-primary hover:bg-accent-hover text-background-base font-semibold text-xs rounded flex items-center gap-1.5 transition-colors disabled:opacity-50"
+              className="px-3.5 py-1.5 bg-[#F95721] hover:bg-[#E04612] text-white font-semibold text-xs rounded-full flex items-center gap-1.5 transition-all disabled:opacity-50"
             >
               {isSubmitting ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />

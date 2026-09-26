@@ -9,7 +9,6 @@ import {
   AlertTriangle,
   Loader2,
   ArrowRight,
-  Database,
 } from "lucide-react";
 
 interface IngestStats {
@@ -117,19 +116,22 @@ export default function LeadIngestionPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-8 max-w-4xl mx-auto">
       {/* Header */}
-      <div className="pb-4 border-b border-border-subtle">
-        <h1 className="text-xl font-bold tracking-tight text-text-primary">
-          High-Volume Lead Ingestion
+      <div className="pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924] pt-2">
+        <span className="text-[11px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
+          DATA PIPELINE
+        </span>
+        <h1 className="text-3xl sm:text-4xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-1">
+          High-volume lead ingestion.
         </h1>
-        <p className="text-xs text-text-secondary mt-1">
+        <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1.5">
           Upload verified lead lists into the master database pool. Batched in 500-row chunks.
         </p>
       </div>
 
       {errorMsg && (
-        <div className="p-4 rounded-lg bg-feedback-error/10 border border-feedback-error/20 text-feedback-error text-xs flex items-center gap-2">
+        <div className="p-4 rounded-2xl bg-feedback-error/10 border border-feedback-error/20 text-feedback-error text-xs flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span>{errorMsg}</span>
         </div>
@@ -138,7 +140,7 @@ export default function LeadIngestionPage() {
       {/* Upload Dropzone */}
       <div
         onClick={() => fileInputRef.current?.click()}
-        className="border-2 border-dashed border-border-medium hover:border-accent-primary/60 bg-background-card hover:bg-background-elevated rounded-xl p-8 text-center cursor-pointer transition-colors"
+        className="border-2 border-dashed border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721] bg-white dark:bg-[#1C1A17] rounded-3xl p-10 text-center cursor-pointer transition-all shadow-sm"
       >
         <input
           ref={fileInputRef}
@@ -148,33 +150,33 @@ export default function LeadIngestionPage() {
           className="hidden"
         />
 
-        <div className="w-12 h-12 rounded-full bg-accent-subtle border border-accent-border flex items-center justify-center mx-auto mb-4 text-accent-primary">
-          <UploadCloud className="w-6 h-6" />
+        <div className="w-14 h-14 rounded-full bg-[#F95721]/10 text-[#F95721] flex items-center justify-center mx-auto mb-4">
+          <UploadCloud className="w-7 h-7" />
         </div>
 
-        <h3 className="text-sm font-bold text-text-primary">
-          {file ? file.name : "Click to browse or drop CSV file"}
+        <h3 className="text-base font-bold text-[#111110] dark:text-[#F5F3EF]">
+          {file ? file.name : "Click to select or drop CSV file"}
         </h3>
-        <p className="text-xs text-text-muted mt-1">
-          Accepts headers: <code className="text-accent-primary">name, phone, website, address, niche, area, score</code>
+        <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1">
+          Accepts headers: <code className="text-[#F95721] font-semibold">name, phone, website, address, niche, area, score</code>
         </p>
       </div>
 
       {/* Action CTA */}
       {file && (
-        <div className="flex items-center justify-between p-4 rounded-xl bg-background-surface border border-border-subtle">
+        <div className="flex items-center justify-between p-5 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm">
           <div className="flex items-center gap-3">
-            <FileSpreadsheet className="w-5 h-5 text-accent-primary" />
+            <FileSpreadsheet className="w-6 h-6 text-[#F95721]" />
             <div>
-              <p className="text-xs font-semibold text-text-primary">{file.name}</p>
-              <p className="text-[11px] text-text-muted">{(file.size / 1024).toFixed(1)} KB</p>
+              <p className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">{file.name}</p>
+              <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680]">{(file.size / 1024).toFixed(1)} KB</p>
             </div>
           </div>
 
           <button
             onClick={processAndUpload}
             disabled={isProcessing}
-            className="px-5 py-2.5 bg-accent-primary hover:bg-accent-hover text-background-base font-bold text-xs uppercase tracking-wider rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
+            className="px-6 py-3 bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-xs uppercase tracking-wider rounded-full shadow-md flex items-center gap-2 transition-all disabled:opacity-50"
           >
             {isProcessing ? (
               <>
@@ -191,48 +193,49 @@ export default function LeadIngestionPage() {
         </div>
       )}
 
-      {/* Progress & Live Ingestion Stats */}
+      {/* Progress */}
       {isProcessing && (
-        <div className="space-y-2 p-4 rounded-xl bg-background-surface border border-border-subtle">
+        <div className="space-y-2 p-5 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924]">
           <div className="flex items-center justify-between text-xs font-mono">
-            <span className="text-text-secondary">Batch Upload Progress</span>
-            <span className="text-accent-primary font-bold">{progress}%</span>
+            <span className="text-[#6E6B66] dark:text-[#8A8680]">Batch Progress</span>
+            <span className="text-[#F95721] font-bold">{progress}%</span>
           </div>
-          <div className="h-2 w-full bg-background-elevated rounded-full overflow-hidden">
+          <div className="h-2 w-full bg-black/5 dark:bg-white/5 rounded-full overflow-hidden">
             <div
-              className="h-full bg-accent-primary transition-all duration-300"
+              className="h-full bg-[#F95721] rounded-full transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>
         </div>
       )}
 
+      {/* Stats Summary Card */}
       {stats && (
-        <div className="bg-background-card border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
-          <div className="flex items-center gap-2 text-feedback-success font-semibold text-sm">
+        <div className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="flex items-center gap-2 text-feedback-success font-bold text-sm">
             <CheckCircle2 className="w-5 h-5" />
             <span>Ingestion Batch Completed</span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
-            <div className="p-3 rounded-lg bg-background-surface border border-border-subtle">
-              <span className="text-[11px] text-text-muted block">Total Records</span>
-              <span className="text-lg font-bold font-mono text-text-primary">{stats.total}</span>
+            <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
+              <span className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] block">Total Records</span>
+              <span className="text-xl font-bold font-mono text-[#111110] dark:text-[#F5F3EF]">{stats.total}</span>
             </div>
 
-            <div className="p-3 rounded-lg bg-background-surface border border-border-subtle">
-              <span className="text-[11px] text-text-muted block">New Leads Inserted</span>
-              <span className="text-lg font-bold font-mono text-feedback-success">{stats.inserted}</span>
+            <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
+              <span className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] block">New Leads Inserted</span>
+              <span className="text-xl font-bold font-mono text-feedback-success">{stats.inserted}</span>
             </div>
 
-            <div className="p-3 rounded-lg bg-background-surface border border-border-subtle">
-              <span className="text-[11px] text-text-muted block">Duplicates Skipped</span>
-              <span className="text-lg font-bold font-mono text-feedback-warning">{stats.duplicates}</span>
+            <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
+              <span className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] block">Duplicates Skipped</span>
+              <span className="text-xl font-bold font-mono text-amber-500">{stats.duplicates}</span>
             </div>
 
-            <div className="p-3 rounded-lg bg-background-surface border border-border-subtle">
-              <span className="text-[11px] text-text-muted block">Invalid Format</span>
-              <span className="text-lg font-bold font-mono text-feedback-error">{stats.invalid}</span>
+            <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
+              <span className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] block">Invalid Rows</span>
+              <span className="text-xl font-bold font-mono text-feedback-error">{stats.invalid}</span>
             </div>
           </div>
         </div>

@@ -10,79 +10,64 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: {
-          DEFAULT: "#121110",
-          base: "#121110",
-          surface: "#181715",
-          elevated: "#1E1D1A",
-          overlay: "#262421",
-          card: "#161514",
-          input: "#141312",
+        // Dual-mode canvas and card tokens
+        canvas: {
+          light: "#F7F5F0",
+          dark: "#141210",
+        },
+        surface: {
+          light: "#FFFFFF",
+          dark: "#1C1A17",
+          darkElevated: "#23201C",
         },
         border: {
-          subtle: "#262421",
-          medium: "#383530",
-          strong: "#524E47",
-          focus: "#C9A961",
+          light: "#ECE8E1",
+          dark: "#2D2924",
         },
-        text: {
-          primary: "#F4F4F5",
-          secondary: "#A1A1AA",
-          muted: "#71717A",
-          placeholder: "#8E8E93",
-          inverted: "#121110",
+        ink: {
+          primary: {
+            light: "#111110",
+            dark: "#F5F3EF",
+          },
+          secondary: {
+            light: "#6E6B66",
+            dark: "#8A8680",
+          },
+          muted: {
+            light: "#9E9A93",
+            dark: "#635F59",
+          },
         },
-        accent: {
-          DEFAULT: "#C9A961",
-          primary: "#C9A961",
-          hover: "#B8954C",
-          active: "#A07F3B",
-          subtle: "rgba(201, 169, 97, 0.12)",
-          border: "rgba(201, 169, 97, 0.28)",
+        brand: {
+          DEFAULT: "#F95721",
+          hover: "#E04612",
+          active: "#C83B0D",
+          subtle: {
+            light: "rgba(249, 87, 33, 0.10)",
+            dark: "rgba(249, 87, 33, 0.15)",
+          },
+          border: {
+            light: "rgba(249, 87, 33, 0.25)",
+            dark: "rgba(249, 87, 33, 0.35)",
+          },
         },
         feedback: {
-          success: {
-            DEFAULT: "#34D399",
-            bg: "rgba(16, 185, 129, 0.12)",
-            border: "rgba(16, 185, 129, 0.24)",
-            solid: "#10B981",
-          },
-          warning: {
-            DEFAULT: "#FBBF24",
-            bg: "rgba(245, 158, 11, 0.12)",
-            border: "rgba(245, 158, 11, 0.24)",
-            solid: "#F59E0B",
-          },
-          error: {
-            DEFAULT: "#F87171",
-            bg: "rgba(239, 68, 68, 0.12)",
-            border: "rgba(239, 68, 68, 0.24)",
-            solid: "#EF4444",
-          },
-          info: {
-            DEFAULT: "#60A5FA",
-            bg: "rgba(59, 130, 246, 0.12)",
-            border: "rgba(59, 130, 246, 0.24)",
-            solid: "#3B82F6",
-          },
+          success: "#10B981",
+          warning: "#F59E0B",
+          error: "#EF4444",
+          info: "#3B82F6",
         },
       },
-      fontFamily: {
-        sans: ["var(--font-geist-sans)", "Inter", "-apple-system", "sans-serif"],
-        mono: ["var(--font-geist-mono)", "JetBrains Mono", "monospace"],
+      borderRadius: {
+        "xl": "12px",
+        "2xl": "18px",
+        "3xl": "24px",
+        "4xl": "32px",
       },
       boxShadow: {
-        card: "0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.24)",
-        popover: "0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.4)",
-        modal: "0 25px 50px -12px rgba(0, 0, 0, 0.8)",
-        glow: "0 0 20px rgba(201, 169, 97, 0.25)",
-      },
-      borderRadius: {
-        sm: "4px",
-        md: "6px",
-        lg: "8px",
-        xl: "12px",
-        "2xl": "16px",
+        island: "0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.03)",
+        islandDark: "0 10px 30px -5px rgba(0, 0, 0, 0.6), 0 4px 10px -2px rgba(0, 0, 0, 0.4)",
+        card: "0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02)",
       },
     },
   },

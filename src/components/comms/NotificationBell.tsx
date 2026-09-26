@@ -22,16 +22,12 @@ export function NotificationBell() {
   const supabase = createClient();
 
   useEffect(() => {
-    let currentUserId: string | null = null;
-
     async function init() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
-      currentUserId = user.id;
 
-      // Fetch unread & recent notifications
       const { data } = await supabase
         .from("notifications")
         .select("*")
@@ -44,7 +40,6 @@ export function NotificationBell() {
         setUnreadCount(data.filter((n) => !n.read_at).length);
       }
 
-      // Realtime subscription to notifications
       const channel = supabase
         .channel(`user-notifications-${user.id}`)
         .on(
@@ -70,7 +65,6 @@ export function NotificationBell() {
 
     init();
 
-    // Click outside to close
     function handleClickOutside(event: MouseEvent) {
       if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
         setIsOpen(false);
@@ -113,24 +107,26 @@ export function NotificationBell() {
     <div className="relative" ref={popoverRef}>
       <button
         onClick={() => setIsOpen((prev) => !prev)}
-        className="relative p-2 rounded-md hover:bg-background-elevated text-text-secondary hover:text-text-primary transition-colors"
+        className="relative p-2 rounded-xl text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5 transition-all"
         aria-label="View notifications"
       >
-        <Bell className="w-5 h-5" />
+        <Bell className="w-4 h-4" />
         {unreadCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-primary px-1 text-[10px] font-bold text-background-base animate-pulse">
+          <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#F95721] px-1 text-[10px] font-bold text-white shadow-sm">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-lg bg-background-surface border border-border-subtle shadow-popover z-[500] overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-background-elevated/40">
+        <div className="absolute right-0 lg:left-full lg:right-auto lg:ml-2 bottom-full lg:bottom-0 mb-2 lg:mb-0 w-80 sm:w-96 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-island dark:shadow-islandDark z-[500] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#ECE8E1] dark:border-[#2D2924]">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-text-primary">Notifications</span>
+              <span className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                Notifications
+              </span>
               {unreadCount > 0 && (
-                <span className="text-xs bg-accent-subtle text-accent-primary border border-accent-border px-1.5 py-0.5 rounded">
+                <span className="text-[10px] font-mono bg-[#F95721]/10 text-[#F95721] px-2 py-0.5 rounded-full font-semibold">
                   {unreadCount} new
                 </span>
               )}
@@ -138,38 +134,38 @@ export function NotificationBell() {
             {unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
-                className="text-xs text-text-secondary hover:text-accent-primary flex items-center gap-1 transition-colors"
+                className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] hover:text-[#F95721] flex items-center gap-1 transition-colors"
               >
-                <Check className="w-3.5 h-3.5" />
+                <Check className="w-3 h-3" />
                 Mark all read
               </button>
             )}
           </div>
 
-          <div className="max-h-96 overflow-y-auto divide-y divide-border-subtle">
+          <div className="max-h-80 overflow-y-auto divide-y divide-[#ECE8E1]/60 dark:divide-[#2D2924]/60">
             {notifications.length === 0 ? (
-              <div className="p-6 text-center text-xs text-text-muted">
+              <div className="p-8 text-center text-xs text-[#6E6B66] dark:text-[#8A8680]">
                 No notifications right now.
               </div>
             ) : (
               notifications.map((item) => (
                 <div
                   key={item.id}
-                  className={`p-3.5 transition-colors hover:bg-background-elevated/60 ${
-                    !item.read_at ? "bg-accent-subtle/20" : ""
+                  className={`p-4 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${
+                    !item.read_at ? "bg-[#F95721]/5" : ""
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-text-primary truncate">
+                      <p className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF] truncate">
                         {item.title}
                       </p>
                       {item.body && (
-                        <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">
+                        <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-0.5 line-clamp-2">
                           {item.body}
                         </p>
                       )}
-                      <span className="text-[10px] text-text-muted mt-1.5 block">
+                      <span className="text-[10px] text-[#9E9A93] dark:text-[#635F59] mt-1.5 block">
                         {new Date(item.created_at).toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
@@ -182,8 +178,7 @@ export function NotificationBell() {
                         <a
                           href={item.link}
                           onClick={() => markAsRead(item.id)}
-                          className="p-1 text-text-secondary hover:text-accent-primary rounded"
-                          title="Open link"
+                          className="p-1 text-[#6E6B66] dark:text-[#8A8680] hover:text-[#F95721] rounded"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
@@ -191,8 +186,7 @@ export function NotificationBell() {
                       {!item.read_at && (
                         <button
                           onClick={() => markAsRead(item.id)}
-                          className="p-1 text-text-muted hover:text-text-primary rounded"
-                          title="Mark read"
+                          className="p-1 text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] rounded"
                         >
                           <Check className="w-3.5 h-3.5" />
                         </button>
