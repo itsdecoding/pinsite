@@ -161,27 +161,18 @@ export default function CommsHubPage() {
   useEffect(() => {
     if (activeView === "channel" && activeChannelId) {
       const loadChannelMessages = async () => {
-        const { data } = await supabase
-          .from("messages")
-          .select(`
-            id,
-            sender_id,
-            body,
-            created_at,
-            edited_at,
-            deleted_at,
-            profiles:sender_id (full_name, role)
-          `)
-          .eq("channel_id", activeChannelId)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: true });
-
-        if (data && data.length > 0) {
-          setMessages(data as any);
-        } else {
-          setMessages([]);
+        try {
+          const res = await fetch(`/api/messages?channel_id=${activeChannelId}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.messages) {
+              setMessages(data.messages);
+              scrollToBottom();
+            }
+          }
+        } catch (e) {
+          console.warn("Error loading channel messages from API:", e);
         }
-        scrollToBottom();
 
         if (currentUserId) {
           await supabase.from("channel_reads").upsert({
@@ -193,6 +184,7 @@ export default function CommsHubPage() {
       };
 
       loadChannelMessages();
+      const pollInterval = setInterval(loadChannelMessages, 4000);
 
       const channelSub = supabase
         .channel(`channel-${activeChannelId}`)
@@ -236,34 +228,27 @@ export default function CommsHubPage() {
         .subscribe();
 
       return () => {
+        clearInterval(pollInterval);
         supabase.removeChannel(channelSub);
       };
     } else if (activeView === "dm" && activeThreadId) {
       const loadDmMessages = async () => {
-        const { data } = await supabase
-          .from("dm_messages")
-          .select(`
-            id,
-            sender_id,
-            body,
-            created_at,
-            edited_at,
-            deleted_at,
-            profiles:sender_id (full_name, role)
-          `)
-          .eq("thread_id", activeThreadId)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: true });
-
-        if (data && data.length > 0) {
-          setMessages(data as any);
-        } else {
-          setMessages([]);
+        try {
+          const res = await fetch(`/api/messages?thread_id=${activeThreadId}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.messages) {
+              setMessages(data.messages);
+              scrollToBottom();
+            }
+          }
+        } catch (e) {
+          console.warn("Error loading DMs from API:", e);
         }
-        scrollToBottom();
       };
 
       loadDmMessages();
+      const pollInterval = setInterval(loadDmMessages, 4000);
 
       const dmSub = supabase
         .channel(`dm-${activeThreadId}`)
@@ -307,6 +292,7 @@ export default function CommsHubPage() {
         .subscribe();
 
       return () => {
+        clearInterval(pollInterval);
         supabase.removeChannel(dmSub);
       };
     }

@@ -3,6 +3,61 @@ import { createClient } from "@supabase/supabase-js";
 
 const DEFAULT_ADMIN_ID = "a87c7c79-6c4c-4787-8132-8cff8f7a1e74";
 
+export async function GET(req: NextRequest) {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { searchParams } = new URL(req.url);
+    const channelId = searchParams.get("channel_id");
+    const threadId = searchParams.get("thread_id");
+
+    if (threadId) {
+      const { data, error } = await supabase
+        .from("dm_messages")
+        .select(`
+          id,
+          sender_id,
+          body,
+          created_at,
+          edited_at,
+          deleted_at,
+          profiles:sender_id (full_name, role)
+        `)
+        .eq("thread_id", threadId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+      return NextResponse.json({ messages: data || [] });
+    } else if (channelId) {
+      const { data, error } = await supabase
+        .from("messages")
+        .select(`
+          id,
+          sender_id,
+          body,
+          created_at,
+          edited_at,
+          deleted_at,
+          profiles:sender_id (full_name, role)
+        `)
+        .eq("channel_id", channelId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+      return NextResponse.json({ messages: data || [] });
+    } else {
+      return NextResponse.json({ error: "Missing channel_id or thread_id parameter" }, { status: 400 });
+    }
+  } catch (err: any) {
+    console.error("Failed to fetch messages:", err);
+    return NextResponse.json({ error: err.message || "Failed to fetch messages" }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
