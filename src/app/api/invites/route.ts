@@ -149,13 +149,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Dynamic origin resolution
-    const origin = req.nextUrl.origin || req.headers.get("origin") || "https://pinsite20.vercel.app";
+    const origin = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin || req.headers.get("origin") || "https://pinsite.pro";
     const inviteUrl = `${origin}/signup?token=${token}`;
 
     // Optional email dispatch via Resend REST API
     const resendKey = process.env.RESEND_API_KEY;
     if (resendKey && !resendKey.includes("placeholder")) {
       try {
+        const fromEmail = process.env.RESEND_FROM_EMAIL || "Pinsite <invites@pinsite.pro>";
         await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
@@ -163,21 +164,26 @@ export async function POST(req: NextRequest) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "Agency OS <onboarding@resend.dev>",
+            from: fromEmail,
             to: [normalizedEmail],
-            subject: `You're invited to join Agency OS as ${assignedRole.toUpperCase()}`,
+            subject: `You're invited to join Pinsite as ${assignedRole.toUpperCase()}`,
             html: `
-              <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #ECE8E1; border-radius: 16px;">
-                <h2 style="color: #111110; margin-top: 0;">Welcome to Agency OS</h2>
-                <p style="color: #6E6B66; font-size: 14px; line-height: 1.5;">
-                  You've been invited by management to join the outreach & operations team as a <strong>${assignedRole.toUpperCase()}</strong>.
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; border: 1px solid #ECE8E1; border-radius: 20px; background-color: #FAF8F5;">
+                <div style="margin-bottom: 24px;">
+                  <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #F95721; font-family: monospace;">Pinsite Workspace</span>
+                </div>
+                <h2 style="color: #111110; margin-top: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em;">Welcome to Pinsite</h2>
+                <p style="color: #6E6B66; font-size: 14px; line-height: 1.6; margin: 12px 0 24px 0;">
+                  You've been invited by management to join the outreach & operations team as a <strong style="color: #111110;">${assignedRole.toUpperCase()}</strong>.
                 </p>
                 <div style="margin: 28px 0;">
-                  <a href="${inviteUrl}" style="background-color: #F95721; color: white; padding: 12px 24px; text-decoration: none; border-radius: 9999px; font-weight: 600; font-size: 13px; display: inline-block;">
+                  <a href="${inviteUrl}" style="background-color: #F95721; color: white; padding: 13px 28px; text-decoration: none; border-radius: 9999px; font-weight: 700; font-size: 13px; display: inline-block; box-shadow: 0 4px 12px rgba(249, 87, 33, 0.25);">
                     Accept Invitation &rarr;
                   </a>
                 </div>
-                <p style="color: #9E9A93; font-size: 12px;">This single-use invite link expires in 7 days.</p>
+                <p style="color: #9E9A93; font-size: 12px; margin-top: 32px; border-top: 1px solid #ECE8E1; padding-top: 16px;">
+                  This single-use invite link expires in 7 days. If you did not expect this invitation, you can safely ignore this email.
+                </p>
               </div>
             `,
           }),

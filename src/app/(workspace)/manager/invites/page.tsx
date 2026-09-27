@@ -80,7 +80,7 @@ export default function ManagerInvitesPage() {
   }
 
   function copyInviteLink(token: string) {
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://pinsite20.vercel.app";
+    const origin = typeof window !== "undefined" && window.location.origin ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL || "https://pinsite.pro");
     const inviteUrl = `${origin}/signup?token=${token}`;
     navigator.clipboard.writeText(inviteUrl);
     setCopiedToken(token);
