@@ -70,18 +70,47 @@ export async function POST(req: NextRequest) {
     let invalidCount = 0;
 
     for (const lead of leadsRaw) {
-      if (!lead.name || !lead.phone || !lead.niche || !lead.area) {
+      if (!lead.name || !lead.phone) {
         invalidCount++;
         continue;
       }
 
-      // Format & sanitize
-      const cleanPhone = lead.phone.replace(/[^0-9+]/g, "");
-      const normalizedPhone = cleanPhone.startsWith("+")
-        ? cleanPhone
-        : cleanPhone.length === 10
-        ? `+91${cleanPhone}`
-        : cleanPhone;
+      const rawPhone = String(lead.phone).trim();
+
+      // Reject non-phone text like "No Phone Number" or "N/A"
+      if (
+        rawPhone.toLowerCase().includes("no phone") ||
+        rawPhone.toLowerCase().includes("n/a") ||
+        rawPhone.toLowerCase() === "null" ||
+        rawPhone.toLowerCase() === "undefined"
+      ) {
+        invalidCount++;
+        continue;
+      }
+
+      // Extract numeric digits
+      const digitsOnly = rawPhone.replace(/\D/g, "");
+      if (digitsOnly.length < 7) {
+        invalidCount++;
+        continue;
+      }
+
+      // Smart normalization for Indian and international numbers
+      let normalizedPhone = "";
+      if (rawPhone.startsWith("+")) {
+        normalizedPhone = "+" + digitsOnly;
+      } else if (digitsOnly.length === 11 && digitsOnly.startsWith("0")) {
+        // e.g. 08983019136 -> +918983019136
+        normalizedPhone = "+91" + digitsOnly.substring(1);
+      } else if (digitsOnly.length === 10) {
+        // e.g. 8983019136 -> +918983019136
+        normalizedPhone = "+91" + digitsOnly;
+      } else if (digitsOnly.length === 12 && digitsOnly.startsWith("91")) {
+        // e.g. 918983019136 -> +918983019136
+        normalizedPhone = "+" + digitsOnly;
+      } else {
+        normalizedPhone = rawPhone.startsWith("+") ? rawPhone : `+${digitsOnly}`;
+      }
 
       // Check DNC
       const { data: isDnc } = await supabase.rpc("is_dnc", { p_phone: normalizedPhone });
@@ -103,17 +132,36 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
+      // Smart Area fallback if area is generic but address has city
+      let area = (lead.area || "Mumbai").trim();
+      const addr = (lead.address || "").toLowerCase();
+      if (area.toLowerCase() === "mumbai" || area.toLowerCase() === "general") {
+        if (addr.includes("kothrud")) area = "Kothrud, Pune";
+        else if (addr.includes("aundh")) area = "Aundh, Pune";
+        else if (addr.includes("hadapsar")) area = "Hadapsar, Pune";
+        else if (addr.includes("baner")) area = "Baner, Pune";
+        else if (addr.includes("pune")) area = "Pune";
+        else if (addr.includes("bandra")) area = "Bandra, Mumbai";
+        else if (addr.includes("colaba")) area = "Colaba, Mumbai";
+        else if (addr.includes("thane")) area = "Thane";
+        else if (addr.includes("hyderabad")) area = "Hyderabad";
+        else if (addr.includes("bengaluru") || addr.includes("bangalore")) area = "Bengaluru";
+      }
+
+      const niche = (lead.niche || "General").trim();
+      const hasWebsite = Boolean(lead.website && String(lead.website).trim().length > 0);
+
       // Insert lead
       const { error: insertError } = await supabase.from("leads").insert({
-        name: lead.name.trim(),
-        phone: lead.phone.trim(),
+        name: String(lead.name).trim(),
+        phone: rawPhone,
         normalized_phone: normalizedPhone,
         website: lead.website || null,
-        has_website: Boolean(lead.website || lead.has_website),
+        has_website: hasWebsite,
         address: lead.address || null,
-        niche: lead.niche.trim(),
-        area: lead.area.trim(),
-        score: typeof lead.score === "number" ? lead.score : 70,
+        niche: niche,
+        area: area,
+        score: typeof lead.score === "number" ? Math.min(100, Math.max(0, lead.score)) : 75,
         status: "unassigned",
         source: source,
       });
@@ -121,6 +169,7 @@ export async function POST(req: NextRequest) {
       if (!insertError) {
         insertedCount++;
       } else {
+        console.error("Lead insert error:", insertError);
         invalidCount++;
       }
     }
