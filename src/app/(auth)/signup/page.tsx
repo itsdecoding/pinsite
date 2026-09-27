@@ -31,12 +31,13 @@ function SignupForm() {
       }
 
       try {
-        const { data, error } = await supabase.rpc("validate_invite", { p_token: token });
+        const res = await fetch(`/api/invites/validate?token=${encodeURIComponent(token)}`);
+        const data = await res.json();
 
-        if (error || !data || data.length === 0) {
-          setInviteError("This invite token is invalid, expired, or has already been accepted.");
+        if (!res.ok || !data.valid) {
+          setInviteError(data.error || "This invite token is invalid, expired, or has already been accepted.");
         } else {
-          setInviteData(data[0]);
+          setInviteData({ email: data.email, role: data.role });
         }
       } catch (err: any) {
         setInviteError(err.message || "Failed to validate invite token.");
@@ -56,32 +57,33 @@ function SignupForm() {
     setFormError(null);
 
     try {
-      // 1. Sign up user via Supabase Auth with the invited email
-      const { data: authData, error: signupError } = await supabase.auth.signUp({
+      // 1. Call dedicated signup API
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token,
+          full_name: fullName.trim(),
+          password,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to complete account registration");
+      }
+
+      // 2. Automatically log the user in
+      await supabase.auth.signInWithPassword({
         email: inviteData.email,
-        password: password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-        },
+        password,
       });
-
-      if (signupError) throw signupError;
-      if (!authData.user) throw new Error("Signup failed to create a session.");
-
-      // 2. Atomically consume the invite
-      const { data: roleAssigned, error: consumeError } = await supabase.rpc("consume_invite", {
-        p_token: token,
-        p_user_id: authData.user.id,
-      });
-
-      if (consumeError) throw consumeError;
 
       // 3. Route according to assigned role
-      if (roleAssigned === "caller") {
+      const assignedRole = data.role || inviteData.role;
+      if (assignedRole === "caller") {
         router.push("/queue");
-      } else if (roleAssigned === "developer") {
+      } else if (assignedRole === "developer") {
         router.push("/projects");
       } else {
         router.push("/dashboard");

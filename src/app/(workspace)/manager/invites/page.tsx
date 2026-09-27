@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Mail, Copy, Check, Plus, Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { Mail, Copy, Check, Plus, Loader2, Trash2 } from "lucide-react";
 
 interface Invite {
   id: string;
@@ -22,17 +21,19 @@ export default function ManagerInvitesPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
-  const supabase = createClient();
-
   async function loadInvites() {
     setLoading(true);
-    const { data } = await supabase
-      .from("invites")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (data) setInvites(data);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/invites");
+      if (res.ok) {
+        const data = await res.json();
+        setInvites(data.invites || []);
+      }
+    } catch (err) {
+      console.warn("Failed to load invites:", err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -41,54 +42,49 @@ export default function ManagerInvitesPage() {
 
   async function handleCreateInvite(e: React.FormEvent) {
     e.preventDefault();
-    if (!email) return;
+    if (!email.trim()) return;
 
     setIsGenerating(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const res = await fetch("/api/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), role }),
+      });
 
-      const token = crypto.randomUUID().replace(/-/g, "").substring(0, 16);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to generate invite");
+      }
 
-      const { data, error } = await supabase
-        .from("invites")
-        .insert({
-          token,
-          email: email.trim().toLowerCase(),
-          role,
-          invited_by: user?.id,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      setInvites((prev) => [data, ...prev]);
+      const { invite } = await res.json();
+      setInvites((prev) => [invite, ...prev.filter((i) => i.id !== invite.id)]);
       setEmail("");
     } catch (err: any) {
-      // Optimistic local add if running without backend connected
-      const mockInvite: Invite = {
-        id: crypto.randomUUID(),
-        token: crypto.randomUUID().replace(/-/g, "").substring(0, 16),
-        email: email.trim().toLowerCase(),
-        role,
-        expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
-        accepted_at: null,
-        created_at: new Date().toISOString(),
-      };
-      setInvites((prev) => [mockInvite, ...prev]);
-      setEmail("");
+      alert(err.message || "Failed to generate invite");
     } finally {
       setIsGenerating(false);
     }
   }
 
+  async function handleRevokeInvite(id: string) {
+    if (!confirm("Are you sure you want to revoke this invitation?")) return;
+    try {
+      const res = await fetch(`/api/invites?id=${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setInvites((prev) => prev.filter((i) => i.id !== id));
+      }
+    } catch (err) {
+      alert("Failed to revoke invite");
+    }
+  }
+
   function copyInviteLink(token: string) {
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://pinsite20.vercel.app";
     const inviteUrl = `${origin}/signup?token=${token}`;
     navigator.clipboard.writeText(inviteUrl);
     setCopiedToken(token);
-    setTimeout(() => setCopiedToken(null), 2000);
+    setTimeout(() => setCopiedToken(null), 2500);
   }
 
   return (
@@ -140,8 +136,8 @@ export default function ManagerInvitesPage() {
           <div>
             <button
               type="submit"
-              disabled={isGenerating || !email}
-              className="w-full py-3 px-5 bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-xs uppercase tracking-wider rounded-full shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+              disabled={isGenerating || !email.trim()}
+              className="w-full py-3 px-5 bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-xs uppercase tracking-wider rounded-full shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50 active:scale-95"
             >
               {isGenerating ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -186,7 +182,7 @@ export default function ManagerInvitesPage() {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     {isAccepted ? (
                       <span className="text-[11px] font-mono text-feedback-success px-3 py-1 rounded-full bg-feedback-success/10 font-semibold">
                         Accepted
@@ -213,6 +209,14 @@ export default function ManagerInvitesPage() {
                         )}
                       </button>
                     )}
+
+                    <button
+                      onClick={() => handleRevokeInvite(inv.id)}
+                      title="Revoke Invite"
+                      className="p-2 text-[#6E6B66] hover:text-feedback-error transition-colors rounded-full"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               );
