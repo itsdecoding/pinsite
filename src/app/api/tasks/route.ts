@@ -1,12 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // 1. Authenticate user
+    const serverSupabase = createServerClient();
+    let {
+      data: { user },
+    } = await serverSupabase.auth.getUser();
+
+    const admin = createAdminClient(supabaseUrl, supabaseServiceKey);
+
+    if (!user) {
+      const authHeader = req.headers.get("authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.replace("Bearer ", "").trim();
+        const { data: jwtData } = await admin.auth.getUser(token);
+        user = jwtData.user;
+      }
+    }
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized: Active session required" }, { status: 401 });
+    }
+
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const role = profile?.role || "caller";
+    if (role !== "admin" && role !== "manager" && role !== "developer") {
+      return NextResponse.json(
+        { error: "Forbidden: Only developers and managers can manage project tasks" },
+        { status: 403 }
+      );
+    }
 
     const body = await req.json();
     const { title, client_name, description, status, due_date, dev_id } = body;
@@ -17,9 +51,9 @@ export async function POST(req: NextRequest) {
 
     const clientName = client_name?.trim() || "General Project";
 
-    // 1. Find or create project
+    // 2. Find or create project
     let projectId: string;
-    const { data: existingProject } = await supabase
+    const { data: existingProject } = await admin
       .from("projects")
       .select("id")
       .ilike("client_name", clientName)
@@ -30,7 +64,7 @@ export async function POST(req: NextRequest) {
     if (existingProject) {
       projectId = existingProject.id;
     } else {
-      const { data: newProject, error: projectError } = await supabase
+      const { data: newProject, error: projectError } = await admin
         .from("projects")
         .insert({
           client_name: clientName,
@@ -43,12 +77,13 @@ export async function POST(req: NextRequest) {
       projectId = newProject.id;
     }
 
-    // 2. Insert new task
-    const taskStatus = status && ["todo", "in_progress", "review", "blocked", "done"].includes(status)
-      ? status
-      : "todo";
+    // 3. Insert new task
+    const taskStatus =
+      status && ["todo", "in_progress", "review", "blocked", "done"].includes(status)
+        ? status
+        : "todo";
 
-    const { data: newTask, error: taskError } = await supabase
+    const { data: newTask, error: taskError } = await admin
       .from("tasks")
       .insert({
         project_id: projectId,
@@ -56,7 +91,7 @@ export async function POST(req: NextRequest) {
         description: description?.trim() || null,
         status: taskStatus,
         due_date: due_date || null,
-        dev_id: dev_id || null,
+        dev_id: dev_id || user.id,
       })
       .select(`
         id,
