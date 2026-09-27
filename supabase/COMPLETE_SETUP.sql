@@ -1436,8 +1436,15 @@ ON CONFLICT (name) DO NOTHING;
 
 --------------------------------------------------------------------------------
 -- 8. Admin Profile Bootstrap for Muzammil (Owner)
+-- Wrapped safely so fresh deployments without this auth user don't crash migrations
 --------------------------------------------------------------------------------
-INSERT INTO public.profiles (id, full_name, role)
-VALUES ('a87c7c79-6c4c-4787-8132-8cff8f7a1e74', 'Muzammil (Owner)', 'admin')
-ON CONFLICT (id) DO UPDATE 
-SET role = 'admin', full_name = 'Muzammil (Owner)';
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM auth.users WHERE id = 'a87c7c79-6c4c-4787-8132-8cff8f7a1e74') THEN
+    INSERT INTO public.profiles (id, full_name, role)
+    VALUES ('a87c7c79-6c4c-4787-8132-8cff8f7a1e74', 'Muzammil (Owner)', 'admin')
+    ON CONFLICT (id) DO UPDATE 
+    SET role = 'admin', full_name = 'Muzammil (Owner)';
+  END IF;
+END $$;
+

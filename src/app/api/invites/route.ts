@@ -1,15 +1,62 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 
-const DEFAULT_ADMIN_ID = "a87c7c79-6c4c-4787-8132-8cff8f7a1e74";
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  return createAdminClient(supabaseUrl, supabaseServiceKey);
+}
 
-export async function GET() {
+async function verifyManagerSession(req: NextRequest) {
+  // 1. Check cookies session
+  const serverSupabase = createServerClient();
+  const {
+    data: { user },
+  } = await serverSupabase.auth.getUser();
+
+  let activeUser = user;
+
+  // 2. Check Bearer token in header if no cookie session
+  if (!activeUser) {
+    const authHeader = req.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.replace("Bearer ", "").trim();
+      const admin = getAdminClient();
+      const { data: jwtData } = await admin.auth.getUser(token);
+      activeUser = jwtData.user;
+    }
+  }
+
+  if (!activeUser) {
+    return { error: "Unauthorized: Active session required", status: 401 };
+  }
+
+  // 3. Verify user has manager or admin privileges
+  const admin = getAdminClient();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("role")
+    .eq("id", activeUser.id)
+    .maybeSingle();
+
+  const role = profile?.role || "caller";
+  if (role !== "admin" && role !== "manager") {
+    return { error: "Forbidden: Manager or Admin role required", status: 403 };
+  }
+
+  return { user: activeUser, role };
+}
+
+export async function GET(req: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const authResult = await verifyManagerSession(req);
+    if ("error" in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
 
-    const { data, error } = await supabase
+    const admin = getAdminClient();
+    const { data, error } = await admin
       .from("invites")
       .select("*")
       .order("created_at", { ascending: false });
@@ -24,10 +71,12 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const authResult = await verifyManagerSession(req);
+    if ("error" in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
 
+    const admin = getAdminClient();
     const body = await req.json();
     const { email, role } = body;
 
@@ -38,12 +87,25 @@ export async function POST(req: NextRequest) {
     const normalizedEmail = email.trim().toLowerCase();
     const assignedRole = role && ["caller", "developer", "manager"].includes(role) ? role : "caller";
 
+    // Prevent creating invite for email that already has an account
+    const { data: listData } = await admin.auth.admin.listUsers();
+    const existingUser = listData?.users?.find(
+      (u) => u.email?.toLowerCase() === normalizedEmail
+    );
+    if (existingUser) {
+      return NextResponse.json(
+        { error: "A team member with this email address is already registered." },
+        { status: 409 }
+      );
+    }
+
     // Generate atomic 16-character alphanumeric token
     const token = crypto.randomUUID().replace(/-/g, "").substring(0, 16);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const currentUserId = authResult.user.id;
 
     // Check if an unaccepted invite already exists for this email
-    const { data: existing } = await supabase
+    const { data: existingInvite } = await admin
       .from("invites")
       .select("id")
       .eq("email", normalizedEmail)
@@ -52,17 +114,17 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     let inviteRecord;
-    if (existing) {
-      // Update existing invite with fresh token and expiration
-      const { data: updated, error: updateError } = await supabase
+    if (existingInvite) {
+      // Refresh existing invite with fresh token and expiration
+      const { data: updated, error: updateError } = await admin
         .from("invites")
         .update({
           token,
           role: assignedRole,
           expires_at: expiresAt,
-          invited_by: DEFAULT_ADMIN_ID,
+          invited_by: currentUserId,
         })
-        .eq("id", existing.id)
+        .eq("id", existingInvite.id)
         .select()
         .single();
 
@@ -70,13 +132,13 @@ export async function POST(req: NextRequest) {
       inviteRecord = updated;
     } else {
       // Create new invite
-      const { data: created, error: insertError } = await supabase
+      const { data: created, error: insertError } = await admin
         .from("invites")
         .insert({
           token,
           email: normalizedEmail,
           role: assignedRole,
-          invited_by: DEFAULT_ADMIN_ID,
+          invited_by: currentUserId,
           expires_at: expiresAt,
         })
         .select()
@@ -86,17 +148,18 @@ export async function POST(req: NextRequest) {
       inviteRecord = created;
     }
 
-    // Attempt optional email dispatch via Resend REST API
+    // Dynamic origin resolution
+    const origin = req.nextUrl.origin || req.headers.get("origin") || "https://pinsite20.vercel.app";
+    const inviteUrl = `${origin}/signup?token=${token}`;
+
+    // Optional email dispatch via Resend REST API
     const resendKey = process.env.RESEND_API_KEY;
     if (resendKey && !resendKey.includes("placeholder")) {
       try {
-        const origin = req.headers.get("origin") || "https://pinsite20.vercel.app";
-        const inviteUrl = `${origin}/signup?token=${token}`;
-
         await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${resendKey}`,
+            Authorization: `Bearer ${resendKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
@@ -133,9 +196,10 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const authResult = await verifyManagerSession(req);
+    if ("error" in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
@@ -144,7 +208,8 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Invite ID is required" }, { status: 400 });
     }
 
-    const { error } = await supabase.from("invites").delete().eq("id", id);
+    const admin = getAdminClient();
+    const { error } = await admin.from("invites").delete().eq("id", id);
     if (error) throw error;
 
     return NextResponse.json({ success: true });

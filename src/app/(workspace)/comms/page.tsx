@@ -13,8 +13,6 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
-const DEFAULT_ADMIN_ID = "a87c7c79-6c4c-4787-8132-8cff8f7a1e74";
-
 interface Channel {
   id: string;
   name: string;
@@ -46,7 +44,7 @@ export default function CommsHubPage() {
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [currentUserId, setCurrentUserId] = useState<string>(DEFAULT_ADMIN_ID);
+  const [currentUserId, setCurrentUserId] = useState<string>("");
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -69,7 +67,7 @@ export default function CommsHubPage() {
       setLoading(true);
 
       // 1. Resolve current user ID
-      let resolvedUid = DEFAULT_ADMIN_ID;
+      let resolvedUid = "";
       try {
         const {
           data: { user },
@@ -170,7 +168,6 @@ export default function CommsHubPage() {
       };
 
       loadChannelMessages();
-      const pollInterval = setInterval(loadChannelMessages, 4000);
 
       const channelSub = supabase
         .channel(`channel-${activeChannelId}`)
@@ -214,7 +211,6 @@ export default function CommsHubPage() {
         .subscribe();
 
       return () => {
-        clearInterval(pollInterval);
         supabase.removeChannel(channelSub);
       };
     } else if (activeView === "dm" && activeThreadId) {
@@ -234,7 +230,6 @@ export default function CommsHubPage() {
       };
 
       loadDmMessages();
-      const pollInterval = setInterval(loadDmMessages, 4000);
 
       const dmSub = supabase
         .channel(`dm-${activeThreadId}`)
@@ -278,7 +273,6 @@ export default function CommsHubPage() {
         .subscribe();
 
       return () => {
-        clearInterval(pollInterval);
         supabase.removeChannel(dmSub);
       };
     }

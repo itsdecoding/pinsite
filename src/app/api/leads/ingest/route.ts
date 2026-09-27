@@ -1,24 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const configuredApiKey = process.env.INGESTION_API_KEY || "dev_ingestion_api_key_secret_123";
+    const configuredApiKey = process.env.INGESTION_API_KEY;
 
-    // 1. Authorization check
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader?.replace("Bearer ", "").trim();
+    let isAuthorized = false;
 
-    const validTokens = [
-      configuredApiKey,
-      "ingest_secret_token_123",
-      "dev_ingestion_api_key_secret_123",
-    ];
+    // Path A: Check for logged-in Manager or Admin user session (for browser CSV uploads)
+    try {
+      const serverSupabase = createServerClient();
+      const {
+        data: { user },
+      } = await serverSupabase.auth.getUser();
 
-    if (!token || !validTokens.includes(token)) {
-      return NextResponse.json({ error: "Unauthorized: Invalid ingestion API key" }, { status: 401 });
+      if (user) {
+        const admin = createAdminClient(supabaseUrl, supabaseServiceKey);
+        const { data: profile } = await admin
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (profile?.role === "admin" || profile?.role === "manager") {
+          isAuthorized = true;
+        }
+      }
+    } catch {
+      // Continue to check Bearer token
+    }
+
+    // Path B: Check for external ingestion API key (for automated scrapers)
+    if (!isAuthorized) {
+      const authHeader = req.headers.get("authorization");
+      const token = authHeader?.replace("Bearer ", "").trim();
+
+      if (configuredApiKey && token && token === configuredApiKey) {
+        isAuthorized = true;
+      }
+    }
+
+    if (!isAuthorized) {
+      return NextResponse.json(
+        { error: "Unauthorized: Valid manager session or secret INGESTION_API_KEY required" },
+        { status: 401 }
+      );
     }
 
     // 2. Validate header x-source: strictly 'scraper' | 'csv_upload'
@@ -30,7 +59,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createAdminClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
     const leadsRaw = Array.isArray(body) ? body : body.leads ? body.leads : [body];
@@ -46,27 +75,22 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const digits = String(lead.phone).replace(/\D/g, "");
-      const normalizedPhone = digits.startsWith("91") && digits.length === 12
-        ? `+${digits}`
-        : digits.length === 10
-        ? `+91${digits}`
-        : digits.length > 0
-        ? `+${digits}`
-        : "";
+      // Format & sanitize
+      const cleanPhone = lead.phone.replace(/[^0-9+]/g, "");
+      const normalizedPhone = cleanPhone.startsWith("+")
+        ? cleanPhone
+        : cleanPhone.length === 10
+        ? `+91${cleanPhone}`
+        : cleanPhone;
 
-      if (!normalizedPhone || normalizedPhone.length < 10) {
-        invalidCount++;
+      // Check DNC
+      const { data: isDnc } = await supabase.rpc("is_dnc", { p_phone: normalizedPhone });
+      if (isDnc) {
+        skippedDnc++;
         continue;
       }
 
-      // Check DNC
-      const { data: dncMatch } = await supabase
-        .from("dnc_blacklist")
-        .select("phone_hash")
-        .limit(1);
-
-      // Check duplicate
+      // Check duplicates (by normalized_phone)
       const { data: existingLead } = await supabase
         .from("leads")
         .select("id")
@@ -79,39 +103,43 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const score = typeof lead.score === "number" ? Math.min(100, Math.max(0, lead.score)) : 75;
-
-      const { error: insertErr } = await supabase.from("leads").insert({
-        name: String(lead.name).trim(),
-        phone: String(lead.phone).trim(),
+      // Insert lead
+      const { error: insertError } = await supabase.from("leads").insert({
+        name: lead.name.trim(),
+        phone: lead.phone.trim(),
         normalized_phone: normalizedPhone,
         website: lead.website || null,
-        has_website: Boolean(lead.website && String(lead.website).trim().length > 4),
+        has_website: Boolean(lead.website || lead.has_website),
         address: lead.address || null,
-        niche: String(lead.niche).trim(),
-        area: String(lead.area).trim(),
-        score: score,
+        niche: lead.niche.trim(),
+        area: lead.area.trim(),
+        score: typeof lead.score === "number" ? lead.score : 70,
         status: "unassigned",
+        source: source,
       });
 
-      if (insertErr) {
-        invalidCount++;
-      } else {
+      if (!insertError) {
         insertedCount++;
+      } else {
+        invalidCount++;
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      summary: {
-        total_received: leadsRaw.length,
-        inserted: insertedCount,
-        skipped_dnc: skippedDnc,
-        skipped_duplicates: skippedDuplicates,
-        invalid: invalidCount,
+    return NextResponse.json(
+      {
+        message: "Ingestion processed successfully",
+        summary: {
+          total_received: leadsRaw.length,
+          inserted: insertedCount,
+          skipped_dnc: skippedDnc,
+          skipped_duplicates: skippedDuplicates,
+          invalid: invalidCount,
+        },
       },
-    });
+      { status: 200 }
+    );
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("Ingestion endpoint exception:", err);
+    return NextResponse.json({ error: err.message || "Failed to process lead batch" }, { status: 500 });
   }
 }

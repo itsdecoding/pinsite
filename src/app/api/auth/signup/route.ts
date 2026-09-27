@@ -47,8 +47,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Create or update user in Supabase Auth with auto email confirmation
-    let userId: string;
+    // 2. Create user in Supabase Auth with auto email confirmation
     const { data: authData, error: createError } = await supabase.auth.admin.createUser({
       email: invite.email,
       password: password,
@@ -59,26 +58,22 @@ export async function POST(req: NextRequest) {
     });
 
     if (createError) {
-      if (createError.message?.toLowerCase().includes("already")) {
-        const { data: list } = await supabase.auth.admin.listUsers();
-        const existing = list?.users?.find(
-          (u) => u.email?.toLowerCase() === invite.email.toLowerCase()
+      if (
+        createError.message?.toLowerCase().includes("already") ||
+        createError.message?.toLowerCase().includes("exists")
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "An account with this email address already exists. Please log in directly with your existing password.",
+          },
+          { status: 409 }
         );
-
-        if (!existing) throw createError;
-
-        await supabase.auth.admin.updateUserById(existing.id, {
-          password: password,
-          email_confirm: true,
-          user_metadata: { full_name: fullName },
-        });
-        userId = existing.id;
-      } else {
-        throw createError;
       }
-    } else {
-      userId = authData.user.id;
+      throw createError;
     }
+
+    const userId = authData.user.id;
 
     // 3. Update profiles table with assigned role
     const { error: profileError } = await supabase
