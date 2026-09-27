@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   Hash,
   MessageSquare,
@@ -43,6 +43,8 @@ export default function CommsHubPage() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({});
+  const [isMessagesLoading, setIsMessagesLoading] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -57,6 +59,7 @@ export default function CommsHubPage() {
 
   const supabase = createClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const activeTargetRef = useRef<string>("");
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -118,9 +121,29 @@ export default function CommsHubPage() {
     init();
   }, []);
 
-  async function handleSelectDm(member: PublicProfile) {
+  const handleSelectChannel = (channelId: string) => {
+    if (activeView === "channel" && activeChannelId === channelId) return;
+
+    const targetKey = `ch_${channelId}`;
+    activeTargetRef.current = targetKey;
+    setActiveView("channel");
+    setActiveChannelId(channelId);
+
+    // Instant switch if in cache, otherwise clear messages and show sleek skeleton
+    if (messagesCache[targetKey]) {
+      setMessages(messagesCache[targetKey]);
+      setIsMessagesLoading(false);
+    } else {
+      setMessages([]);
+      setIsMessagesLoading(true);
+    }
+  };
+
+  const handleSelectDm = async (member: PublicProfile) => {
     setActiveDmUser(member);
     setActiveView("dm");
+    setMessages([]);
+    setIsMessagesLoading(true);
 
     try {
       const res = await fetch("/api/messages/thread", {
@@ -136,29 +159,60 @@ export default function CommsHubPage() {
 
       const { thread_id } = await res.json();
       setActiveThreadId(thread_id);
+
+      const targetKey = `dm_${thread_id}`;
+      activeTargetRef.current = targetKey;
+      if (messagesCache[targetKey]) {
+        setMessages(messagesCache[targetKey]);
+        setIsMessagesLoading(false);
+      }
     } catch (err) {
       console.error("Error setting up DM thread:", err);
+      setIsMessagesLoading(false);
     }
-  }
+  };
 
   // Load messages and subscribe to Realtime
   useEffect(() => {
     if (activeView === "channel" && activeChannelId) {
+      const currentTarget = `ch_${activeChannelId}`;
+      activeTargetRef.current = currentTarget;
+
+      // Check cache first to avoid stale cross-channel message leak
+      if (messagesCache[currentTarget]) {
+        setMessages(messagesCache[currentTarget]);
+        setIsMessagesLoading(false);
+      } else {
+        setMessages([]);
+        setIsMessagesLoading(true);
+      }
+
+      let isCancelled = false;
+
       const loadChannelMessages = async () => {
         try {
           const res = await fetch(`/api/messages?channel_id=${activeChannelId}`);
           if (res.ok) {
             const data = await res.json();
-            if (data.messages) {
-              setMessages(data.messages);
+            const fetched = data.messages || [];
+
+            setMessagesCache((prev) => ({ ...prev, [currentTarget]: fetched }));
+
+            // Prevent race condition: only update active UI if user is still on this channel
+            if (!isCancelled && activeTargetRef.current === currentTarget) {
+              setMessages(fetched);
+              setIsMessagesLoading(false);
               scrollToBottom();
             }
           }
         } catch (e) {
           console.warn("Error loading channel messages from API:", e);
+          if (!isCancelled && activeTargetRef.current === currentTarget) {
+            setIsMessagesLoading(false);
+          }
         }
 
-        if (currentUserId) {
+        if (currentUserId && !isCancelled) {
           await supabase.from("channel_reads").upsert({
             channel_id: activeChannelId,
             user_id: currentUserId,
@@ -188,22 +242,46 @@ export default function CommsHubPage() {
                 .eq("id", newRow.sender_id)
                 .maybeSingle();
 
-              setMessages((prev) => {
-                if (prev.some((m) => m.id === newRow.id)) return prev;
-                return [
-                  ...prev,
-                  { ...newRow, profiles: sender || { full_name: "Operator", role: "caller" } },
-                ];
+              const fullMsg: Message = {
+                ...newRow,
+                profiles: sender || { full_name: "Operator", role: "caller" },
+              };
+
+              setMessagesCache((prev) => {
+                const existing = prev[currentTarget] || [];
+                if (existing.some((m) => m.id === newRow.id)) return prev;
+                return { ...prev, [currentTarget]: [...existing, fullMsg] };
               });
-              scrollToBottom();
+
+              if (activeTargetRef.current === currentTarget) {
+                setMessages((prev) => {
+                  if (prev.some((m) => m.id === newRow.id)) return prev;
+                  return [...prev, fullMsg];
+                });
+                scrollToBottom();
+              }
             } else if (payload.eventType === "UPDATE") {
               const updatedRow = payload.new as any;
-              if (updatedRow.deleted_at) {
-                setMessages((prev) => prev.filter((m) => m.id !== updatedRow.id));
-              } else {
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === updatedRow.id ? { ...m, ...updatedRow } : m))
-                );
+
+              setMessagesCache((prev) => {
+                const existing = prev[currentTarget] || [];
+                if (updatedRow.deleted_at) {
+                  return { ...prev, [currentTarget]: existing.filter((m) => m.id !== updatedRow.id) };
+                }
+                return {
+                  ...prev,
+                  [currentTarget]: existing.map((m) => (m.id === updatedRow.id ? { ...m, ...updatedRow } : m)),
+                };
+              });
+
+              if (activeTargetRef.current === currentTarget) {
+                if (updatedRow.deleted_at) {
+                  setMessages((prev) => prev.filter((m) => m.id !== updatedRow.id));
+                } else {
+                  setMessages((prev) =>
+                    prev.map((m) => (m.id === updatedRow.id ? { ...m, ...updatedRow } : m))
+                  );
+                }
               }
             }
           }
@@ -211,21 +289,43 @@ export default function CommsHubPage() {
         .subscribe();
 
       return () => {
+        isCancelled = true;
         supabase.removeChannel(channelSub);
       };
     } else if (activeView === "dm" && activeThreadId) {
+      const currentTarget = `dm_${activeThreadId}`;
+      activeTargetRef.current = currentTarget;
+
+      if (messagesCache[currentTarget]) {
+        setMessages(messagesCache[currentTarget]);
+        setIsMessagesLoading(false);
+      } else {
+        setMessages([]);
+        setIsMessagesLoading(true);
+      }
+
+      let isCancelled = false;
+
       const loadDmMessages = async () => {
         try {
           const res = await fetch(`/api/messages?thread_id=${activeThreadId}`);
           if (res.ok) {
             const data = await res.json();
-            if (data.messages) {
-              setMessages(data.messages);
+            const fetched = data.messages || [];
+
+            setMessagesCache((prev) => ({ ...prev, [currentTarget]: fetched }));
+
+            if (!isCancelled && activeTargetRef.current === currentTarget) {
+              setMessages(fetched);
+              setIsMessagesLoading(false);
               scrollToBottom();
             }
           }
         } catch (e) {
           console.warn("Error loading DMs from API:", e);
+          if (!isCancelled && activeTargetRef.current === currentTarget) {
+            setIsMessagesLoading(false);
+          }
         }
       };
 
@@ -250,22 +350,46 @@ export default function CommsHubPage() {
                 .eq("id", newRow.sender_id)
                 .maybeSingle();
 
-              setMessages((prev) => {
-                if (prev.some((m) => m.id === newRow.id)) return prev;
-                return [
-                  ...prev,
-                  { ...newRow, profiles: sender || { full_name: "Operator", role: "caller" } },
-                ];
+              const fullMsg: Message = {
+                ...newRow,
+                profiles: sender || { full_name: "Operator", role: "caller" },
+              };
+
+              setMessagesCache((prev) => {
+                const existing = prev[currentTarget] || [];
+                if (existing.some((m) => m.id === newRow.id)) return prev;
+                return { ...prev, [currentTarget]: [...existing, fullMsg] };
               });
-              scrollToBottom();
+
+              if (activeTargetRef.current === currentTarget) {
+                setMessages((prev) => {
+                  if (prev.some((m) => m.id === newRow.id)) return prev;
+                  return [...prev, fullMsg];
+                });
+                scrollToBottom();
+              }
             } else if (payload.eventType === "UPDATE") {
               const updatedRow = payload.new as any;
-              if (updatedRow.deleted_at) {
-                setMessages((prev) => prev.filter((m) => m.id !== updatedRow.id));
-              } else {
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === updatedRow.id ? { ...m, ...updatedRow } : m))
-                );
+
+              setMessagesCache((prev) => {
+                const existing = prev[currentTarget] || [];
+                if (updatedRow.deleted_at) {
+                  return { ...prev, [currentTarget]: existing.filter((m) => m.id !== updatedRow.id) };
+                }
+                return {
+                  ...prev,
+                  [currentTarget]: existing.map((m) => (m.id === updatedRow.id ? { ...m, ...updatedRow } : m)),
+                };
+              });
+
+              if (activeTargetRef.current === currentTarget) {
+                if (updatedRow.deleted_at) {
+                  setMessages((prev) => prev.filter((m) => m.id !== updatedRow.id));
+                } else {
+                  setMessages((prev) =>
+                    prev.map((m) => (m.id === updatedRow.id ? { ...m, ...updatedRow } : m))
+                  );
+                }
               }
             }
           }
@@ -273,6 +397,7 @@ export default function CommsHubPage() {
         .subscribe();
 
       return () => {
+        isCancelled = true;
         supabase.removeChannel(dmSub);
       };
     }
@@ -285,6 +410,8 @@ export default function CommsHubPage() {
     setSending(true);
     const textToSend = newMessage.trim();
     setNewMessage("");
+
+    const currentTarget = activeView === "channel" ? `ch_${activeChannelId}` : `dm_${activeThreadId}`;
 
     try {
       const res = await fetch("/api/messages", {
@@ -306,6 +433,12 @@ export default function CommsHubPage() {
 
       const { message } = await res.json();
       if (message) {
+        setMessagesCache((prev) => {
+          const existing = prev[currentTarget] || [];
+          if (existing.some((m) => m.id === message.id)) return prev;
+          return { ...prev, [currentTarget]: [...existing, message] };
+        });
+
         setMessages((prev) => {
           if (prev.some((m) => m.id === message.id)) return prev;
           return [...prev, message];
@@ -315,18 +448,22 @@ export default function CommsHubPage() {
     } catch (err: any) {
       console.error("Message sending error:", err);
       // Fallback local display
-      setMessages((prev) => [
+      const fallbackMsg: Message = {
+        id: crypto.randomUUID(),
+        sender_id: currentUserId,
+        body: textToSend,
+        created_at: new Date().toISOString(),
+        edited_at: null,
+        deleted_at: null,
+        profiles: { full_name: "Muzammil (Owner)", role: "admin" },
+      };
+
+      setMessagesCache((prev) => ({
         ...prev,
-        {
-          id: crypto.randomUUID(),
-          sender_id: currentUserId,
-          body: textToSend,
-          created_at: new Date().toISOString(),
-          edited_at: null,
-          deleted_at: null,
-          profiles: { full_name: "Muzammil (Owner)", role: "admin" },
-        },
-      ]);
+        [currentTarget]: [...(prev[currentTarget] || []), fallbackMsg],
+      }));
+
+      setMessages((prev) => [...prev, fallbackMsg]);
       scrollToBottom();
     } finally {
       setSending(false);
@@ -335,6 +472,8 @@ export default function CommsHubPage() {
 
   async function handleSaveEdit(messageId: string) {
     if (!editText.trim()) return;
+    const currentTarget = activeView === "channel" ? `ch_${activeChannelId}` : `dm_${activeThreadId}`;
+
     try {
       const res = await fetch("/api/messages", {
         method: "PATCH",
@@ -347,6 +486,16 @@ export default function CommsHubPage() {
       });
 
       if (!res.ok) throw new Error("Failed to edit");
+
+      setMessagesCache((prev) => {
+        const existing = prev[currentTarget] || [];
+        return {
+          ...prev,
+          [currentTarget]: existing.map((m) =>
+            m.id === messageId ? { ...m, body: editText.trim(), edited_at: new Date().toISOString() } : m
+          ),
+        };
+      });
 
       setMessages((prev) =>
         prev.map((m) =>
@@ -361,6 +510,8 @@ export default function CommsHubPage() {
 
   async function handleDeleteMessage(messageId: string) {
     if (!confirm("Are you sure you want to delete this message?")) return;
+    const currentTarget = activeView === "channel" ? `ch_${activeChannelId}` : `dm_${activeThreadId}`;
+
     try {
       const res = await fetch("/api/messages", {
         method: "DELETE",
@@ -372,6 +523,14 @@ export default function CommsHubPage() {
       });
 
       if (!res.ok) throw new Error("Failed to delete");
+
+      setMessagesCache((prev) => {
+        const existing = prev[currentTarget] || [];
+        return {
+          ...prev,
+          [currentTarget]: existing.filter((m) => m.id !== messageId),
+        };
+      });
 
       setMessages((prev) => prev.filter((m) => m.id !== messageId));
     } catch (err: any) {
@@ -420,10 +579,7 @@ export default function CommsHubPage() {
               {channels.map((ch) => (
                 <button
                   key={ch.id}
-                  onClick={() => {
-                    setActiveChannelId(ch.id);
-                    setActiveView("channel");
-                  }}
+                  onClick={() => handleSelectChannel(ch.id)}
                   className={`w-full text-left px-3 py-2 rounded-2xl text-xs flex items-center gap-2.5 transition-all ${
                     activeView === "channel" && activeChannelId === ch.id
                       ? "bg-[#F95721] text-white font-semibold shadow-sm"
@@ -512,7 +668,26 @@ export default function CommsHubPage() {
           </div>
 
           {/* Feed */}
-          {messages.length === 0 ? (
+          {isMessagesLoading && messages.length === 0 ? (
+            <div className="flex-1 p-6 space-y-4 animate-pulse">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-start gap-3.5">
+                  <div className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] shrink-0" />
+                  <div className="flex-1 space-y-2 pt-1">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 w-24 bg-black/5 dark:bg-white/5 rounded" />
+                      <div className="h-2.5 w-12 bg-black/5 dark:bg-white/5 rounded" />
+                    </div>
+                    <div
+                      className={`h-3 bg-black/5 dark:bg-white/5 rounded ${
+                        i === 1 ? "w-2/3" : i === 2 ? "w-1/2" : "w-4/5"
+                      }`}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : messages.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-[#6E6B66] dark:text-[#8A8680]">
               <div className="w-10 h-10 rounded-full bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-center mb-3 text-[#F95721]">
                 {activeView === "channel" ? (
