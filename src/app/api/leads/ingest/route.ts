@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import crypto from "crypto";
 
 export async function POST(req: NextRequest) {
   try {
@@ -64,11 +65,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const leadsRaw = Array.isArray(body) ? body : body.leads ? body.leads : [body];
 
-    let insertedCount = 0;
-    let skippedDnc = 0;
-    let skippedDuplicates = 0;
     let invalidCount = 0;
+    const candidates: Array<{
+      lead: any;
+      rawPhone: string;
+      normalizedPhone: string;
+      phoneHash: string;
+    }> = [];
 
+    // Step 1: Pre-process and filter obvious invalids
     for (const lead of leadsRaw) {
       if (!lead.name || !lead.phone) {
         invalidCount++;
@@ -76,64 +81,103 @@ export async function POST(req: NextRequest) {
       }
 
       const rawPhone = String(lead.phone).trim();
+      const lowerPhone = rawPhone.toLowerCase();
 
-      // Reject non-phone text like "No Phone Number" or "N/A"
       if (
-        rawPhone.toLowerCase().includes("no phone") ||
-        rawPhone.toLowerCase().includes("n/a") ||
-        rawPhone.toLowerCase() === "null" ||
-        rawPhone.toLowerCase() === "undefined"
+        lowerPhone.includes("no phone") ||
+        lowerPhone.includes("n/a") ||
+        lowerPhone === "null" ||
+        lowerPhone === "undefined"
       ) {
         invalidCount++;
         continue;
       }
 
-      // Extract numeric digits
       const digitsOnly = rawPhone.replace(/\D/g, "");
       if (digitsOnly.length < 7) {
         invalidCount++;
         continue;
       }
 
-      // Smart normalization for Indian and international numbers
+      // Normalization
       let normalizedPhone = "";
       if (rawPhone.startsWith("+")) {
         normalizedPhone = "+" + digitsOnly;
       } else if (digitsOnly.length === 11 && digitsOnly.startsWith("0")) {
-        // e.g. 08983019136 -> +918983019136
         normalizedPhone = "+91" + digitsOnly.substring(1);
       } else if (digitsOnly.length === 10) {
-        // e.g. 8983019136 -> +918983019136
         normalizedPhone = "+91" + digitsOnly;
       } else if (digitsOnly.length === 12 && digitsOnly.startsWith("91")) {
-        // e.g. 918983019136 -> +918983019136
         normalizedPhone = "+" + digitsOnly;
       } else {
         normalizedPhone = rawPhone.startsWith("+") ? rawPhone : `+${digitsOnly}`;
       }
 
-      // Check DNC
-      const { data: isDnc } = await supabase.rpc("is_dnc", { p_phone: normalizedPhone });
-      if (isDnc) {
+      const phoneHash = crypto.createHash("sha256").update(normalizedPhone).digest("hex");
+
+      candidates.push({
+        lead,
+        rawPhone,
+        normalizedPhone,
+        phoneHash,
+      });
+    }
+
+    if (candidates.length === 0) {
+      return NextResponse.json({
+        message: "No valid lead candidates found in payload",
+        summary: {
+          total_received: leadsRaw.length,
+          inserted: 0,
+          skipped_dnc: 0,
+          skipped_duplicates: 0,
+          invalid: invalidCount,
+        },
+      });
+    }
+
+    // Step 2: Batch duplicate check in database
+    const allNormalized = Array.from(new Set(candidates.map((c) => c.normalizedPhone)));
+    const { data: existingRecords } = await supabase
+      .from("leads")
+      .select("normalized_phone")
+      .in("normalized_phone", allNormalized)
+      .is("deleted_at", null);
+
+    const existingPhoneSet = new Set(existingRecords?.map((r) => r.normalized_phone) || []);
+
+    // Step 3: Batch DNC check
+    const allHashes = Array.from(new Set(candidates.map((c) => c.phoneHash)));
+    const { data: dncRecords } = await supabase
+      .from("dnc_registry")
+      .select("phone_hash")
+      .in("phone_hash", allHashes);
+
+    const dncHashSet = new Set(dncRecords?.map((d) => d.phone_hash) || []);
+
+    // Step 4: Prepare batch insert rows (in-memory deduplication as well)
+    const seenInThisBatch = new Set<string>();
+    const rowsToInsert: any[] = [];
+    let skippedDuplicates = 0;
+    let skippedDnc = 0;
+
+    for (const item of candidates) {
+      const { lead, rawPhone, normalizedPhone, phoneHash } = item;
+
+      if (dncHashSet.has(phoneHash)) {
         skippedDnc++;
         continue;
       }
 
-      // Check duplicates (by normalized_phone)
-      const { data: existingLead } = await supabase
-        .from("leads")
-        .select("id")
-        .eq("normalized_phone", normalizedPhone)
-        .is("deleted_at", null)
-        .maybeSingle();
-
-      if (existingLead) {
+      if (existingPhoneSet.has(normalizedPhone) || seenInThisBatch.has(normalizedPhone)) {
         skippedDuplicates++;
         continue;
       }
 
-      // Smart Area fallback if area is generic but address has city
-      let area = (lead.area || "Mumbai").trim();
+      seenInThisBatch.add(normalizedPhone);
+
+      // Smart Area refinement
+      let area = (lead.area || "Pune").trim();
       const addr = (lead.address || "").toLowerCase();
       if (area.toLowerCase() === "mumbai" || area.toLowerCase() === "general") {
         if (addr.includes("kothrud")) area = "Kothrud, Pune";
@@ -148,11 +192,11 @@ export async function POST(req: NextRequest) {
         else if (addr.includes("bengaluru") || addr.includes("bangalore")) area = "Bengaluru";
       }
 
-      const niche = (lead.niche || "General").trim();
+      const niche = (lead.niche || "Dentist").trim();
       const hasWebsite = Boolean(lead.website && String(lead.website).trim().length > 0);
 
-      // Insert lead
-      const { error: insertError } = await supabase.from("leads").insert({
+      // NOTE: public.leads table does NOT have a 'source' column.
+      rowsToInsert.push({
         name: String(lead.name).trim(),
         phone: rawPhone,
         normalized_phone: normalizedPhone,
@@ -163,30 +207,30 @@ export async function POST(req: NextRequest) {
         area: area,
         score: typeof lead.score === "number" ? Math.min(100, Math.max(0, lead.score)) : 75,
         status: "unassigned",
-        source: source,
       });
-
-      if (!insertError) {
-        insertedCount++;
-      } else {
-        console.error("Lead insert error:", insertError);
-        invalidCount++;
-      }
     }
 
-    return NextResponse.json(
-      {
-        message: "Ingestion processed successfully",
-        summary: {
-          total_received: leadsRaw.length,
-          inserted: insertedCount,
-          skipped_dnc: skippedDnc,
-          skipped_duplicates: skippedDuplicates,
-          invalid: invalidCount,
-        },
+    // Step 5: Execute single high-performance batch insert
+    let insertedCount = 0;
+    if (rowsToInsert.length > 0) {
+      const { error: insertError } = await supabase.from("leads").insert(rowsToInsert);
+      if (insertError) {
+        console.error("Batch insert error:", insertError);
+        throw new Error(insertError.message || "Failed to insert lead batch into database");
+      }
+      insertedCount = rowsToInsert.length;
+    }
+
+    return NextResponse.json({
+      message: "Ingestion processed successfully",
+      summary: {
+        total_received: leadsRaw.length,
+        inserted: insertedCount,
+        skipped_dnc: skippedDnc,
+        skipped_duplicates: skippedDuplicates,
+        invalid: invalidCount,
       },
-      { status: 200 }
-    );
+    });
   } catch (err: any) {
     console.error("Ingestion endpoint exception:", err);
     return NextResponse.json({ error: err.message || "Failed to process lead batch" }, { status: 500 });
