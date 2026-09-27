@@ -31,6 +31,7 @@ interface InactiveCallerAlert {
   id: string;
   full_name: string;
   assigned_count: number;
+  idle_hours?: number;
 }
 
 interface PriorityLead {
@@ -45,6 +46,10 @@ interface PriorityLead {
 export default function ManagerDashboardPage() {
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [inactiveCallers, setInactiveCallers] = useState<InactiveCallerAlert[]>([]);
+  const [shiftInfo, setShiftInfo] = useState<{ isRecentShift: boolean; totalAssigned: number }>({
+    isRecentShift: false,
+    totalAssigned: 0,
+  });
   const [priorityLeads, setPriorityLeads] = useState<PriorityLead[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRedistributing, setIsRedistributing] = useState<string | null>(null);
@@ -73,7 +78,7 @@ export default function ManagerDashboardPage() {
         setHealth(sysHealth);
       }
 
-      // 2. Fetch today's calls count & connects
+      // 2. Fetch today's calls count & connects using valid lead_status outcomes
       const todayStr = new Date().toISOString().split("T")[0];
       const { count: callCount } = await supabase
         .from("calls")
@@ -84,7 +89,7 @@ export default function ManagerDashboardPage() {
         .from("calls")
         .select("*", { count: "exact", head: true })
         .gte("called_at", todayStr)
-        .in("disposition", ["interested", "callback", "connected", "dm_reached"]);
+        .in("outcome", ["interested", "callback", "dm_reached"]);
 
       // 3. Fetch Callers count
       const { count: callersCount } = await supabase
@@ -114,7 +119,8 @@ export default function ManagerDashboardPage() {
 
       setPriorityLeads(leadsData || []);
 
-      // 5. Inactive Callers detection
+      // 5. Intelligent Inactive Callers Detection:
+      // Respects real shift assignment times and avoids premature false alarms.
       const { data: callers } = await supabase
         .from("profiles")
         .select("id, full_name")
@@ -124,6 +130,9 @@ export default function ManagerDashboardPage() {
 
       if (callers && callers.length > 0) {
         const flagged: InactiveCallerAlert[] = [];
+        let totalAssignedShiftLeads = 0;
+        let recentBatchCount = 0;
+
         for (const c of callers) {
           const { count: dials } = await supabase
             .from("calls")
@@ -131,19 +140,43 @@ export default function ManagerDashboardPage() {
             .eq("caller_id", c.id)
             .gte("called_at", todayStr);
 
-          if (dials === 0) {
-            const { count: uncalled } = await supabase
-              .from("leads")
-              .select("*", { count: "exact", head: true })
-              .eq("assigned_to", c.id)
-              .eq("status", "assigned");
+          const { data: assignedLeads, count: uncalled } = await supabase
+            .from("leads")
+            .select("updated_at", { count: "exact" })
+            .eq("assigned_to", c.id)
+            .eq("status", "assigned")
+            .order("updated_at", { ascending: false })
+            .limit(1);
 
-            if (uncalled && uncalled > 0) {
-              flagged.push({ id: c.id, full_name: c.full_name, assigned_count: uncalled });
+          const uncalledCount = uncalled || 0;
+          totalAssignedShiftLeads += uncalledCount;
+
+          if (dials === 0 && uncalledCount > 0) {
+            const lastAssignedTime = assignedLeads?.[0]?.updated_at
+              ? new Date(assignedLeads[0].updated_at).getTime()
+              : 0;
+            const elapsedHours = (Date.now() - lastAssignedTime) / (1000 * 60 * 60);
+
+            // A caller is only flagged as inactive if their leads were assigned >= 2.5 hours ago
+            // and they still have made 0 dials. Newly assigned leads (< 2.5 hours) are actively in progress!
+            if (elapsedHours >= 2.5) {
+              flagged.push({
+                id: c.id,
+                full_name: c.full_name,
+                assigned_count: uncalledCount,
+                idle_hours: Math.floor(elapsedHours),
+              });
+            } else {
+              recentBatchCount++;
             }
           }
         }
+
         setInactiveCallers(flagged);
+        setShiftInfo({
+          isRecentShift: recentBatchCount > 0 && flagged.length === 0,
+          totalAssigned: totalAssignedShiftLeads,
+        });
       } else {
         setInactiveCallers([]);
       }
@@ -165,7 +198,7 @@ export default function ManagerDashboardPage() {
     try {
       const { error } = await supabase.rpc("redistribute_caller_leads", {
         p_inactive_caller_id: callerId,
-        p_reason: "caller_inactive_10am_manager_click",
+        p_reason: "caller_inactive_manager_redistribute",
       });
       if (error) throw error;
       setRedistributeSuccess(`Successfully redistributed leads from ${callerName} to active operators.`);
@@ -183,7 +216,7 @@ export default function ManagerDashboardPage() {
 
   return (
     <div className="space-y-8">
-      {/* 1. Hero Header (Matches Images 1 & 2) */}
+      {/* 1. Hero Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
         <div>
           <span className="text-[11px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
@@ -206,7 +239,7 @@ export default function ManagerDashboardPage() {
         </Link>
       </div>
 
-      {/* 2. Middle Row: 2-Column Workspace Cards (Matches Images 1 & 2) */}
+      {/* 2. Middle Row: 2-Column Workspace Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Card: Active Priority Dial Queue */}
         <div className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-6 shadow-sm flex flex-col justify-between min-h-[340px]">
@@ -297,12 +330,18 @@ export default function ManagerDashboardPage() {
                   Needs your attention
                 </h3>
               </div>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-[#F95721]/10 text-[#F95721] font-semibold border border-[#F95721]/20">
+              <span
+                className={`text-[11px] font-mono px-2 py-0.5 rounded-full font-semibold border ${
+                  inactiveCallers.length > 0
+                    ? "bg-[#F95721]/10 text-[#F95721] border-[#F95721]/20"
+                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                }`}
+              >
                 {inactiveCallers.length > 0 ? `${inactiveCallers.length} Alert` : "Optimal"}
               </span>
             </div>
 
-            {/* Amber / Peach Tinted Banner Alert */}
+            {/* Inactive Alert Banners or Shift In-Progress Status */}
             <div className="mt-4 space-y-3">
               {inactiveCallers.length > 0 ? (
                 inactiveCallers.map((caller) => (
@@ -312,7 +351,7 @@ export default function ManagerDashboardPage() {
                   >
                     <div>
                       <p className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
-                        {caller.full_name} has 0 dials as of 10:00 AM
+                        {caller.full_name} has 0 dials after {caller.idle_hours || 2}h of assignment
                       </p>
                       <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
                         {caller.assigned_count} uncalled leads waiting for redistribution.
@@ -333,6 +372,18 @@ export default function ManagerDashboardPage() {
                     </button>
                   </div>
                 ))
+              ) : shiftInfo.isRecentShift ? (
+                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                  <div className="text-xs">
+                    <p className="font-bold text-[#111110] dark:text-[#F5F3EF]">
+                      Outbound shift active & armed
+                    </p>
+                    <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
+                      {shiftInfo.totalAssigned} leads distributed across {totalCallersCount} active operator{totalCallersCount > 1 ? "s" : ""}. Zero idle queues detected.
+                    </p>
+                  </div>
+                </div>
               ) : totalCallersCount === 0 ? (
                 <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
@@ -371,14 +422,14 @@ export default function ManagerDashboardPage() {
                     Infrastructure Quota ($0 Budget Guard)
                   </span>
                   <span className="font-mono text-[11px] text-[#F95721] font-bold">
-                    {health?.db_size_mb || 28.4} MB / 500 MB
+                    {health?.db_size_mb || 12.71} MB / 500 MB
                   </span>
                 </div>
                 <div className="h-2 w-full bg-black/10 dark:bg-white/10 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-[#F95721] rounded-full transition-all duration-500"
                     style={{
-                      width: `${Math.min(100, (((health?.db_size_mb || 28.4) / 500) * 100))}%`,
+                      width: `${Math.min(100, (((health?.db_size_mb || 12.71) / 500) * 100))}%`,
                     }}
                   />
                 </div>
@@ -398,7 +449,7 @@ export default function ManagerDashboardPage() {
           )}
 
           <div className="pt-4 border-t border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between text-[11px] text-[#6E6B66] dark:text-[#8A8680]">
-            <span>Automated pg_cron check: 10:00 AM IST</span>
+            <span>Automated pg_cron monitoring active (06:00 AM & 10:00 AM IST)</span>
             <Link href="/manager/ingestion" className="text-[#F95721] font-semibold hover:underline">
               Import leads CSV &rarr;
             </Link>
@@ -406,7 +457,7 @@ export default function ManagerDashboardPage() {
         </div>
       </div>
 
-      {/* 3. Bottom Stat Metrics Grid (5 Rounded Cards Matching Images 1 & 2) */}
+      {/* 3. Bottom Stat Metrics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         {/* Metric Card 1 */}
         <div className="p-5 rounded-2xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
