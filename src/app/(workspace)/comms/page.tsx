@@ -77,20 +77,6 @@ export default function CommsHubPage() {
 
         if (user) {
           resolvedUid = user.id;
-        } else {
-          // Check preview demo role
-          const match = document.cookie.match(new RegExp("(^| )agency_demo_role=([^;]+)"));
-          const demoRole = match ? match[2] : null;
-          if (demoRole) {
-            const { data: profile } = await supabase
-              .from("profiles_public")
-              .select("id")
-              .eq("role", demoRole === "manager" ? "admin" : demoRole)
-              .limit(1)
-              .maybeSingle();
-
-            if (profile) resolvedUid = profile.id;
-          }
         }
       } catch (err) {
         console.warn("User resolution warning:", err);

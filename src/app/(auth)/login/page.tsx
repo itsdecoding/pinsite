@@ -32,7 +32,7 @@ function LoginForm() {
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim().toLowerCase(),
         password,
       });
 
@@ -51,7 +51,7 @@ function LoginForm() {
       else if (role === "developer") router.push("/projects");
       else router.push("/dashboard");
     } catch (err: any) {
-      setErrorMsg(err.message || "Failed to log in.");
+      setErrorMsg(err.message || "Invalid email or password.");
       setIsLoading(false);
     }
   }
@@ -132,7 +132,7 @@ function LoginForm() {
       </form>
 
       {/* Invite onboarding prompt */}
-      <div className="mt-4 pt-4 border-t border-border-subtle flex items-center justify-between text-xs">
+      <div className="mt-6 pt-5 border-t border-border-subtle flex items-center justify-between text-xs">
         <span className="text-text-muted flex items-center gap-1.5">
           <KeyRound className="w-3.5 h-3.5 text-accent-primary" />
           Received an invitation?
@@ -143,66 +143,6 @@ function LoginForm() {
         >
           Activate Seat <ArrowRight className="w-3 h-3" />
         </Link>
-      </div>
-
-      {/* Quick Local Preview Mode */}
-      <div className="mt-6 pt-5 border-t border-border-subtle">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-[11px] font-mono uppercase tracking-wider text-accent-primary flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent-primary animate-ping" />
-            Instant Local Preview
-          </span>
-          <span className="text-[10px] text-text-muted font-mono">1-Click Access</span>
-        </div>
-
-        <p className="text-[11px] text-text-secondary mb-3 leading-relaxed">
-          Testing on localhost? Click any role below to enter the workspace immediately:
-        </p>
-
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              document.cookie = "agency_demo_role=manager; path=/; max-age=86400; SameSite=Lax";
-              router.push("/dashboard");
-            }}
-            className="py-2.5 px-2 bg-background-elevated hover:bg-background-surface border border-border-subtle hover:border-accent-primary text-text-primary text-[11px] font-medium rounded-md transition-all text-center flex flex-col items-center gap-1 shadow-sm"
-          >
-            <span className="text-sm">👑</span>
-            <span className="font-semibold text-accent-primary">Manager</span>
-            <span className="text-[9px] text-text-muted">Command Ctr</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              document.cookie = "agency_demo_role=caller; path=/; max-age=86400; SameSite=Lax";
-              router.push("/queue");
-            }}
-            className="py-2.5 px-2 bg-background-elevated hover:bg-background-surface border border-border-subtle hover:border-accent-primary text-text-primary text-[11px] font-medium rounded-md transition-all text-center flex flex-col items-center gap-1 shadow-sm"
-          >
-            <span className="text-sm">📞</span>
-            <span className="font-semibold text-accent-primary">Caller</span>
-            <span className="text-[9px] text-text-muted">Dial Queue</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              document.cookie = "agency_demo_role=developer; path=/; max-age=86400; SameSite=Lax";
-              router.push("/projects");
-            }}
-            className="py-2.5 px-2 bg-background-elevated hover:bg-background-surface border border-border-subtle hover:border-accent-primary text-text-primary text-[11px] font-medium rounded-md transition-all text-center flex flex-col items-center gap-1 shadow-sm"
-          >
-            <span className="text-sm">💻</span>
-            <span className="font-semibold text-accent-primary">Developer</span>
-            <span className="text-[9px] text-text-muted">Kanban Board</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-5 pt-4 border-t border-border-subtle text-center">
-        <p className="text-[11px] text-text-muted">
-          For production: set your <code className="text-accent-primary text-[10px]">.env.local</code> Supabase keys and create your admin account.
-        </p>
       </div>
     </div>
   );

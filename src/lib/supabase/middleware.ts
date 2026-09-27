@@ -27,21 +27,20 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const demoRole = request.cookies.get("agency_demo_role")?.value;
   const pathname = request.nextUrl.pathname;
   const token = request.nextUrl.searchParams.get("token");
 
-  // 1. If user navigates to /login or root with an invite token, seamlessly forward to /signup
+  // 1. If user navigates to /login or root with an invite token, forward to /signup
   if ((pathname === "/login" || pathname === "/") && token) {
     const url = request.nextUrl.clone();
     url.pathname = "/signup";
     const redirectRes = NextResponse.redirect(url);
-    // Clear demo role cookie so invited user can register fresh
+    // Delete any obsolete demo cookie if present
     redirectRes.cookies.set("agency_demo_role", "", { maxAge: 0, path: "/" });
     return redirectRes;
   }
 
-  // 2. If user is on /signup with a token, always let them view signup page (do not redirect away)
+  // 2. If user is on /signup with a token, let them proceed to registration
   if (pathname.startsWith("/signup") && token) {
     supabaseResponse.cookies.set("agency_demo_role", "", { maxAge: 0, path: "/" });
     return supabaseResponse;
@@ -54,47 +53,23 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/api") ||
     pathname === "/";
 
-  // Demo mode support for local previews
-  if (demoRole) {
-    const role = demoRole;
-    if (pathname === "/" || pathname === "/login" || (pathname === "/signup" && !token)) {
-      const url = request.nextUrl.clone();
-      if (role === "caller") url.pathname = "/queue";
-      else if (role === "developer") url.pathname = "/projects";
-      else url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
-    }
-
-    if (role === "caller" && (pathname.startsWith("/dashboard") || pathname.startsWith("/projects") || pathname.startsWith("/manager"))) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/unauthorized";
-      return NextResponse.redirect(url);
-    }
-
-    if (role === "developer" && (pathname.startsWith("/dashboard") || pathname.startsWith("/queue") || pathname.startsWith("/manager"))) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/unauthorized";
-      return NextResponse.redirect(url);
-    }
-
-    return supabaseResponse;
-  }
-
+  // 3. Authenticate against real Supabase session (NO demo mode bypass)
   let user = null;
   try {
     const { data } = await supabase.auth.getUser();
     user = data.user;
   } catch (err) {
-    // If Supabase credentials are placeholder or network fails
     user = null;
   }
 
+  // If not authenticated and trying to access protected workspace routes, redirect strictly to login
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
+  // If authenticated user is on public routes (login/signup without token), redirect to their workspace
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
@@ -104,7 +79,6 @@ export async function updateSession(request: NextRequest) {
 
     const role = profile?.role || "caller";
 
-    // If on root or login/signup, redirect to default landing for role (unless validating an invite token)
     if (pathname === "/" || pathname === "/login" || (pathname === "/signup" && !token)) {
       const url = request.nextUrl.clone();
       if (role === "caller") url.pathname = "/queue";
@@ -113,7 +87,7 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // Role-based protection:
+    // Role-based authorization boundaries:
     // Callers: can access /queue, /comms, /me. Blocked from /dashboard, /projects, /manager
     if (role === "caller") {
       if (

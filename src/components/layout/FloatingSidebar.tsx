@@ -28,22 +28,6 @@ export function FloatingSidebar() {
 
   useEffect(() => {
     async function loadUser() {
-      // Check for local preview demo mode cookie
-      const match = document.cookie.match(new RegExp("(^| )agency_demo_role=([^;]+)"));
-      const demoRole = match ? match[2] : null;
-      if (demoRole) {
-        setProfile({
-          full_name:
-            demoRole === "manager"
-              ? "Muzammil (Owner)"
-              : demoRole === "caller"
-              ? "Lead Caller (Operator)"
-              : "Lead Dev (Full-Stack)",
-          role: demoRole,
-        });
-        return;
-      }
-
       try {
         const {
           data: { user },
