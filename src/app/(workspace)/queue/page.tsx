@@ -24,6 +24,7 @@ import {
   Layers,
   RefreshCw,
   ExternalLink,
+  ChevronDown,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { EntityComments } from "@/components/comms/EntityComments";
@@ -50,6 +51,12 @@ interface Lead {
   } | null;
 }
 
+interface CallerInfo {
+  id: string;
+  full_name: string;
+  lead_count: number;
+}
+
 const OUTCOMES = [
   { key: "1", label: "No Answer", value: "no_answer" },
   { key: "2", label: "Gatekeeper", value: "gatekeeper" },
@@ -60,7 +67,7 @@ const OUTCOMES = [
   { key: "7", label: "Not Interested", value: "not_interested" },
 ];
 
-type QueueScope = "all" | "unassigned" | "assigned" | "mine";
+type QueueScope = "all" | "unassigned" | "assigned" | "mine" | string;
 
 export default function CallerQueuePage() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -80,6 +87,8 @@ export default function CallerQueuePage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [queueScope, setQueueScope] = useState<QueueScope>("all");
   const [isClaiming, setIsClaiming] = useState(false);
+  const [callersList, setCallersList] = useState<CallerInfo[]>([]);
+  const [isReassigning, setIsReassigning] = useState(false);
 
   const supabase = createClient();
   const notesInputRef = useRef<HTMLTextAreaElement>(null);
@@ -156,9 +165,41 @@ export default function CallerQueuePage() {
 
         setUnassignedPoolCount(unassignedCount || 0);
 
+        // 3. For Managers/Admins: Fetch active callers list and count their assigned leads
+        if (role === "admin" || role === "manager") {
+          const { data: callers } = await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .eq("role", "caller")
+            .eq("active", true)
+            .order("full_name", { ascending: true });
+
+          const { data: assignedLeadsData } = await supabase
+            .from("leads")
+            .select("assigned_to")
+            .is("deleted_at", null)
+            .not("status", "in", '("closed_won","closed_lost","dnc")')
+            .not("assigned_to", "is", null);
+
+          const counts: Record<string, number> = {};
+          (assignedLeadsData || []).forEach((l) => {
+            if (l.assigned_to) {
+              counts[l.assigned_to] = (counts[l.assigned_to] || 0) + 1;
+            }
+          });
+
+          setCallersList(
+            (callers || []).map((c) => ({
+              id: c.id,
+              full_name: c.full_name,
+              lead_count: counts[c.id] || 0,
+            }))
+          );
+        }
+
         const activeScope = scopeOverride || queueScope;
 
-        // 3. Build query based on role and scope
+        // 4. Build query based on role and scope
         let query = supabase
           .from("leads")
           .select("*, profiles:assigned_to(full_name)")
@@ -169,13 +210,16 @@ export default function CallerQueuePage() {
           // Callers only see their assigned leads
           query = query.eq("assigned_to", user.id);
         } else {
-          // Admins & Managers can toggle scopes:
+          // Admins & Managers can filter by All, Unassigned, Assigned, My Queue, or a Specific Caller
           if (activeScope === "mine") {
             query = query.eq("assigned_to", user.id);
           } else if (activeScope === "unassigned") {
             query = query.is("assigned_to", null);
           } else if (activeScope === "assigned") {
             query = query.not("assigned_to", "is", null);
+          } else if (activeScope.startsWith("caller_")) {
+            const specificCallerId = activeScope.replace("caller_", "");
+            query = query.eq("assigned_to", specificCallerId);
           }
           // 'all' doesn't restrict assigned_to
         }
@@ -247,6 +291,44 @@ export default function CallerQueuePage() {
     }
   };
 
+  const handleReassignLead = async (leadId: string, newCallerId: string) => {
+    setIsReassigning(true);
+    try {
+      const res = await fetch("/api/queue/reassign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lead_id: leadId,
+          caller_id: newCallerId || null,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to reassign lead");
+
+      // Update lead in memory
+      const targetCaller = callersList.find((c) => c.id === newCallerId);
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === leadId
+            ? {
+                ...l,
+                assigned_to: newCallerId || null,
+                profiles: targetCaller ? { full_name: targetCaller.full_name } : null,
+              }
+            : l
+        )
+      );
+
+      // Refresh stats
+      await loadLeads();
+    } catch (err: any) {
+      alert(`Reassign error: ${err.message}`);
+    } finally {
+      setIsReassigning(false);
+    }
+  };
+
   const currentLead = leads[activeLeadIndex] || null;
 
   const handleStartCall = () => {
@@ -315,7 +397,7 @@ export default function CallerQueuePage() {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement;
-      if (target.tagName === "TEXTAREA" || target.tagName === "INPUT") {
+      if (target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.tagName === "SELECT") {
         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
           e.preventDefault();
           handleSubmitOutcome();
@@ -355,6 +437,17 @@ export default function CallerQueuePage() {
   }
 
   const isManagement = userRole === "admin" || userRole === "manager";
+
+  // Label for active filter scope
+  let activeScopeLabel = "All Active Leads";
+  if (queueScope === "unassigned") activeScopeLabel = "Unassigned Pool";
+  else if (queueScope === "assigned") activeScopeLabel = "All Assigned Leads";
+  else if (queueScope === "mine") activeScopeLabel = "My Assigned Queue";
+  else if (queueScope.startsWith("caller_")) {
+    const callerId = queueScope.replace("caller_", "");
+    const caller = callersList.find((c) => c.id === callerId);
+    activeScopeLabel = caller ? `${caller.full_name}'s Queue` : "Caller Queue";
+  }
 
   return (
     <div className="space-y-8">
@@ -409,9 +502,9 @@ export default function CallerQueuePage() {
         </div>
       </div>
 
-      {/* Scope Filter Switcher for Managers / Admins */}
+      {/* Scope Filter Switcher for Managers / Admins: Filter by All, Unassigned, or Specific Callers */}
       {isManagement && (
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs no-scrollbar">
           <span className="text-[11px] font-mono uppercase text-[#6E6B66] dark:text-[#8A8680] mr-1 shrink-0">
             Deck Scope:
           </span>
@@ -428,17 +521,6 @@ export default function CallerQueuePage() {
           </button>
 
           <button
-            onClick={() => handleScopeChange("assigned")}
-            className={`px-3.5 py-1.5 rounded-full font-semibold transition-all shrink-0 ${
-              queueScope === "assigned"
-                ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110] shadow-sm"
-                : "bg-white dark:bg-[#1C1A17] text-[#6E6B66] dark:text-[#8A8680] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50"
-            }`}
-          >
-            Assigned to Callers ({(totalPoolCount ?? 0) - unassignedPoolCount})
-          </button>
-
-          <button
             onClick={() => handleScopeChange("unassigned")}
             className={`px-3.5 py-1.5 rounded-full font-semibold transition-all shrink-0 ${
               queueScope === "unassigned"
@@ -449,6 +531,38 @@ export default function CallerQueuePage() {
             Unassigned Pool ({unassignedPoolCount})
           </button>
 
+          <span className="w-px h-4 bg-[#ECE8E1] dark:border-[#2D2924] shrink-0" />
+
+          {/* Dynamic Caller Filter Pills */}
+          {callersList.map((caller) => {
+            const isSelected = queueScope === `caller_${caller.id}`;
+            return (
+              <button
+                key={caller.id}
+                onClick={() => handleScopeChange(`caller_${caller.id}`)}
+                className={`px-3 py-1.5 rounded-full font-semibold transition-all shrink-0 flex items-center gap-1.5 ${
+                  isSelected
+                    ? "bg-[#F95721] text-white shadow-sm"
+                    : "bg-white dark:bg-[#1C1A17] text-[#6E6B66] dark:text-[#8A8680] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50"
+                }`}
+              >
+                <User className="w-3 h-3 shrink-0" />
+                <span>{caller.full_name}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                    isSelected
+                      ? "bg-white/20 text-white"
+                      : "bg-black/5 dark:bg-white/10 text-[#6E6B66] dark:text-[#8A8680]"
+                  }`}
+                >
+                  {caller.lead_count}
+                </span>
+              </button>
+            );
+          })}
+
+          <span className="w-px h-4 bg-[#ECE8E1] dark:border-[#2D2924] shrink-0" />
+
           <button
             onClick={() => handleScopeChange("mine")}
             className={`px-3.5 py-1.5 rounded-full font-semibold transition-all shrink-0 ${
@@ -457,7 +571,7 @@ export default function CallerQueuePage() {
                 : "bg-white dark:bg-[#1C1A17] text-[#6E6B66] dark:text-[#8A8680] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50"
             }`}
           >
-            My Assigned Queue
+            My Queue
           </button>
         </div>
       )}
@@ -485,7 +599,7 @@ export default function CallerQueuePage() {
           <div className="p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
             <Layers className="w-12 h-12 text-[#6E6B66] dark:text-[#8A8680] mx-auto mb-3" />
             <h2 className="text-lg font-bold text-[#111110] dark:text-[#F5F3EF]">
-              No leads in {queueScope === "mine" ? "your personal queue" : `${queueScope} view`}
+              No leads in {activeScopeLabel}
             </h2>
             <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1 max-w-sm mx-auto">
               There are {totalPoolCount} active leads in the master agency deck waiting to be dialed.
@@ -536,23 +650,70 @@ export default function CallerQueuePage() {
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924]">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-mono uppercase tracking-wider text-[#F95721] font-bold">
                     Lead #{activeLeadIndex + 1} of {leads.length}
                   </span>
+
                   {currentLead.assigned_to ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[10px] font-medium text-[#6E6B66] dark:text-[#8A8680]">
-                      <User className="w-3 h-3 text-[#F95721]" />
-                      <span>
-                        {currentLead.assigned_to === currentUserId
-                          ? "Assigned to You"
-                          : `Assigned: ${currentLead.profiles?.full_name || "Caller"}`}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[11px] font-medium text-[#111110] dark:text-[#F5F3EF]">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                        <span>Assigned to:</span>
+                        <strong className="text-[#F95721] font-semibold">
+                          {currentLead.assigned_to === currentUserId
+                            ? "You (Admin)"
+                            : currentLead.profiles?.full_name || "Caller"}
+                        </strong>
                       </span>
-                    </span>
+
+                      {/* Quick Reassign Dropdown for Management */}
+                      {isManagement && (
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={currentLead.assigned_to || ""}
+                            onChange={(e) => handleReassignLead(currentLead.id, e.target.value)}
+                            disabled={isReassigning}
+                            className="text-[10px] font-semibold py-1 px-2.5 rounded-full bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:border-[#F95721]/50 outline-none cursor-pointer"
+                          >
+                            <option value={currentLead.assigned_to}>Reassign lead...</option>
+                            <option value="">&rarr; Unassign to Pool</option>
+                            {callersList.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                &rarr; {c.full_name} ({c.lead_count} leads)
+                              </option>
+                            ))}
+                          </select>
+                          {isReassigning && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F95721]" />}
+                        </div>
+                      )}
+                    </div>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
-                      <span>Unassigned Pool</span>
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-bold">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Unassigned Pool</span>
+                      </span>
+
+                      {isManagement && (
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            defaultValue=""
+                            onChange={(e) => handleReassignLead(currentLead.id, e.target.value)}
+                            disabled={isReassigning}
+                            className="text-[10px] font-semibold py-1 px-2.5 rounded-full bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:border-[#F95721]/50 outline-none cursor-pointer"
+                          >
+                            <option value="" disabled>Assign to caller...</option>
+                            {callersList.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                &rarr; Assign to {c.full_name} ({c.lead_count} leads)
+                              </option>
+                            ))}
+                          </select>
+                          {isReassigning && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F95721]" />}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -654,6 +815,7 @@ export default function CallerQueuePage() {
               </span>
             </div>
 
+            {/* Leads List with explicit Caller Ownership Badges */}
             <div className="flex-1 overflow-y-auto divide-y divide-[#ECE8E1]/60 dark:divide-[#2D2924]/60 mt-2 pr-1">
               {leads.map((lead, idx) => (
                 <button
@@ -665,13 +827,26 @@ export default function CallerQueuePage() {
                       : "hover:bg-black/5 dark:hover:bg-white/5"
                   }`}
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs text-[#111110] dark:text-[#F5F3EF] truncate font-bold">
                       {lead.name}
                     </p>
-                    <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] truncate mt-0.5">
-                      {lead.niche} • {lead.area}
-                    </p>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] truncate">
+                        {lead.niche} • {lead.area}
+                      </span>
+                      <span className="text-[10px] text-[#6E6B66] dark:text-[#8A8680]">•</span>
+                      {lead.assigned_to ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#F95721]/10 text-[#F95721] font-mono text-[9px] font-bold">
+                          <User className="w-2.5 h-2.5" />
+                          <span>{lead.profiles?.full_name || "Caller"}</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[9px] font-bold">
+                          Unassigned
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <span className="text-xs font-mono font-bold text-[#F95721] shrink-0">
