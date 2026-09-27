@@ -19,6 +19,11 @@ import {
   MessageSquare,
   Wifi,
   WifiOff,
+  User,
+  Users,
+  Layers,
+  RefreshCw,
+  ExternalLink,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { EntityComments } from "@/components/comms/EntityComments";
@@ -36,9 +41,13 @@ interface Lead {
   area: string;
   score: number;
   status: string;
+  assigned_to: string | null;
   attempts_count: number;
   next_callback_at: string | null;
   last_called_at: string | null;
+  profiles?: {
+    full_name: string;
+  } | null;
 }
 
 const OUTCOMES = [
@@ -51,9 +60,12 @@ const OUTCOMES = [
   { key: "7", label: "Not Interested", value: "not_interested" },
 ];
 
+type QueueScope = "all" | "unassigned" | "assigned" | "mine";
+
 export default function CallerQueuePage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [totalPoolCount, setTotalPoolCount] = useState<number | null>(null);
+  const [unassignedPoolCount, setUnassignedPoolCount] = useState<number>(0);
   const [activeLeadIndex, setActiveLeadIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -64,71 +76,176 @@ export default function CallerQueuePage() {
   const [callbackDateTime, setCallbackDateTime] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  const [userRole, setUserRole] = useState<string>("caller");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [queueScope, setQueueScope] = useState<QueueScope>("all");
+  const [isClaiming, setIsClaiming] = useState(false);
 
   const supabase = createClient();
   const notesInputRef = useRef<HTMLTextAreaElement>(null);
 
-  const loadLeads = useCallback(async () => {
-    setLoading(true);
+  // Sync offline queue when network reconnects
+  const syncOfflineQueue = useCallback(async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const offlineQueue = (await get("offline_call_queue")) || [];
+      if (!Array.isArray(offlineQueue) || offlineQueue.length === 0) return;
 
-      if (!user) {
+      const remainingQueue = [];
+      for (const item of offlineQueue) {
+        try {
+          const res = await fetch("/api/queue/outcome", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(item),
+          });
+          if (!res.ok) {
+            remainingQueue.push(item);
+          }
+        } catch {
+          remainingQueue.push(item);
+        }
+      }
+      await set("offline_call_queue", remainingQueue);
+    } catch (err) {
+      console.warn("Failed to sync offline queue:", err);
+    }
+  }, []);
+
+  const loadLeads = useCallback(
+    async (scopeOverride?: QueueScope) => {
+      setLoading(true);
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          const cached = await get("cached_leads");
+          if (cached && Array.isArray(cached)) setLeads(cached);
+          setLoading(false);
+          return;
+        }
+
+        setCurrentUserId(user.id);
+
+        // 1. Fetch user role
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role, full_name")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        const role = profile?.role || "caller";
+        setUserRole(role);
+
+        // 2. Check total pool & unassigned counts
+        const { count: poolCount } = await supabase
+          .from("leads")
+          .select("*", { count: "exact", head: true })
+          .is("deleted_at", null)
+          .not("status", "in", '("closed_won","closed_lost","dnc")');
+
+        setTotalPoolCount(poolCount || 0);
+
+        const { count: unassignedCount } = await supabase
+          .from("leads")
+          .select("*", { count: "exact", head: true })
+          .is("deleted_at", null)
+          .is("assigned_to", null)
+          .not("status", "in", '("closed_won","closed_lost","dnc")');
+
+        setUnassignedPoolCount(unassignedCount || 0);
+
+        const activeScope = scopeOverride || queueScope;
+
+        // 3. Build query based on role and scope
+        let query = supabase
+          .from("leads")
+          .select("*, profiles:assigned_to(full_name)")
+          .is("deleted_at", null)
+          .not("status", "in", '("closed_won","closed_lost","dnc")');
+
+        if (role === "caller") {
+          // Callers only see their assigned leads
+          query = query.eq("assigned_to", user.id);
+        } else {
+          // Admins & Managers can toggle scopes:
+          if (activeScope === "mine") {
+            query = query.eq("assigned_to", user.id);
+          } else if (activeScope === "unassigned") {
+            query = query.is("assigned_to", null);
+          } else if (activeScope === "assigned") {
+            query = query.not("assigned_to", "is", null);
+          }
+          // 'all' doesn't restrict assigned_to
+        }
+
+        query = query
+          .order("next_callback_at", { ascending: true, nullsFirst: false })
+          .order("score", { ascending: false });
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          setLeads(data);
+          setActiveLeadIndex(0);
+          await set("cached_leads", data);
+        } else {
+          setLeads([]);
+        }
+      } catch (err: any) {
+        console.warn("Fallback to offline cache:", err);
         const cached = await get("cached_leads");
         if (cached && Array.isArray(cached)) setLeads(cached);
+      } finally {
         setLoading(false);
-        return;
       }
-
-      // 1. Check total unassigned/assigned pool in the database
-      const { count: poolCount } = await supabase
-        .from("leads")
-        .select("*", { count: "exact", head: true })
-        .is("deleted_at", null);
-
-      setTotalPoolCount(poolCount || 0);
-
-      // 2. Fetch leads assigned to current caller
-      const { data, error } = await supabase
-        .from("leads")
-        .select("*")
-        .eq("assigned_to", user.id)
-        .is("deleted_at", null)
-        .not("status", "in", '("closed_won","closed_lost","dnc")')
-        .order("next_callback_at", { ascending: true, nullsFirst: false })
-        .order("score", { ascending: false });
-
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        setLeads(data);
-        await set("cached_leads", data);
-      } else {
-        setLeads([]);
-      }
-    } catch (err: any) {
-      console.warn("Fallback to offline cache:", err);
-      const cached = await get("cached_leads");
-      if (cached && Array.isArray(cached)) setLeads(cached);
-    } finally {
-      setLoading(false);
-    }
-  }, [supabase]);
+    },
+    [supabase, queueScope]
+  );
 
   useEffect(() => {
     loadLeads();
-    const handleOnline = () => setIsOnline(true);
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      syncOfflineQueue();
+    };
     const handleOffline = () => setIsOnline(false);
+
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     setIsOnline(navigator.onLine);
+
+    if (navigator.onLine) {
+      syncOfflineQueue();
+    }
+
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [loadLeads]);
+  }, [loadLeads, syncOfflineQueue]);
+
+  const handleScopeChange = (newScope: QueueScope) => {
+    setQueueScope(newScope);
+    loadLeads(newScope);
+  };
+
+  const handleClaimLeads = async () => {
+    setIsClaiming(true);
+    try {
+      const res = await fetch("/api/queue/claim", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to claim leads");
+      await loadLeads();
+    } catch (err: any) {
+      alert(`Claim error: ${err.message}`);
+    } finally {
+      setIsClaiming(false);
+    }
+  };
 
   const currentLead = leads[activeLeadIndex] || null;
 
@@ -148,6 +265,7 @@ export default function CallerQueuePage() {
 
     setIsSubmitting(true);
     const duration = callStartTime ? Math.round((Date.now() - callStartTime) / 1000) : 0;
+    const clientOfflineId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : undefined;
 
     const payload = {
       p_lead_id: currentLead.id,
@@ -155,11 +273,18 @@ export default function CallerQueuePage() {
       p_callback_at: selectedOutcome === "callback" && callbackDateTime ? callbackDateTime : null,
       p_notes: callNotes.trim() || null,
       p_duration_seconds: duration,
+      p_client_offline_id: clientOfflineId,
     };
 
     try {
       if (isOnline) {
-        await supabase.rpc("caller_update_lead", payload);
+        const res = await fetch("/api/queue/outcome", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Failed to log call outcome");
       } else {
         const queue = (await get("offline_call_queue")) || [];
         queue.push({ ...payload, timestamp: new Date().toISOString() });
@@ -171,7 +296,15 @@ export default function CallerQueuePage() {
         setCallActive(false);
         setCallStartTime(null);
         setIsSubmitting(false);
-        setLeads((prev) => prev.filter((_, idx) => idx !== activeLeadIndex));
+
+        // Remove lead from active queue
+        setLeads((prev) => {
+          const updated = prev.filter((_, idx) => idx !== activeLeadIndex);
+          if (activeLeadIndex >= updated.length && updated.length > 0) {
+            setActiveLeadIndex(updated.length - 1);
+          }
+          return updated;
+        });
       }, 120);
     } catch (err: any) {
       alert(`Error updating call: ${err.message}`);
@@ -221,14 +354,23 @@ export default function CallerQueuePage() {
     );
   }
 
+  const isManagement = userRole === "admin" || userRole === "manager";
+
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pt-2">
         <div>
-          <span className="text-[11px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
-            CALLER WORKSPACE
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
+              {isManagement ? "AGENCY OUTBOUND DECK" : "CALLER WORKSPACE"}
+            </span>
+            {isManagement && (
+              <span className="px-2 py-0.5 rounded-full bg-[#F95721]/10 text-[#F95721] text-[10px] font-mono font-bold border border-[#F95721]/20">
+                {userRole.toUpperCase()}
+              </span>
+            )}
+          </div>
           <h1 className="text-3xl sm:text-4xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-1">
             High-velocity speed dialing.
           </h1>
@@ -237,7 +379,8 @@ export default function CallerQueuePage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Online/Offline indicator */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm text-xs">
             {isOnline ? (
               <>
@@ -251,8 +394,73 @@ export default function CallerQueuePage() {
               </>
             )}
           </div>
+
+          {/* Quick claim button for callers or managers */}
+          {unassignedPoolCount > 0 && (
+            <button
+              onClick={handleClaimLeads}
+              disabled={isClaiming}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#F95721]/10 hover:bg-[#F95721]/20 text-[#F95721] border border-[#F95721]/30 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isClaiming ? "animate-spin" : ""}`} />
+              <span>{isClaiming ? "Distributing..." : `Top-Up (${unassignedPoolCount} Unassigned)`}</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Scope Filter Switcher for Managers / Admins */}
+      {isManagement && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+          <span className="text-[11px] font-mono uppercase text-[#6E6B66] dark:text-[#8A8680] mr-1 shrink-0">
+            Deck Scope:
+          </span>
+
+          <button
+            onClick={() => handleScopeChange("all")}
+            className={`px-3.5 py-1.5 rounded-full font-semibold transition-all shrink-0 ${
+              queueScope === "all"
+                ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110] shadow-sm"
+                : "bg-white dark:bg-[#1C1A17] text-[#6E6B66] dark:text-[#8A8680] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50"
+            }`}
+          >
+            All Active Leads ({totalPoolCount ?? 0})
+          </button>
+
+          <button
+            onClick={() => handleScopeChange("assigned")}
+            className={`px-3.5 py-1.5 rounded-full font-semibold transition-all shrink-0 ${
+              queueScope === "assigned"
+                ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110] shadow-sm"
+                : "bg-white dark:bg-[#1C1A17] text-[#6E6B66] dark:text-[#8A8680] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50"
+            }`}
+          >
+            Assigned to Callers ({(totalPoolCount ?? 0) - unassignedPoolCount})
+          </button>
+
+          <button
+            onClick={() => handleScopeChange("unassigned")}
+            className={`px-3.5 py-1.5 rounded-full font-semibold transition-all shrink-0 ${
+              queueScope === "unassigned"
+                ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110] shadow-sm"
+                : "bg-white dark:bg-[#1C1A17] text-[#6E6B66] dark:text-[#8A8680] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50"
+            }`}
+          >
+            Unassigned Pool ({unassignedPoolCount})
+          </button>
+
+          <button
+            onClick={() => handleScopeChange("mine")}
+            className={`px-3.5 py-1.5 rounded-full font-semibold transition-all shrink-0 ${
+              queueScope === "mine"
+                ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110] shadow-sm"
+                : "bg-white dark:bg-[#1C1A17] text-[#6E6B66] dark:text-[#8A8680] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50"
+            }`}
+          >
+            My Assigned Queue
+          </button>
+        </div>
+      )}
 
       {/* Main Workspace */}
       {!currentLead ? (
@@ -273,6 +481,40 @@ export default function CallerQueuePage() {
               <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           </div>
+        ) : isManagement && queueScope !== "all" && leads.length === 0 ? (
+          <div className="p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
+            <Layers className="w-12 h-12 text-[#6E6B66] dark:text-[#8A8680] mx-auto mb-3" />
+            <h2 className="text-lg font-bold text-[#111110] dark:text-[#F5F3EF]">
+              No leads in {queueScope === "mine" ? "your personal queue" : `${queueScope} view`}
+            </h2>
+            <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1 max-w-sm mx-auto">
+              There are {totalPoolCount} active leads in the master agency deck waiting to be dialed.
+            </p>
+            <button
+              onClick={() => handleScopeChange("all")}
+              className="mt-6 px-5 py-2.5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm"
+            >
+              Switch to All Active Leads ({totalPoolCount})
+            </button>
+          </div>
+        ) : !isManagement && unassignedPoolCount > 0 ? (
+          <div className="p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
+            <div className="w-12 h-12 rounded-full bg-[#F95721]/10 text-[#F95721] flex items-center justify-center mx-auto mb-3">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <h2 className="text-lg font-bold text-[#111110] dark:text-[#F5F3EF]">Ready to Start Calling?</h2>
+            <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1 max-w-sm mx-auto">
+              Your personal queue is currently empty, but there are {unassignedPoolCount} fresh leads waiting in the pool.
+            </p>
+            <button
+              onClick={handleClaimLeads}
+              disabled={isClaiming}
+              className="mt-6 px-6 py-2.5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm inline-flex items-center gap-2 disabled:opacity-50"
+            >
+              {isClaiming ? <Loader2 className="w-4 h-4 animate-spin" /> : <PhoneCall className="w-4 h-4" />}
+              <span>Claim Daily Batch (Top 100)</span>
+            </button>
+          </div>
         ) : (
           <div className="p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
             <CheckCircle className="w-12 h-12 text-feedback-success mx-auto mb-3" />
@@ -281,8 +523,8 @@ export default function CallerQueuePage() {
               All assigned leads for this session have been dialed. Next daily 100-lead top-up executes at 06:00 AM IST.
             </p>
             <button
-              onClick={loadLeads}
-              className="mt-6 px-5 py-2.5 bg-[#F95721] text-white rounded-full font-semibold text-xs transition-transform active:scale-95"
+              onClick={() => loadLeads()}
+              className="mt-6 px-5 py-2.5 bg-[#F95721] text-white rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm"
             >
               Refresh Queue
             </button>
@@ -293,10 +535,27 @@ export default function CallerQueuePage() {
           {/* Active Lead Hero Card (2 cols) */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
-              <div className="flex items-center justify-between pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924]">
-                <span className="text-xs font-mono uppercase tracking-wider text-[#F95721] font-bold">
-                  Lead #{activeLeadIndex + 1} of {leads.length}
-                </span>
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924]">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono uppercase tracking-wider text-[#F95721] font-bold">
+                    Lead #{activeLeadIndex + 1} of {leads.length}
+                  </span>
+                  {currentLead.assigned_to ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[10px] font-medium text-[#6E6B66] dark:text-[#8A8680]">
+                      <User className="w-3 h-3 text-[#F95721]" />
+                      <span>
+                        {currentLead.assigned_to === currentUserId
+                          ? "Assigned to You"
+                          : `Assigned: ${currentLead.profiles?.full_name || "Caller"}`}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                      <span>Unassigned Pool</span>
+                    </span>
+                  )}
+                </div>
+
                 <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F95721]/10 text-[#F95721] border border-[#F95721]/20 font-mono text-xs font-bold">
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>Score {currentLead.score}</span>
@@ -314,13 +573,27 @@ export default function CallerQueuePage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  {/* Address / Google Maps Card */}
                   <div className="flex items-center gap-2 p-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
                     <MapPin className="w-4 h-4 text-[#F95721] shrink-0" />
-                    <span className="text-[#111110] dark:text-[#F5F3EF] truncate">
-                      {currentLead.address || currentLead.area}
-                    </span>
+                    {currentLead.address ? (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                          `${currentLead.name} ${currentLead.address}`
+                        )}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#111110] dark:text-[#F5F3EF] truncate hover:text-[#F95721] hover:underline"
+                        title={currentLead.address}
+                      >
+                        {currentLead.address}
+                      </a>
+                    ) : (
+                      <span className="text-[#6E6B66] dark:text-[#8A8680]">{currentLead.area}</span>
+                    )}
                   </div>
 
+                  {/* Website Card */}
                   <div className="flex items-center gap-2 p-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
                     <Globe className="w-4 h-4 text-[#F95721] shrink-0" />
                     {currentLead.website ? (
@@ -332,9 +605,10 @@ export default function CallerQueuePage() {
                         }
                         target="_blank"
                         rel="noreferrer"
-                        className="truncate text-[#F95721] font-semibold hover:underline"
+                        className="truncate text-[#F95721] font-semibold hover:underline flex items-center gap-1"
                       >
-                        {currentLead.website}
+                        <span className="truncate">{currentLead.website}</span>
+                        <ExternalLink className="w-3 h-3 shrink-0" />
                       </a>
                     ) : (
                       <span className="text-[#6E6B66] dark:text-[#8A8680]">No website</span>
