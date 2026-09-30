@@ -57,15 +57,36 @@ export async function GET(req: NextRequest) {
     const admin = getAdminClient();
 
     // 1. Fetch all quarantined leads (status = 'not_interested' AND deleted_at IS NULL)
-    const { data: quarantinedLeads, error: leadsErr } = await admin
+    let quarantinedLeads: any[] | null = null;
+    const { data: qLeadsData, error: leadsErr } = await admin
       .from("leads")
       .select("id, name, phone, normalized_phone, niche, area, score, attempts_count, rejected_by, rejection_reason, quarantined_at, disposal_scheduled_at, created_at, updated_at")
       .eq("status", "not_interested")
       .is("deleted_at", null)
-      .order("quarantined_at", { ascending: false });
+      .order("updated_at", { ascending: false });
 
     if (leadsErr) {
-      throw leadsErr;
+      // Graceful fallback before migration is run
+      const { data: fbLeadsData, error: fbLeadsErr } = await admin
+        .from("leads")
+        .select("id, name, phone, normalized_phone, niche, area, score, attempts_count, created_at, updated_at")
+        .eq("status", "not_interested")
+        .is("deleted_at", null)
+        .order("updated_at", { ascending: false });
+
+      if (fbLeadsErr) {
+        throw fbLeadsErr;
+      }
+
+      quarantinedLeads = (fbLeadsData || []).map((l) => ({
+        ...l,
+        rejected_by: null,
+        rejection_reason: "Manual / Legacy Quarantine",
+        quarantined_at: l.updated_at,
+        disposal_scheduled_at: null,
+      }));
+    } else {
+      quarantinedLeads = qLeadsData;
     }
 
     // 2. Fetch profiles to resolve rejected_by full_name and provide active caller roster

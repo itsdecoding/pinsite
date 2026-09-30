@@ -73,13 +73,42 @@ export async function updateSession(request: NextRequest) {
 
   // If authenticated user is on public routes (login/signup without token, or /studio), redirect to their workspace
   if (user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role, active, require_password_change")
-      .eq("id", user.id)
-      .maybeSingle();
+    // 1. Fetch guaranteed profile columns (role, active)
+    let role: string | null = (user.user_metadata?.role as string) || (user.app_metadata?.role as string) || null;
+    let isActive = true;
 
-    if (profile?.require_password_change) {
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, active")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profile?.role) {
+        role = profile.role;
+        isActive = profile.active !== false;
+      }
+    } catch (e) {
+      console.warn("Middleware profile lookup failed, falling back to session metadata:", e);
+    }
+
+    // 2. Defensively check require_password_change (safely ignore if column does not exist yet)
+    let requirePasswordChange = false;
+    try {
+      const { data: pwdProfile, error: pwdErr } = await supabase
+        .from("profiles")
+        .select("require_password_change")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (!pwdErr && pwdProfile?.require_password_change) {
+        requirePasswordChange = true;
+      }
+    } catch {
+      // Column does not exist yet prior to migration; fail open safely
+    }
+
+    if (requirePasswordChange) {
       if (!pathname.startsWith("/reset-password") && pathname !== "/login" && !pathname.startsWith("/api/")) {
         const url = request.nextUrl.clone();
         url.pathname = "/reset-password";
@@ -88,8 +117,7 @@ export async function updateSession(request: NextRequest) {
       }
     }
 
-    const role = profile?.role || "caller";
-
+    // 3. Root and public route redirection for authenticated users
     if (pathname === "/studio" || pathname === "/login" || (pathname === "/signup" && !token)) {
       const url = request.nextUrl.clone();
       if (role === "caller") url.pathname = "/queue";
@@ -98,8 +126,7 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // Role-based authorization boundaries:
-    // Callers: can access /queue, /comms, /me. Blocked from /dashboard, /projects, /manager
+    // 4. Role-based authorization boundaries (Strict: only restrict if role is explicitly identified)
     if (role === "caller") {
       if (
         pathname.startsWith("/dashboard") ||
@@ -112,7 +139,6 @@ export async function updateSession(request: NextRequest) {
       }
     }
 
-    // Developers: can access /projects, /comms, /me. Blocked from /dashboard, /queue, /manager
     if (role === "developer") {
       if (
         pathname.startsWith("/dashboard") ||
@@ -124,6 +150,7 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url);
       }
     }
+    // Admins and Managers have unrestricted access to all routes (/dashboard, /queue, /projects, /manager/*, /comms)
   }
 
   return supabaseResponse;

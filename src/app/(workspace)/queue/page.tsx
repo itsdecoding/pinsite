@@ -247,39 +247,47 @@ function CallerQueueContent() {
 
         // 5. Build query based on role, mirror mode, and scope
         // Strictly exclude not_interested & exclude active cooldowns (cooldown_until > NOW())
-        let query = supabase
-          .from("leads")
-          .select("*, profiles:assigned_to(full_name)")
-          .is("deleted_at", null)
-          .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")')
-          .or(`cooldown_until.is.null,cooldown_until.lte.${nowIso}`);
+        const buildLeadQuery = (includeCooldown: boolean) => {
+          let q = supabase
+            .from("leads")
+            .select("*, profiles:assigned_to(full_name)")
+            .is("deleted_at", null)
+            .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")');
 
-        if (activeImpersonation) {
-          // Mirror Mode: View queue strictly as the impersonated caller
-          query = query.eq("assigned_to", activeImpersonation.id);
-        } else if (role === "caller") {
-          // Callers only see their assigned leads
-          query = query.eq("assigned_to", user.id);
-        } else {
-          // Admins & Managers can filter by All, Unassigned, Assigned, My Queue, or a Specific Caller
-          if (activeScope === "mine") {
-            query = query.eq("assigned_to", user.id);
-          } else if (activeScope === "unassigned") {
-            query = query.is("assigned_to", null);
-          } else if (activeScope === "assigned") {
-            query = query.not("assigned_to", "is", null);
-          } else if (activeScope.startsWith("caller_")) {
-            const specificCallerId = activeScope.replace("caller_", "");
-            query = query.eq("assigned_to", specificCallerId);
+          if (includeCooldown) {
+            q = q.or(`cooldown_until.is.null,cooldown_until.lte.${nowIso}`);
           }
-          // 'all' doesn't restrict assigned_to
+
+          if (activeImpersonation) {
+            q = q.eq("assigned_to", activeImpersonation.id);
+          } else if (role === "caller") {
+            q = q.eq("assigned_to", user.id);
+          } else {
+            if (activeScope === "mine") {
+              q = q.eq("assigned_to", user.id);
+            } else if (activeScope === "unassigned") {
+              q = q.is("assigned_to", null);
+            } else if (activeScope === "assigned") {
+              q = q.not("assigned_to", "is", null);
+            } else if (activeScope.startsWith("caller_")) {
+              const specificCallerId = activeScope.replace("caller_", "");
+              q = q.eq("assigned_to", specificCallerId);
+            }
+          }
+
+          return q
+            .order("next_callback_at", { ascending: true, nullsFirst: false })
+            .order("score", { ascending: false });
         }
 
-        query = query
-          .order("next_callback_at", { ascending: true, nullsFirst: false })
-          .order("score", { ascending: false });
+        let { data, error } = await buildLeadQuery(true);
+        if (error && (error.message?.includes("cooldown_until") || error.code === "42703")) {
+          // Column does not exist yet prior to migration; retry without cooldown filter
+          const retryRes = await buildLeadQuery(false);
+          data = retryRes.data;
+          error = retryRes.error;
+        }
 
-        const { data, error } = await query;
         if (error) throw error;
 
         if (data && data.length > 0) {

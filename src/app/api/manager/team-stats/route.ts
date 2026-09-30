@@ -75,7 +75,8 @@ export async function GET(req: NextRequest) {
     }
 
     // 2. Fetch profiles
-    const { data: allProfiles, error: profileErr } = await admin
+    let allProfiles: any[] | null = null;
+    const { data: profData, error: profileErr } = await admin
       .from("profiles")
       .select("id, full_name, role, phone, is_available, active, require_password_change, temp_password_issued_at, created_at")
       .is("deleted_at", null)
@@ -83,7 +84,24 @@ export async function GET(req: NextRequest) {
       .order("full_name", { ascending: true });
 
     if (profileErr) {
-      throw profileErr;
+      // Graceful fallback before migration is run
+      const { data: fbProfData, error: fbProfErr } = await admin
+        .from("profiles")
+        .select("id, full_name, role, phone, is_available, active, created_at")
+        .is("deleted_at", null)
+        .order("active", { ascending: false })
+        .order("full_name", { ascending: true });
+
+      if (fbProfErr) {
+        throw fbProfErr;
+      }
+      allProfiles = (fbProfData || []).map((p) => ({
+        ...p,
+        require_password_change: false,
+        temp_password_issued_at: null,
+      }));
+    } else {
+      allProfiles = profData;
     }
 
     // Isolate callers (fallback to all profiles if no designated callers exist)

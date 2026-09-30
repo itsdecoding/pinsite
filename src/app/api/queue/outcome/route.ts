@@ -154,10 +154,19 @@ export async function POST(req: NextRequest) {
       leadUpdate.rejection_reason = p_rejection_reason?.trim() || "Rejected by caller";
     }
 
-    const { error: updateError } = await admin
+    let { error: updateError } = await admin
       .from("leads")
       .update(leadUpdate)
       .eq("id", p_lead_id);
+
+    if (updateError && (updateError.message?.includes("rejection_reason") || updateError.code === "42703")) {
+      delete leadUpdate.rejection_reason;
+      const retryUpdate = await admin
+        .from("leads")
+        .update(leadUpdate)
+        .eq("id", p_lead_id);
+      updateError = retryUpdate.error;
+    }
 
     if (updateError) throw updateError;
 
@@ -182,7 +191,14 @@ export async function POST(req: NextRequest) {
       callInsert.client_offline_id = p_client_offline_id;
     }
 
-    const { error: callError } = await admin.from("calls").insert(callInsert);
+    let { error: callError } = await admin.from("calls").insert(callInsert);
+    if (callError && (callError.message?.includes("acted_by") || callError.message?.includes("on_behalf_of") || callError.code === "42703")) {
+      delete callInsert.acted_by;
+      delete callInsert.on_behalf_of;
+      const retryCall = await admin.from("calls").insert(callInsert);
+      callError = retryCall.error;
+    }
+
     if (callError) {
       // Ignore unique conflict on client_offline_id for idempotency
       if (!callError.message?.includes("client_offline_id")) {
