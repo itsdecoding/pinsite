@@ -33,6 +33,8 @@ import {
   Hourglass,
   Layers,
   ArrowRight,
+  Sparkles,
+  AlertTriangle,
 } from "lucide-react";
 
 interface OutcomeBreakdown {
@@ -198,6 +200,10 @@ export default function ManagerTeamPage() {
   const [rebalanceError, setRebalanceError] = useState<string | null>(null);
   const [rebalanceSuccess, setRebalanceSuccess] = useState<string | null>(null);
 
+  // Lead distribution state
+  const [distributing, setDistributing] = useState(false);
+  const [distributeNotification, setDistributeNotification] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
   const fetchTeamStats = useCallback(
     async (isManual: boolean = false) => {
       if (isManual) {
@@ -301,6 +307,51 @@ export default function ManagerTeamPage() {
 
     return list;
   }, [callers, searchQuery, statusFilter, sortBy]);
+
+  // Proactive Queue Imbalance Detection (> 1.5x team average)
+  const teamAverageLeads = useMemo(() => {
+    if (callers.length === 0) return 0;
+    const total = callers.reduce((acc, c) => acc + c.active_leads_count, 0);
+    return Math.round(total / callers.length);
+  }, [callers]);
+
+  const overloadedCaller = useMemo(() => {
+    return callers.find(
+      (c) => c.active_leads_count > Math.max(10, Math.ceil(teamAverageLeads * 1.5))
+    );
+  }, [callers, teamAverageLeads]);
+
+  const lightestCaller = useMemo(() => {
+    if (callers.length === 0) return null;
+    return [...callers].sort((a, b) => a.active_leads_count - b.active_leads_count)[0];
+  }, [callers]);
+
+  async function handleDistributeNow() {
+    setDistributing(true);
+    setDistributeNotification(null);
+    try {
+      const res = await fetch("/api/manager/leads/distribute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_cap: 30 }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to distribute leads");
+      setDistributeNotification({
+        type: "success",
+        text: data.message || `Distributed ${data.assigned_count} leads successfully!`,
+      });
+      await fetchTeamStats(true);
+    } catch (err: any) {
+      setDistributeNotification({
+        type: "error",
+        text: err.message || "Failed to distribute leads",
+      });
+    } finally {
+      setDistributing(false);
+      setTimeout(() => setDistributeNotification(null), 5000);
+    }
+  }
 
   function handleOpenResetModal(caller: CallerStat, e?: React.MouseEvent) {
     if (e) e.stopPropagation();
@@ -538,6 +589,18 @@ export default function ManagerTeamPage() {
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-auto">
+          {/* Admin Distribute Now Button */}
+          <button
+            type="button"
+            onClick={handleDistributeNow}
+            disabled={distributing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white font-semibold transition-all shadow-sm border border-emerald-500/20 disabled:opacity-50"
+            title="Distribute unassigned leads to active callers (lightest caller first, depth-capped at 30)"
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${distributing ? "animate-spin" : ""}`} />
+            <span>{distributing ? "Distributing..." : "Distribute Now"}</span>
+          </button>
+
           {/* Rebalance Leads Button */}
           <button
             type="button"
@@ -572,6 +635,75 @@ export default function ManagerTeamPage() {
           </button>
         </div>
       </div>
+
+      {/* Distribution Notification Toast */}
+      {distributeNotification && (
+        <div
+          className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center justify-between border shadow-sm animate-in fade-in ${
+            distributeNotification.type === "success"
+              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+              : "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {distributeNotification.type === "success" ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+            )}
+            <span>{distributeNotification.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDistributeNotification(null)}
+            className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-stone-400"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Proactive Queue Imbalance Alert Banner (Triggered when any caller > 1.5x team average) */}
+      {overloadedCaller && lightestCaller && overloadedCaller.id !== lightestCaller.id && (
+        <div className="p-4 sm:p-5 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm animate-in fade-in">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                  QUEUE IMBALANCE DETECTED
+                </span>
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold border border-amber-500/30">
+                  &gt; 1.5x TEAM AVERAGE
+                </span>
+              </div>
+              <p className="text-xs text-[#111110] dark:text-[#F5F3EF] mt-0.5">
+                <strong className="text-amber-600 dark:text-amber-400">{overloadedCaller.full_name}</strong> currently holds{" "}
+                <strong>{overloadedCaller.active_leads_count} leads</strong> while the team average is{" "}
+                <strong>{teamAverageLeads} leads</strong>. {lightestCaller.full_name} has only{" "}
+                <strong>{lightestCaller.active_leads_count} leads</strong>.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const excess = Math.max(5, overloadedCaller.active_leads_count - teamAverageLeads);
+              setRebalanceSource(overloadedCaller.id);
+              setRebalanceTarget(lightestCaller.id);
+              setRebalanceCount(excess);
+              setRebalanceModalOpen(true);
+            }}
+            className="px-4 py-2.5 rounded-2xl bg-[#F95721] hover:bg-[#e04816] text-white text-xs font-bold transition-all shadow-sm flex items-center gap-2 shrink-0 active:scale-95 self-start md:self-auto"
+          >
+            <PhoneForwarded className="w-4 h-4" />
+            <span>Proactive Rebalance ({Math.max(5, overloadedCaller.active_leads_count - teamAverageLeads)} Leads) &rarr;</span>
+          </button>
+        </div>
+      )}
 
       {/* KPI Metric Cards — Real Numbers, Team-Level Totals */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">

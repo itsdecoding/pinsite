@@ -28,8 +28,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized: Active session required" }, { status: 401 });
     }
 
-    // 2. Execute assign_daily_leads to distribute unassigned leads to active callers
-    const { error: rpcError } = await admin.rpc("assign_daily_leads");
+    // 2. Restrict to managers and admins (Callers cannot trigger distribution)
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profile?.role !== "manager" && profile?.role !== "admin") {
+      return NextResponse.json(
+        { error: "Forbidden: Callers cannot trigger lead distribution. Only managers and admins can distribute leads." },
+        { status: 403 }
+      );
+    }
+
+    // 3. Execute depth-aware assign_daily_leads
+    const { data: rpcData, error: rpcError } = await admin.rpc("assign_daily_leads", { p_target_cap: 30 });
     if (rpcError) throw rpcError;
 
     // 3. Return updated counts

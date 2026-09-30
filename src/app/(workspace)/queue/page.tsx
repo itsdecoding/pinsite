@@ -207,7 +207,6 @@ function CallerQueueContent() {
   const [userRole, setUserRole] = useState<string>("caller");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [queueScope, setQueueScope] = useState<QueueScope>("all");
-  const [isClaiming, setIsClaiming] = useState(false);
   const [callersList, setCallersList] = useState<CallerInfo[]>([]);
   const [isReassigning, setIsReassigning] = useState(false);
   const [impersonatedCaller, setImpersonatedCaller] = useState<{ id: string; full_name: string } | null>(null);
@@ -545,19 +544,6 @@ function CallerQueueContent() {
     router.push("/queue");
   };
 
-  const handleClaimLeads = async () => {
-    setIsClaiming(true);
-    try {
-      const res = await fetch("/api/queue/claim", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to claim leads");
-      await loadLeads();
-    } catch (err: any) {
-      alert(`Claim error: ${err.message}`);
-    } finally {
-      setIsClaiming(false);
-    }
-  };
 
   const handleReassignLead = async (leadId: string, newCallerId: string) => {
     setIsReassigning(true);
@@ -822,18 +808,6 @@ function CallerQueueContent() {
             )}
           </div>
 
-          {/* Quick claim button for callers or managers */}
-          {unassignedPoolCount > 0 && !impersonatedCaller && (
-            <button
-              onClick={handleClaimLeads}
-              disabled={isClaiming}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F95721]/10 hover:bg-[#F95721]/20 text-[#F95721] border border-[#F95721]/30 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3 h-3 ${isClaiming ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">{isClaiming ? "Distributing..." : `Top-Up (${unassignedPoolCount})`}</span>
-              <span className="sm:hidden">{unassignedPoolCount}</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -883,22 +857,21 @@ function CallerQueueContent() {
               </button>
             )}
           </div>
-        ) : !isManagement && unassignedPoolCount > 0 ? (
+        ) : !isManagement && leads.length === 0 ? (
           <div className="p-8 sm:p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
             <div className="w-12 h-12 rounded-full bg-[#F95721]/10 text-[#F95721] flex items-center justify-center mx-auto mb-3">
-              <Sparkles className="w-6 h-6" />
+              <CheckCircle className="w-6 h-6" />
             </div>
-            <h2 className="text-lg font-bold text-[#111110] dark:text-[#F5F3EF]">Ready to Start Calling?</h2>
+            <h2 className="text-lg font-bold text-[#111110] dark:text-[#F5F3EF]">Queue Complete</h2>
             <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1 max-w-sm mx-auto">
-              Your personal queue is currently empty, but there are {unassignedPoolCount} fresh leads waiting in the pool.
+              Your queue is up to date. Newly assigned leads and callbacks will appear here automatically.
             </p>
             <button
-              onClick={handleClaimLeads}
-              disabled={isClaiming}
-              className="mt-6 px-6 py-2.5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm inline-flex items-center gap-2 disabled:opacity-50"
+              onClick={() => loadLeads()}
+              className="mt-6 px-5 py-2.5 bg-black/5 dark:bg-white/5 hover:bg-black/10 text-[#111110] dark:text-[#F5F3EF] rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm inline-flex items-center gap-2"
             >
-              {isClaiming ? <Loader2 className="w-4 h-4 animate-spin" /> : <PhoneCall className="w-4 h-4" />}
-              <span>Claim Daily Batch (Top 100)</span>
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Check for Updates</span>
             </button>
           </div>
         ) : (
