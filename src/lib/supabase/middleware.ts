@@ -51,7 +51,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/unauthorized") ||
     pathname.startsWith("/api") ||
-    pathname === "/";
+    pathname === "/" ||
+    pathname.startsWith("/landing.html");
 
   // 3. Authenticate against real Supabase session (NO demo mode bypass)
   let user = null;
@@ -69,7 +70,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // If authenticated user is on public routes (login/signup without token), redirect to their workspace
+  // If authenticated user is on public routes (login/signup without token, or /studio), redirect to their workspace
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
@@ -79,7 +80,7 @@ export async function updateSession(request: NextRequest) {
 
     const role = profile?.role || "caller";
 
-    if (pathname === "/" || pathname === "/login" || (pathname === "/signup" && !token)) {
+    if (pathname === "/studio" || pathname === "/login" || (pathname === "/signup" && !token)) {
       const url = request.nextUrl.clone();
       if (role === "caller") url.pathname = "/queue";
       else if (role === "developer") url.pathname = "/projects";
