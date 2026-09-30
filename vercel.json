@@ -5,5 +5,47 @@
       "source": "/",
       "destination": "/index.html"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/login",
+      "destination": "/studio/login",
+      "permanent": false
+    },
+    {
+      "source": "/signup",
+      "destination": "/studio/signup",
+      "permanent": false
+    },
+    {
+      "source": "/queue",
+      "destination": "/studio/queue",
+      "permanent": false
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/studio/dashboard",
+      "permanent": false
+    },
+    {
+      "source": "/projects",
+      "destination": "/studio/projects",
+      "permanent": false
+    },
+    {
+      "source": "/comms",
+      "destination": "/studio/comms",
+      "permanent": false
+    },
+    {
+      "source": "/me",
+      "destination": "/studio/me",
+      "permanent": false
+    },
+    {
+      "source": "/manager/:path*",
+      "destination": "/studio/manager/:path*",
+      "permanent": false
+    }
   ]
 }

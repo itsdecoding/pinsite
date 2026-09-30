@@ -148,9 +148,10 @@ export async function POST(req: NextRequest) {
       inviteRecord = created;
     }
 
-    // Dynamic origin resolution
-    const origin = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin || req.headers.get("origin") || "https://pinsite.pro";
-    const inviteUrl = `${origin}/signup?token=${token}`;
+    // Dynamic origin resolution — automatically ensures /studio/signup path without needing Vercel env var
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin || req.headers.get("origin") || "https://pinsite.pro";
+    const baseOrigin = appUrl.replace(/\/studio\/?$/, "").replace(/\/+$/, "");
+    const inviteUrl = `${baseOrigin}/studio/signup?token=${token}`;
 
     // Optional email dispatch via Resend REST API
     const resendKey = process.env.RESEND_API_KEY;
