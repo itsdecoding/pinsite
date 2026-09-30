@@ -42,18 +42,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { lead_id, caller_id } = await req.json();
+    const { lead_id, caller_id, reason } = await req.json();
 
     if (!lead_id) {
       return NextResponse.json({ error: "Missing lead_id parameter" }, { status: 400 });
     }
 
-    // 3. Update lead assignment
+    // 3. Update lead assignment (clearing quarantine attribution & metadata if rescued)
     const updateData: Record<string, any> = {
       assigned_to: caller_id || null,
       status: caller_id ? "assigned" : "unassigned",
       assigned_date: caller_id ? new Date().toISOString().split("T")[0] : null,
       updated_at: new Date().toISOString(),
+      quarantined_at: null,
+      disposal_scheduled_at: null,
+      rejection_reason: null,
+      rejected_by: null,
+      cooldown_until: null,
     };
 
     const { error: updateError } = await admin
@@ -64,11 +69,12 @@ export async function POST(req: NextRequest) {
     if (updateError) throw updateError;
 
     // 4. Log in assignment history
+    const historyReason = reason || (caller_id ? "manager_manual_reassign" : "manager_unassigned");
     await admin.from("assignment_history").insert({
       lead_id,
       to_caller_id: caller_id || null,
       assigned_by: user.id,
-      reason: caller_id ? "manager_manual_reassign" : "manager_unassigned",
+      reason: historyReason,
     });
 
     // 5. Notify the assigned caller if assigned

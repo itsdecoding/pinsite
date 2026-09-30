@@ -48,6 +48,8 @@ export async function POST(req: NextRequest) {
       p_notes,
       p_duration_seconds,
       p_client_offline_id,
+      p_rejection_reason,
+      p_impersonate_caller_id,
     } = body;
 
     if (!p_lead_id || !p_status) {
@@ -80,13 +82,52 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Resolve caller identity and Mirror Mode audit trail
+    let effectiveCallerId = user.id;
+    let actedById: string | null = null;
+    let onBehalfOfId: string | null = null;
+
+    if (p_impersonate_caller_id) {
+      if (!isManagerOrAdmin) {
+        return NextResponse.json(
+          { error: "Forbidden: Only managers and admins can log on behalf of callers" },
+          { status: 403 }
+        );
+      }
+
+      const { data: impProfile } = await admin
+        .from("profiles")
+        .select("id")
+        .eq("id", p_impersonate_caller_id)
+        .maybeSingle();
+
+      if (!impProfile) {
+        return NextResponse.json(
+          { error: "Impersonated caller not found" },
+          { status: 404 }
+        );
+      }
+
+      effectiveCallerId = impProfile.id;
+      actedById = user.id;
+      onBehalfOfId = impProfile.id;
+    } else if (isManagerOrAdmin && lead.assigned_to && lead.assigned_to !== user.id) {
+      // If manager logs an outcome for a lead assigned to a caller, track audit trail
+      actedById = user.id;
+      onBehalfOfId = lead.assigned_to;
+      effectiveCallerId = lead.assigned_to;
+    }
+
     // 5. If DNC selected, atomically blacklist SHA-256 phone hash
     if (p_status === "dnc") {
       const phoneToHash = lead.normalized_phone || lead.phone;
       if (phoneToHash) {
         const phoneHash = crypto.createHash("sha256").update(phoneToHash.trim()).digest("hex");
         await admin.from("dnc_blacklist").upsert(
-          { phone_hash: phoneHash, reason: "caller_dnc_request" },
+          {
+            phone_hash: phoneHash,
+            reason: p_rejection_reason?.trim() || "caller_dnc_request",
+          },
           { onConflict: "phone_hash" }
         );
       }
@@ -95,7 +136,7 @@ export async function POST(req: NextRequest) {
     // 6. Update lead state
     const leadUpdate: Record<string, any> = {
       status: p_status,
-      assigned_to: lead.assigned_to || user.id,
+      assigned_to: lead.assigned_to || effectiveCallerId,
       attempts_count: (lead.attempts_count || 0) + 1,
       last_called_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -109,6 +150,10 @@ export async function POST(req: NextRequest) {
       leadUpdate.next_callback_at = p_callback_at;
     }
 
+    if (p_status === "not_interested") {
+      leadUpdate.rejection_reason = p_rejection_reason?.trim() || "Rejected by caller";
+    }
+
     const { error: updateError } = await admin
       .from("leads")
       .update(leadUpdate)
@@ -119,12 +164,19 @@ export async function POST(req: NextRequest) {
     // 7. Insert call log record
     const callInsert: Record<string, any> = {
       lead_id: p_lead_id,
-      caller_id: user.id,
+      caller_id: effectiveCallerId,
       outcome: p_status,
       notes: p_notes?.trim() || null,
       duration_seconds: p_duration_seconds || 0,
       callback_at: p_status === "callback" && p_callback_at ? p_callback_at : null,
     };
+
+    if (actedById) {
+      callInsert.acted_by = actedById;
+    }
+    if (onBehalfOfId) {
+      callInsert.on_behalf_of = onBehalfOfId;
+    }
 
     if (p_client_offline_id) {
       callInsert.client_offline_id = p_client_offline_id;

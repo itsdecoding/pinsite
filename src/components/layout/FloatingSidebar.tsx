@@ -10,6 +10,8 @@ import {
   MessageSquare,
   UploadCloud,
   UserPlus,
+  Users,
+  ShieldAlert,
   Plus,
   Settings,
   LogOut,
@@ -82,6 +84,18 @@ export function FloatingSidebar() {
       href: "/comms",
       icon: MessageSquare,
       roles: ["caller", "developer", "manager", "admin"],
+    },
+    {
+      label: "Team Center",
+      href: "/manager/team",
+      icon: Users,
+      roles: ["manager", "admin"],
+    },
+    {
+      label: "Quarantine Bin",
+      href: "/manager/quarantine",
+      icon: ShieldAlert,
+      roles: ["manager", "admin"],
     },
     {
       label: "Lead Ingestion",

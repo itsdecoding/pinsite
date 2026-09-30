@@ -49,6 +49,8 @@ export async function updateSession(request: NextRequest) {
   const isPublicRoute =
     pathname.startsWith("/login") ||
     pathname.startsWith("/signup") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password") ||
     pathname.startsWith("/unauthorized") ||
     pathname.startsWith("/api") ||
     pathname === "/";
@@ -73,9 +75,18 @@ export async function updateSession(request: NextRequest) {
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, active")
+      .select("role, active, require_password_change")
       .eq("id", user.id)
       .maybeSingle();
+
+    if (profile?.require_password_change) {
+      if (!pathname.startsWith("/reset-password") && pathname !== "/login" && !pathname.startsWith("/api/")) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/reset-password";
+        url.searchParams.set("forced", "true");
+        return NextResponse.redirect(url, 307);
+      }
+    }
 
     const role = profile?.role || "caller";
 
