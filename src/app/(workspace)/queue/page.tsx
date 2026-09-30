@@ -26,6 +26,8 @@ import {
   RefreshCw,
   ExternalLink,
   ChevronDown,
+  Copy,
+  Check,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { EntityComments } from "@/components/comms/EntityComments";
@@ -142,6 +144,7 @@ function CallerQueueContent() {
   const [callersList, setCallersList] = useState<CallerInfo[]>([]);
   const [isReassigning, setIsReassigning] = useState(false);
   const [impersonatedCaller, setImpersonatedCaller] = useState<{ id: string; full_name: string } | null>(null);
+  const [copiedPhone, setCopiedPhone] = useState(false);
 
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -680,80 +683,6 @@ function CallerQueueContent() {
         </div>
       </div>
 
-      {/* Scope Filter Switcher for Managers / Admins (hidden when in explicit mirror mode) */}
-      {isManagement && !impersonatedCaller && (
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs no-scrollbar">
-          <span className="text-[11px] font-mono uppercase text-[#6E6B66] dark:text-[#8A8680] mr-1 shrink-0">
-            Deck Scope:
-          </span>
-
-          <button
-            onClick={() => handleScopeChange("all")}
-            className={`px-3.5 py-1.5 rounded-full font-semibold transition-all shrink-0 ${
-              queueScope === "all"
-                ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110] shadow-sm"
-                : "bg-white dark:bg-[#1C1A17] text-[#6E6B66] dark:text-[#8A8680] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50"
-            }`}
-          >
-            All Active Leads ({totalPoolCount ?? 0})
-          </button>
-
-          <button
-            onClick={() => handleScopeChange("unassigned")}
-            className={`px-3.5 py-1.5 rounded-full font-semibold transition-all shrink-0 ${
-              queueScope === "unassigned"
-                ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110] shadow-sm"
-                : "bg-white dark:bg-[#1C1A17] text-[#6E6B66] dark:text-[#8A8680] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50"
-            }`}
-          >
-            Unassigned Pool ({unassignedPoolCount})
-          </button>
-
-          <span className="w-px h-4 bg-[#ECE8E1] dark:border-[#2D2924] shrink-0" />
-
-          {/* Dynamic Caller Filter Pills */}
-          {callersList.map((caller) => {
-            const isSelected = queueScope === `caller_${caller.id}`;
-            return (
-              <button
-                key={caller.id}
-                onClick={() => handleScopeChange(`caller_${caller.id}`)}
-                className={`px-3 py-1.5 rounded-full font-semibold transition-all shrink-0 flex items-center gap-1.5 ${
-                  isSelected
-                    ? "bg-[#F95721] text-white shadow-sm"
-                    : "bg-white dark:bg-[#1C1A17] text-[#6E6B66] dark:text-[#8A8680] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50"
-                }`}
-              >
-                <User className="w-3 h-3 shrink-0" />
-                <span>{caller.full_name}</span>
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-                    isSelected
-                      ? "bg-white/20 text-white"
-                      : "bg-black/5 dark:bg-white/10 text-[#6E6B66] dark:text-[#8A8680]"
-                  }`}
-                >
-                  {caller.lead_count}
-                </span>
-              </button>
-            );
-          })}
-
-          <span className="w-px h-4 bg-[#ECE8E1] dark:border-[#2D2924] shrink-0" />
-
-          <button
-            onClick={() => handleScopeChange("mine")}
-            className={`px-3.5 py-1.5 rounded-full font-semibold transition-all shrink-0 ${
-              queueScope === "mine"
-                ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110] shadow-sm"
-                : "bg-white dark:bg-[#1C1A17] text-[#6E6B66] dark:text-[#8A8680] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50"
-            }`}
-          >
-            My Queue
-          </button>
-        </div>
-      )}
-
       {/* Main Single-Column Cockpit (< 768px) and Grid (lg+) */}
       {!currentLead ? (
         totalPoolCount === 0 ? (
@@ -857,8 +786,8 @@ function CallerQueueContent() {
                         </strong>
                       </span>
 
-                      {/* Quick Reassign Dropdown for Management */}
-                      {isManagement && (
+                      {/* Quick Reassign Dropdown: strictly available only in Mirror Mode for Managers */}
+                      {impersonatedCaller && isManagement && (
                         <div className="flex items-center gap-1.5">
                           <select
                             value={currentLead.assigned_to || ""}
@@ -885,7 +814,7 @@ function CallerQueueContent() {
                         <span>Unassigned Pool</span>
                       </span>
 
-                      {isManagement && (
+                      {impersonatedCaller && isManagement && (
                         <div className="flex items-center gap-1.5">
                           <select
                             defaultValue=""
@@ -929,7 +858,7 @@ function CallerQueueContent() {
                   </div>
                 </div>
 
-                {/* Primary High-Contrast Phone Number Block */}
+                {/* Primary High-Contrast Phone Number Block (Single dial action enforced) */}
                 <div className="p-4 sm:p-5 rounded-2xl bg-[#F95721]/5 dark:bg-[#F95721]/10 border border-[#F95721]/20 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] block">
@@ -939,14 +868,30 @@ function CallerQueueContent() {
                       {formatPhoneDisplay(currentLead.phone)}
                     </span>
                   </div>
-                  <a
-                    href={formatTelLink(currentLead.phone)}
-                    onClick={handleStartCall}
-                    className="hidden sm:inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-xs uppercase tracking-wider transition-colors shadow-sm shrink-0 active:scale-95"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (currentLead?.phone) {
+                        navigator.clipboard.writeText(currentLead.phone);
+                        setCopiedPhone(true);
+                        setTimeout(() => setCopiedPhone(false), 1500);
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#6E6B66] dark:text-[#8A8680] text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shrink-0"
+                    title="Copy phone number"
                   >
-                    <PhoneCall className="w-4 h-4 animate-pulse" />
-                    <span>Dial Direct</span>
-                  </a>
+                    {copiedPhone ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-feedback-success" />
+                        <span className="text-[11px] text-feedback-success font-medium">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span className="text-[11px] font-medium">Copy</span>
+                      </>
+                    )}
+                  </button>
                 </div>
 
                 {/* Address & External Links Block (Wraps naturally, zero truncation, clean Maps button) */}
