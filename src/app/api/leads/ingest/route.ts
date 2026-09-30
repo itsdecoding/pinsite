@@ -3,6 +3,23 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import crypto from "crypto";
 
+/**
+ * Normalizes and formats lead names cleanly for data hygiene:
+ * - Fixes "Dr.Archana" -> "Dr. Archana"
+ * - Fixes "Dr Phadatare" -> "Dr. Phadatare"
+ * - Fixes "Dr Namrata's-Samarth" -> "Dr. Namrata's - Samarth"
+ * - Normalizes spacing
+ */
+function formatLeadName(rawName: string | null | undefined): string {
+  if (!rawName) return "Unnamed Lead";
+  let name = String(rawName).trim();
+  name = name.replace(/([a-zA-Z0-9'’])-(?=[a-zA-Z0-9])/g, (_m, p1) => `${p1} - `);
+  name = name.replace(/\bDr\.([A-Za-z])/gi, (_m, p1) => `Dr. ${p1}`);
+  name = name.replace(/\bDr(?!\.)\s+/gi, "Dr. ");
+  name = name.replace(/\s+/g, " ").trim();
+  return name;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -197,7 +214,7 @@ export async function POST(req: NextRequest) {
 
       // NOTE: public.leads table does NOT have a 'source' column.
       rowsToInsert.push({
-        name: String(lead.name).trim(),
+        name: formatLeadName(lead.name),
         phone: rawPhone,
         normalized_phone: normalizedPhone,
         website: lead.website || null,

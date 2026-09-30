@@ -161,6 +161,32 @@ function resolveDecisionMaker(lead: Lead): string {
   return "Owner / Managing Director";
 }
 
+/**
+ * Normalizes and formats lead names cleanly for data hygiene:
+ * - Fixes "Dr.Archana" -> "Dr. Archana"
+ * - Fixes "Dr Phadatare" -> "Dr. Phadatare"
+ * - Fixes "Dr Namrata's-Samarth" -> "Dr. Namrata's - Samarth"
+ * - Normalizes spacing
+ */
+function formatLeadName(rawName: string | null | undefined): string {
+  if (!rawName) return "Unnamed Lead";
+  let name = rawName.trim();
+  name = name.replace(/([a-zA-Z0-9'’])-(?=[a-zA-Z0-9])/g, (_m, p1) => `${p1} - `);
+  name = name.replace(/\bDr\.([A-Za-z])/gi, (_m, p1) => `Dr. ${p1}`);
+  name = name.replace(/\bDr(?!\.)\s+/gi, "Dr. ");
+  name = name.replace(/\s+/g, " ").trim();
+  return name;
+}
+
+/**
+ * Formats seconds into MM:SS call duration timer
+ */
+function formatDurationTimer(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
 function CallerQueueContent() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [totalPoolCount, setTotalPoolCount] = useState<number | null>(null);
@@ -170,6 +196,7 @@ function CallerQueueContent() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [callActive, setCallActive] = useState(false);
   const [callStartTime, setCallStartTime] = useState<number | null>(null);
+  const [callElapsedSeconds, setCallElapsedSeconds] = useState(0);
   const [selectedOutcome, setSelectedOutcome] = useState<string>("no_answer");
   const [callNotes, setCallNotes] = useState("");
   const [callbackDateTime, setCallbackDateTime] = useState("");
@@ -211,6 +238,22 @@ function CallerQueueContent() {
   useEffect(() => {
     currentLeadRef.current = currentLead;
   }, [currentLead]);
+
+  // Live Call Duration Timer: counts seconds in real time when callActive is true
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (callActive && callStartTime) {
+      setCallElapsedSeconds(Math.max(0, Math.floor((Date.now() - callStartTime) / 1000)));
+      interval = setInterval(() => {
+        setCallElapsedSeconds(Math.max(0, Math.floor((Date.now() - callStartTime) / 1000)));
+      }, 1000);
+    } else {
+      setCallElapsedSeconds(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [callActive, callStartTime]);
 
   // Fetch the most recent call note for the active lead
   useEffect(() => {
@@ -736,6 +779,31 @@ function CallerQueueContent() {
               <span>Lead {activeLeadIndex + 1} of {leads.length}</span>
             </span>
           )}
+
+          {/* Admin/Manager-Only Scope Filter Dropdown (Strictly hidden from callers) */}
+          {isManagement && !impersonatedCaller && (
+            <div className="flex items-center gap-1.5 ml-1">
+              <span className="text-[10px] font-mono uppercase text-[#6E6B66] dark:text-[#8A8680] font-bold tracking-wider hidden sm:inline">
+                Scope:
+              </span>
+              <div className="relative">
+                <select
+                  value={queueScope}
+                  onChange={(e) => handleScopeChange(e.target.value)}
+                  className="text-xs font-semibold py-1 pl-2.5 pr-7 rounded-full bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] text-[#111110] dark:text-[#F5F3EF] hover:border-[#F95721] focus:border-[#F95721] outline-none shadow-sm cursor-pointer transition-colors appearance-none font-mono"
+                >
+                  <option value="all">All Leads ({totalPoolCount ?? 0})</option>
+                  {callersList.map((c) => (
+                    <option key={c.id} value={`caller_${c.id}`}>
+                      {c.full_name} ({c.lead_count})
+                    </option>
+                  ))}
+                  <option value="unassigned">Unassigned ({unassignedPoolCount})</option>
+                </select>
+                <ChevronDown className="w-3 h-3 text-[#6E6B66] dark:text-[#8A8680] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2.5">
@@ -927,7 +995,7 @@ function CallerQueueContent() {
               <div className="space-y-5 pt-5">
                 <div>
                   <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight break-words">
-                    {currentLead.name}
+                    {formatLeadName(currentLead.name)}
                   </h2>
                   <div className="flex flex-wrap items-center gap-2 mt-2">
                     <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#F95721]/10 text-[#F95721] border border-[#F95721]/20">
@@ -1119,6 +1187,20 @@ function CallerQueueContent() {
                   );
                 })()}
 
+                {/* Live Call Duration Banner (Sprint 7 Call Tracking) */}
+                {callActive && (
+                  <div className="w-full p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-between text-xs font-mono shadow-sm">
+                    <div className="flex items-center gap-2 text-red-600 dark:text-red-400 font-bold">
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping shrink-0" />
+                      <span className="uppercase tracking-wider">Live Call In Progress</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-sm font-black text-red-600 dark:text-red-400">
+                      <span>⏱️</span>
+                      <span>{formatDurationTimer(callElapsedSeconds)}</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Primary Dial CTA (Desktop & Tablet) */}
                 <div className="pt-2 flex flex-col sm:flex-row items-center gap-4">
                   <a
@@ -1171,8 +1253,11 @@ function CallerQueueContent() {
                   }`}
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs text-[#111110] dark:text-[#F5F3EF] truncate font-bold">
-                      {lead.name}
+                    <p
+                      className="text-xs text-[#111110] dark:text-[#F5F3EF] font-bold line-clamp-2 leading-snug break-words"
+                      title={formatLeadName(lead.name)}
+                    >
+                      {formatLeadName(lead.name)}
                     </p>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       <span className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] truncate">
@@ -1204,6 +1289,12 @@ function CallerQueueContent() {
       {currentLead && (
         <div className="fixed md:hidden bottom-0 left-0 right-0 z-[90] p-3 bg-white/95 dark:bg-[#1C1A17]/95 backdrop-blur-md border-t border-[#ECE8E1] dark:border-[#2D2924] pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-2xl">
           <div className="flex items-center gap-2 max-w-lg mx-auto">
+            {callActive && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 font-mono font-bold text-xs shrink-0 animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                <span>{formatDurationTimer(callElapsedSeconds)}</span>
+              </div>
+            )}
             <a
               href={formatTelLink(currentLead.phone)}
               onClick={handleStartCall}
@@ -1238,16 +1329,24 @@ function CallerQueueContent() {
                 <span className="text-[10px] font-mono uppercase tracking-wider text-[#F95721] font-bold">
                   Call Disposition
                 </span>
-                <h3 className="text-base font-bold text-[#111110] dark:text-[#F5F3EF] truncate max-w-[280px]">
-                  {currentLead.name}
+                <h3 className="text-base font-bold text-[#111110] dark:text-[#F5F3EF] truncate max-w-[240px]">
+                  {formatLeadName(currentLead.name)}
                 </h3>
               </div>
-              <button
-                onClick={() => setIsDrawerOpen(false)}
-                className="text-xs text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-2">
+                {callActive && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 font-mono text-xs font-bold shrink-0">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+                    <span>Talk: {formatDurationTimer(callElapsedSeconds)}</span>
+                  </div>
+                )}
+                <button
+                  onClick={() => setIsDrawerOpen(false)}
+                  className="text-xs text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
 
             {/* Scrollable Body */}
