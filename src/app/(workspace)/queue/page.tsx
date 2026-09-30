@@ -71,6 +71,54 @@ const OUTCOMES = [
 
 type QueueScope = "all" | "unassigned" | "assigned" | "mine" | string;
 
+/**
+ * Normalizes phone number to strict E.164 tel: URI (+91 for Indian numbers)
+ */
+function formatTelLink(phone: string | null | undefined): string {
+  if (!phone) return "";
+  const cleaned = phone.trim();
+  if (cleaned.startsWith("+91")) {
+    return `tel:+91${cleaned.slice(3).replace(/\D/g, "")}`;
+  }
+  const digits = cleaned.replace(/\D/g, "");
+  // If 11 digits starting with 0 (e.g. 09226414192)
+  if (digits.length === 11 && digits.startsWith("0")) {
+    return `tel:+91${digits.slice(1)}`;
+  }
+  // If 12 digits starting with 91 (e.g. 919226414192)
+  if (digits.length === 12 && digits.startsWith("91")) {
+    return `tel:+${digits}`;
+  }
+  // If 10 digits standard mobile (e.g. 9226414192)
+  if (digits.length === 10) {
+    return `tel:+91${digits}`;
+  }
+  // Fallback
+  return `tel:${cleaned.startsWith("+") ? cleaned : `+91${digits}`}`;
+}
+
+/**
+ * Formats a phone number for clean human readability: +91 92264 14192
+ */
+function formatPhoneDisplay(phone: string | null | undefined): string {
+  if (!phone) return "No Phone";
+  const cleaned = phone.trim();
+  const digits = cleaned.replace(/\D/g, "");
+
+  let core10 = digits;
+  if (digits.length === 11 && digits.startsWith("0")) {
+    core10 = digits.slice(1);
+  } else if (digits.length === 12 && digits.startsWith("91")) {
+    core10 = digits.slice(2);
+  }
+
+  if (core10.length === 10) {
+    return `+91 ${core10.slice(0, 5)} ${core10.slice(5)}`;
+  }
+
+  return phone;
+}
+
 function CallerQueueContent() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [totalPoolCount, setTotalPoolCount] = useState<number | null>(null);
@@ -513,7 +561,7 @@ function CallerQueueContent() {
         e.preventDefault();
         if (currentLead) {
           handleStartCall();
-          window.location.href = `tel:${currentLead.phone}`;
+          window.location.href = formatTelLink(currentLead.phone);
         }
         return;
       }
@@ -577,43 +625,42 @@ function CallerQueueContent() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pt-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
-              {impersonatedCaller
-                ? `MIRRORING: ${impersonatedCaller.full_name.toUpperCase()}`
-                : isManagement
-                ? "AGENCY OUTBOUND DECK"
-                : "CALLER WORKSPACE"}
+      {/* Sleek Compact Header Bar (Zero wasted vertical space) */}
+      <div className="flex items-center justify-between gap-3 pt-1 pb-1">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <span className="text-xs font-mono tracking-wider uppercase text-[#F95721] font-bold">
+            {impersonatedCaller
+              ? `MIRRORING: ${impersonatedCaller.full_name.toUpperCase()}`
+              : isManagement
+              ? "OUTBOUND DECK"
+              : "DIAL QUEUE"}
+          </span>
+          {isManagement && (
+            <span className="px-2 py-0.5 rounded-full bg-[#F95721]/10 text-[#F95721] text-[10px] font-mono font-bold border border-[#F95721]/20">
+              {userRole.toUpperCase()}
             </span>
-            {isManagement && (
-              <span className="px-2 py-0.5 rounded-full bg-[#F95721]/10 text-[#F95721] text-[10px] font-mono font-bold border border-[#F95721]/20">
-                {userRole.toUpperCase()}
-              </span>
-            )}
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-1">
-            High-velocity speed dialing.
-          </h1>
-          <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1.5">
-            Hotkeys: <kbd className="px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 font-mono text-[10px]">Space</kbd> Dial • <kbd className="px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 font-mono text-[10px]">1-6</kbd> Outcome • <kbd className="px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 font-mono text-[10px]">Enter</kbd> Save & Next
-          </p>
+          )}
+
+          {/* Caller's Queue Number moved directly into the header bar */}
+          {leads.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F95721] text-white text-xs font-mono font-bold shadow-sm">
+              <span>Lead {activeLeadIndex + 1} of {leads.length}</span>
+            </span>
+          )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {/* Online/Offline indicator */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm text-xs">
             {isOnline ? (
               <>
                 <Wifi className="w-3.5 h-3.5 text-feedback-success" />
-                <span className="text-[#6E6B66] dark:text-[#8A8680] font-medium">Online Mode</span>
+                <span className="text-[#6E6B66] dark:text-[#8A8680] font-medium hidden sm:inline">Online</span>
               </>
             ) : (
               <>
                 <WifiOff className="w-3.5 h-3.5 text-[#F95721]" />
-                <span className="text-[#F95721] font-semibold">Offline Cached</span>
+                <span className="text-[#F95721] font-semibold">Offline</span>
               </>
             )}
           </div>
@@ -623,10 +670,11 @@ function CallerQueueContent() {
             <button
               onClick={handleClaimLeads}
               disabled={isClaiming}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#F95721]/10 hover:bg-[#F95721]/20 text-[#F95721] border border-[#F95721]/30 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F95721]/10 hover:bg-[#F95721]/20 text-[#F95721] border border-[#F95721]/30 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isClaiming ? "animate-spin" : ""}`} />
-              <span>{isClaiming ? "Distributing..." : `Top-Up (${unassignedPoolCount} Unassigned)`}</span>
+              <RefreshCw className={`w-3 h-3 ${isClaiming ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">{isClaiming ? "Distributing..." : `Top-Up (${unassignedPoolCount})`}</span>
+              <span className="sm:hidden">{unassignedPoolCount}</span>
             </button>
           )}
         </div>
@@ -858,11 +906,6 @@ function CallerQueueContent() {
                     </div>
                   )}
                 </div>
-
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F95721]/10 text-[#F95721] border border-[#F95721]/20 font-mono text-xs font-bold">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Score {currentLead.score}</span>
-                </div>
               </div>
 
               {/* Lead Information (Large Legible Typography) */}
@@ -887,83 +930,109 @@ function CallerQueueContent() {
                 </div>
 
                 {/* Primary High-Contrast Phone Number Block */}
-                <div className="p-4 rounded-2xl bg-[#F95721]/5 dark:bg-[#F95721]/10 border border-[#F95721]/20 flex items-center justify-between gap-3">
+                <div className="p-4 sm:p-5 rounded-2xl bg-[#F95721]/5 dark:bg-[#F95721]/10 border border-[#F95721]/20 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] block">
                       Target Phone Number
                     </span>
-                    <span className="text-xl sm:text-2xl font-mono font-black text-[#F95721] tracking-wide truncate block">
-                      {currentLead.phone}
+                    <span className="text-2xl sm:text-3xl font-mono font-black text-[#F95721] tracking-wide select-all block">
+                      {formatPhoneDisplay(currentLead.phone)}
                     </span>
                   </div>
                   <a
-                    href={`tel:${currentLead.phone}`}
+                    href={formatTelLink(currentLead.phone)}
                     onClick={handleStartCall}
-                    className="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-xs uppercase tracking-wider transition-colors shadow-sm shrink-0 active:scale-95"
+                    className="hidden sm:inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-xs uppercase tracking-wider transition-colors shadow-sm shrink-0 active:scale-95"
                   >
                     <PhoneCall className="w-4 h-4 animate-pulse" />
                     <span>Dial Direct</span>
                   </a>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  {/* Address / Google Maps Card */}
-                  <div className="flex items-center gap-2 p-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
-                    <MapPin className="w-4 h-4 text-[#F95721] shrink-0" />
-                    {currentLead.address ? (
-                      <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                          `${currentLead.name} ${currentLead.address}`
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[#111110] dark:text-[#F5F3EF] truncate hover:text-[#F95721] hover:underline"
-                        title={currentLead.address}
-                      >
-                        {currentLead.address}
-                      </a>
-                    ) : (
-                      <span className="text-[#6E6B66] dark:text-[#8A8680]">{currentLead.area}</span>
-                    )}
-                  </div>
+                {/* Address & External Links Block (Wraps naturally, zero truncation, clean Maps button) */}
+                {(() => {
+                  const isMapsUrl =
+                    currentLead.website?.includes("google.com/maps") ||
+                    currentLead.website?.includes("maps.app.goo.gl") ||
+                    currentLead.website?.includes("goo.gl/maps");
 
-                  {/* Website Card */}
-                  <div className="flex items-center gap-2 p-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
-                    <Globe className="w-4 h-4 text-[#F95721] shrink-0" />
-                    {currentLead.website ? (
-                      <a
-                        href={
-                          currentLead.website.startsWith("http")
-                            ? currentLead.website
-                            : `https://${currentLead.website}`
-                        }
-                        target="_blank"
-                        rel="noreferrer"
-                        className="truncate text-[#F95721] font-semibold hover:underline flex items-center gap-1"
-                      >
-                        <span className="truncate">{currentLead.website}</span>
-                        <ExternalLink className="w-3 h-3 shrink-0" />
-                      </a>
-                    ) : (
-                      <span className="text-[#6E6B66] dark:text-[#8A8680]">No website</span>
-                    )}
-                  </div>
-                </div>
+                  const mapsUrl = isMapsUrl
+                    ? currentLead.website!
+                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                        `${currentLead.name} ${currentLead.address || currentLead.area || ""}`
+                      )}`;
+
+                  const realWebsite =
+                    currentLead.website && !isMapsUrl ? currentLead.website : null;
+
+                  const websiteDisplay = realWebsite
+                    ? realWebsite.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0]
+                    : null;
+
+                  return (
+                    <div className="space-y-2.5 text-xs">
+                      {/* Full Address Block */}
+                      {(currentLead.address || currentLead.area) && (
+                        <div className="p-3.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                            <MapPin className="w-4 h-4 text-[#F95721] shrink-0 mt-0.5" />
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] block mb-0.5">
+                                Address & Location
+                              </span>
+                              <p className="text-xs text-[#111110] dark:text-[#F5F3EF] font-medium leading-relaxed break-words">
+                                {currentLead.address || currentLead.area}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Open in Maps Button */}
+                          <a
+                            href={mapsUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="shrink-0 px-3 py-1.5 rounded-xl bg-[#F95721]/10 hover:bg-[#F95721]/20 text-[#F95721] border border-[#F95721]/20 font-semibold text-xs inline-flex items-center gap-1.5 transition-colors active:scale-95"
+                            title="Open in Google Maps"
+                          >
+                            <span>Open in Maps</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      )}
+
+                      {/* Clean Website Button */}
+                      {realWebsite && (
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={realWebsite.startsWith("http") ? realWebsite : `https://${realWebsite}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-3.5 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-[#F95721]/10 hover:text-[#F95721] border border-[#ECE8E1] dark:border-[#2D2924] text-xs font-semibold inline-flex items-center gap-2 transition-colors text-[#111110] dark:text-[#F5F3EF]"
+                          >
+                            <Globe className="w-3.5 h-3.5 text-[#F95721] shrink-0" />
+                            <span>Visit Website ({websiteDisplay})</span>
+                            <ExternalLink className="w-3 h-3 shrink-0 text-[#6E6B66] dark:text-[#8A8680]" />
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Primary Dial CTA (Desktop & Tablet) */}
                 <div className="pt-2 flex flex-col sm:flex-row items-center gap-4">
                   <a
-                    href={`tel:${currentLead.phone}`}
+                    href={formatTelLink(currentLead.phone)}
                     onClick={handleStartCall}
-                    className="w-full sm:w-auto flex-1 min-h-[48px] py-4 px-8 bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-sm uppercase tracking-wider rounded-full shadow-lg flex items-center justify-center gap-3 transition-transform active:scale-[0.98] text-center"
+                    className="w-full sm:w-auto flex-1 min-h-[50px] py-4 px-8 bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-sm uppercase tracking-wider rounded-full shadow-lg flex items-center justify-center gap-3 transition-transform active:scale-[0.98] text-center"
                   >
                     <PhoneCall className="w-5 h-5 animate-pulse" />
-                    <span>Dial Now ({currentLead.phone})</span>
+                    <span>Dial Now ({formatPhoneDisplay(currentLead.phone)})</span>
                   </a>
 
                   <button
                     onClick={() => setIsDrawerOpen(true)}
-                    className="w-full sm:w-auto min-h-[48px] py-4 px-6 bg-white dark:bg-[#1C1A17] hover:bg-black/5 dark:hover:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-full text-xs font-semibold text-[#111110] dark:text-[#F5F3EF] transition-colors flex items-center justify-center gap-2"
+                    className="w-full sm:w-auto min-h-[50px] py-4 px-6 bg-white dark:bg-[#1C1A17] hover:bg-black/5 dark:hover:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-full text-xs font-semibold text-[#111110] dark:text-[#F5F3EF] transition-colors flex items-center justify-center gap-2"
                   >
                     <span>Log Outcome</span>
                     <ChevronRight className="w-4 h-4" />
@@ -1023,9 +1092,7 @@ function CallerQueueContent() {
                     </div>
                   </div>
 
-                  <span className="text-xs font-mono font-bold text-[#F95721] shrink-0">
-                    {lead.score}
-                  </span>
+                  <ChevronRight className="w-4 h-4 text-[#6E6B66] dark:text-[#8A8680] shrink-0 opacity-40" />
                 </button>
               ))}
             </div>
@@ -1038,12 +1105,12 @@ function CallerQueueContent() {
         <div className="fixed md:hidden bottom-0 left-0 right-0 z-[90] p-3 bg-white/95 dark:bg-[#1C1A17]/95 backdrop-blur-md border-t border-[#ECE8E1] dark:border-[#2D2924] pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-2xl">
           <div className="flex items-center gap-2 max-w-lg mx-auto">
             <a
-              href={`tel:${currentLead.phone}`}
+              href={formatTelLink(currentLead.phone)}
               onClick={handleStartCall}
               className="flex-1 min-h-[48px] py-3.5 px-4 bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-sm uppercase tracking-wider rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-[0.98] transition-all text-center"
             >
               <PhoneCall className="w-5 h-5 animate-pulse shrink-0" />
-              <span className="truncate">Dial ({currentLead.phone})</span>
+              <span className="truncate">Dial ({formatPhoneDisplay(currentLead.phone)})</span>
             </a>
             <button
               onClick={() => setIsDrawerOpen(true)}
@@ -1087,7 +1154,7 @@ function CallerQueueContent() {
             <div className="p-5 flex-1 overflow-y-auto space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-[#111110] dark:text-[#F5F3EF] mb-2">
-                  Select Outcome (Hotkeys 1 - 6)
+                  Select Outcome
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {OUTCOMES.map((item) => {
