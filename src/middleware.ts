@@ -12,9 +12,9 @@ export const config = {
      * - _next/static (Next.js static files)
      * - _next/image (Next.js image optimization)
      * - favicon.ico
-     * - landing.html, index.html (static landing page)
+     * - index.html (static landing page)
      * - Static asset extensions
      */
-    "/((?!_next/static|_next/image|favicon.ico|landing\\.html|index\\.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|index\\.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

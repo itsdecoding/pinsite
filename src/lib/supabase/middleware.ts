@@ -51,8 +51,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/unauthorized") ||
     pathname.startsWith("/api") ||
-    pathname === "/" ||
-    pathname.startsWith("/landing.html");
+    pathname === "/";
 
   // 3. Authenticate against real Supabase session (NO demo mode bypass)
   let user = null;
