@@ -8,10 +8,7 @@ import {
   PhoneCall,
   FolderKanban,
   MessageSquare,
-  UploadCloud,
-  UserPlus,
   Users,
-  ShieldAlert,
   Plus,
   Settings,
   LogOut,
@@ -91,24 +88,6 @@ export function FloatingSidebar() {
       icon: Users,
       roles: ["manager", "admin"],
     },
-    {
-      label: "Quarantine Bin",
-      href: "/manager/quarantine",
-      icon: ShieldAlert,
-      roles: ["manager", "admin"],
-    },
-    {
-      label: "Lead Ingestion",
-      href: "/manager/ingestion",
-      icon: UploadCloud,
-      roles: ["manager", "admin"],
-    },
-    {
-      label: "Team Invites",
-      href: "/manager/invites",
-      icon: UserPlus,
-      roles: ["manager", "admin"],
-    },
   ];
 
   return (
@@ -147,7 +126,10 @@ export function FloatingSidebar() {
             .filter((item) => item.roles.includes(role))
             .map((item) => {
               const Icon = item.icon;
-              const isActive = pathname.startsWith(item.href);
+              const isActive =
+                item.href === "/manager/team"
+                  ? pathname.startsWith("/manager")
+                  : pathname.startsWith(item.href);
 
               return (
                 <Link
