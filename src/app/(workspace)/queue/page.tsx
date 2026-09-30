@@ -49,6 +49,7 @@ interface Lead {
   attempts_count: number;
   next_callback_at: string | null;
   last_called_at: string | null;
+  decision_maker?: string | null;
   cooldown_until?: string | null;
   rejection_reason?: string | null;
   profiles?: {
@@ -60,6 +61,13 @@ interface CallerInfo {
   id: string;
   full_name: string;
   lead_count: number;
+}
+
+interface CallLogSummary {
+  notes: string | null;
+  outcome: string;
+  called_at: string;
+  caller_name?: string;
 }
 
 const OUTCOMES = [
@@ -121,6 +129,38 @@ function formatPhoneDisplay(phone: string | null | undefined): string {
   return phone;
 }
 
+/**
+ * Formats timestamps into human relative string (e.g. "Just now", "2h ago", "Yesterday")
+ */
+function formatRelativeTime(dateString: string | null | undefined): string {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffSec = Math.round((now.getTime() - date.getTime()) / 1000);
+
+  if (diffSec < 60) return "Just now";
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  if (diffSec < 172800) return "Yesterday";
+  return date.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+}
+
+/**
+ * Resolves the decision maker name, dynamically extracting from business name if unassigned
+ */
+function resolveDecisionMaker(lead: Lead): string {
+  if (lead.decision_maker && lead.decision_maker.trim()) {
+    return lead.decision_maker.trim();
+  }
+  // Smart extraction: e.g. "Dr.Archana's Aesthetic Dental Clinic" -> "Dr. Archana — Principal Doctor / Owner"
+  const match = lead.name.match(/^(Dr\.?\s*[A-Za-z]+('s)?)/i);
+  if (match) {
+    const docName = match[1].replace(/'s$/i, "").replace(/^Dr\.?/i, "Dr. ");
+    return `${docName.trim()} — Owner / Lead Doctor`;
+  }
+  return "Owner / Managing Director";
+}
+
 function CallerQueueContent() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [totalPoolCount, setTotalPoolCount] = useState<number | null>(null);
@@ -145,6 +185,8 @@ function CallerQueueContent() {
   const [isReassigning, setIsReassigning] = useState(false);
   const [impersonatedCaller, setImpersonatedCaller] = useState<{ id: string; full_name: string } | null>(null);
   const [copiedPhone, setCopiedPhone] = useState(false);
+  const [latestCallNote, setLatestCallNote] = useState<CallLogSummary | null>(null);
+  const [loadingNote, setLoadingNote] = useState(false);
 
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -169,6 +211,50 @@ function CallerQueueContent() {
   useEffect(() => {
     currentLeadRef.current = currentLead;
   }, [currentLead]);
+
+  // Fetch the most recent call note for the active lead
+  useEffect(() => {
+    if (!currentLead) {
+      setLatestCallNote(null);
+      return;
+    }
+    let isCurrent = true;
+    setLoadingNote(true);
+
+    async function fetchLatestCall() {
+      try {
+        const { data } = await supabase
+          .from("calls")
+          .select("notes, outcome, called_at, profiles:caller_id(full_name)")
+          .eq("lead_id", currentLead!.id)
+          .order("called_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!isCurrent) return;
+
+        if (data) {
+          setLatestCallNote({
+            notes: data.notes || null,
+            outcome: data.outcome,
+            called_at: data.called_at,
+            caller_name: (data.profiles as any)?.full_name || "Caller",
+          });
+        } else {
+          setLatestCallNote(null);
+        }
+      } catch {
+        if (isCurrent) setLatestCallNote(null);
+      } finally {
+        if (isCurrent) setLoadingNote(false);
+      }
+    }
+
+    fetchLatestCall();
+    return () => {
+      isCurrent = false;
+    };
+  }, [currentLead?.id, supabase]);
 
   // Sync offline queue when network reconnects
   const syncOfflineQueue = useCallback(async () => {
@@ -850,13 +936,66 @@ function CallerQueueContent() {
                     <span className="px-3 py-1 rounded-full text-xs font-semibold bg-black/5 dark:bg-white/10 text-[#111110] dark:text-[#F5F3EF] border border-[#ECE8E1] dark:border-[#2D2924]">
                       {currentLead.area}
                     </span>
-                    {currentLead.attempts_count > 0 && (
-                      <span className="px-2.5 py-1 rounded-full text-[11px] font-mono text-[#6E6B66] dark:text-[#8A8680] bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
-                        {currentLead.attempts_count} {currentLead.attempts_count === 1 ? "attempt" : "attempts"}
+
+                    {/* Attempt counter with ceiling (e.g. Attempt 2/5) */}
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-mono font-bold border flex items-center gap-1.5 ${
+                        (currentLead.attempts_count || 0) >= 4
+                          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                          : "bg-black/5 dark:bg-white/5 text-[#111110] dark:text-[#F5F3EF] border-[#ECE8E1] dark:border-[#2D2924]"
+                      }`}
+                    >
+                      <Clock className="w-3.5 h-3.5 text-[#F95721]" />
+                      <span>
+                        {(currentLead.attempts_count || 0) === 0
+                          ? "Attempt 1/5 (Fresh)"
+                          : `Attempt ${Math.min(5, currentLead.attempts_count)}/5`}
                       </span>
-                    )}
+                    </span>
+
+                    {/* Decision Maker Name */}
+                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-[#F95721]/10 text-[#F95721] border border-[#F95721]/20 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5" />
+                      <span>Ask for: <strong>{resolveDecisionMaker(currentLead)}</strong></span>
+                    </span>
                   </div>
                 </div>
+
+                {/* Previous Call Notes & Cadence Intelligence Card */}
+                {loadingNote ? (
+                  <div className="p-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex items-center gap-2 text-xs text-[#6E6B66] dark:text-[#8A8680]">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F95721]" />
+                    <span>Loading past call history...</span>
+                  </div>
+                ) : latestCallNote?.notes ? (
+                  <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 text-xs space-y-1.5 shadow-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-300 font-mono text-[11px] uppercase tracking-wider">
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Previous Call Note ({latestCallNote.outcome.replace("_", " ")})</span>
+                      </div>
+                      <span className="text-[10px] text-amber-800/80 dark:text-amber-200/80 font-mono">
+                        {latestCallNote.caller_name} • {formatRelativeTime(latestCallNote.called_at)}
+                      </span>
+                    </div>
+                    <p className="text-[#111110] dark:text-[#F5F3EF] font-medium leading-relaxed italic bg-white/70 dark:bg-black/30 p-2.5 rounded-xl border border-amber-500/20">
+                      &ldquo;{latestCallNote.notes}&rdquo;
+                    </p>
+                  </div>
+                ) : latestCallNote ? (
+                  <div className="p-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between text-xs text-[#6E6B66] dark:text-[#8A8680]">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-3.5 h-3.5 text-[#F95721]" />
+                      <span>Last contact: <strong className="capitalize text-[#111110] dark:text-[#F5F3EF]">{latestCallNote.outcome.replace("_", " ")}</strong></span>
+                    </div>
+                    <span className="text-[10px] font-mono">{latestCallNote.caller_name} • {formatRelativeTime(latestCallNote.called_at)}</span>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                    <span>Fresh Lead — No previous call attempts or notes logged yet.</span>
+                  </div>
+                )}
 
                 {/* Primary High-Contrast Phone Number Block (Single dial action enforced) */}
                 <div className="p-4 sm:p-5 rounded-2xl bg-[#F95721]/5 dark:bg-[#F95721]/10 border border-[#F95721]/20 flex items-center justify-between gap-3">
@@ -894,7 +1033,7 @@ function CallerQueueContent() {
                   </button>
                 </div>
 
-                {/* Address & External Links Block (Wraps naturally, zero truncation, clean Maps button) */}
+                {/* Website & Address / Maps Intelligence */}
                 {(() => {
                   const isMapsUrl =
                     currentLead.website?.includes("google.com/maps") ||
@@ -916,7 +1055,40 @@ function CallerQueueContent() {
 
                   return (
                     <div className="space-y-2.5 text-xs">
-                      {/* Full Address Block */}
+                      {/* Official Website Status (Crucial for Website Sales Pitch) */}
+                      {realWebsite ? (
+                        <div className="p-3 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Globe className="w-4 h-4 text-emerald-500 shrink-0" />
+                            <span className="font-bold text-[#111110] dark:text-[#F5F3EF]">Website:</span>
+                            <span className="truncate text-emerald-700 dark:text-emerald-300 font-mono font-medium">
+                              {websiteDisplay}
+                            </span>
+                          </div>
+                          <a
+                            href={realWebsite.startsWith("http") ? realWebsite : `https://${realWebsite}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="shrink-0 px-3 py-1 rounded-xl bg-emerald-500 text-white font-bold text-[11px] inline-flex items-center gap-1 transition-transform active:scale-95 shadow-sm"
+                          >
+                            <span>Open Website</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-2xl bg-[#F95721]/5 dark:bg-[#F95721]/10 border border-[#F95721]/20 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Globe className="w-4 h-4 text-[#F95721] shrink-0" />
+                            <span className="font-bold text-[#111110] dark:text-[#F5F3EF]">Website:</span>
+                            <span className="text-[#6E6B66] dark:text-[#8A8680]">No official website listed</span>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-full bg-[#F95721]/15 text-[#F95721] font-mono font-bold text-[10px] tracking-wide uppercase">
+                            Pitch: Need New Website
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Full Address Block with Open in Maps button */}
                       {(currentLead.address || currentLead.area) && (
                         <div className="p-3.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex items-start justify-between gap-3">
                           <div className="flex items-start gap-2.5 flex-1 min-w-0">
@@ -931,32 +1103,15 @@ function CallerQueueContent() {
                             </div>
                           </div>
 
-                          {/* Open in Maps Button */}
                           <a
                             href={mapsUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="shrink-0 px-3 py-1.5 rounded-xl bg-[#F95721]/10 hover:bg-[#F95721]/20 text-[#F95721] border border-[#F95721]/20 font-semibold text-xs inline-flex items-center gap-1.5 transition-colors active:scale-95"
+                            className="shrink-0 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-[#F95721]/10 hover:text-[#F95721] text-[#111110] dark:text-[#F5F3EF] border border-[#ECE8E1] dark:border-[#2D2924] font-semibold text-xs inline-flex items-center gap-1.5 transition-colors active:scale-95"
                             title="Open in Google Maps"
                           >
                             <span>Open in Maps</span>
                             <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </div>
-                      )}
-
-                      {/* Clean Website Button */}
-                      {realWebsite && (
-                        <div className="flex items-center gap-2">
-                          <a
-                            href={realWebsite.startsWith("http") ? realWebsite : `https://${realWebsite}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="px-3.5 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-[#F95721]/10 hover:text-[#F95721] border border-[#ECE8E1] dark:border-[#2D2924] text-xs font-semibold inline-flex items-center gap-2 transition-colors text-[#111110] dark:text-[#F5F3EF]"
-                          >
-                            <Globe className="w-3.5 h-3.5 text-[#F95721] shrink-0" />
-                            <span>Visit Website ({websiteDisplay})</span>
-                            <ExternalLink className="w-3 h-3 shrink-0 text-[#6E6B66] dark:text-[#8A8680]" />
                           </a>
                         </div>
                       )}

@@ -103,7 +103,7 @@ export function FloatingSidebar() {
           </div>
           <div className="min-w-0">
             <h2 className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF] truncate tracking-tight uppercase font-mono">
-              {profile?.full_name || "MUZAMMIL"}
+              {profile?.full_name?.replace(/\(owner\)/i, "(Admin)") || "MUZAMMIL (ADMIN)"}
             </h2>
             <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] truncate font-medium">
               Agency OS • <span className="capitalize">{role}</span>
