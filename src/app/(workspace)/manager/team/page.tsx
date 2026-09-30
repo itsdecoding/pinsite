@@ -17,12 +17,32 @@ import {
   Copy,
   Check,
   X,
-  ShieldAlert,
   Inbox,
   UserCheck,
   Radio,
   Zap,
+  ArrowUpDown,
+  SlidersHorizontal,
+  ChevronRight,
+  PhoneForwarded,
+  FileText,
+  Calendar,
+  Shield,
+  PhoneOff,
+  UserX,
+  Hourglass,
+  Layers,
+  ArrowRight,
 } from "lucide-react";
+
+interface OutcomeBreakdown {
+  interested: number;
+  callback: number;
+  no_answer: number;
+  gatekeeper: number;
+  not_interested: number;
+  dnc: number;
+}
 
 interface CallerStat {
   id: string;
@@ -36,19 +56,56 @@ interface CallerStat {
   temp_password_issued_at: string | null;
   dials_today: number;
   connects_today: number;
-  connect_rate_percent: number;
+  connect_rate_percent: number | null;
   interested_today: number;
   callbacks_today: number;
   talk_time_seconds: number;
   active_leads_count: number;
+  outcomes_breakdown: OutcomeBreakdown;
 }
 
 interface TeamSummary {
   total_dials_today: number;
   total_connects_today: number;
+  total_talk_time_seconds: number;
   total_pipeline_escalations: number;
+  total_callbacks_today: number;
+  total_rejections_today: number;
+  total_no_answer_today: number;
   active_callers: number;
   total_callers: number;
+  connect_rate_percent: number | null;
+}
+
+interface CallLedgerItem {
+  id: string;
+  called_at: string;
+  outcome: string;
+  duration_seconds: number;
+  notes: string | null;
+  callback_at: string | null;
+  lead: {
+    id: string;
+    name: string;
+    phone: string;
+    niche: string;
+    area: string;
+    status: string;
+    attempts_count: number;
+  } | null;
+}
+
+interface CallerActivityDetail {
+  caller: CallerStat;
+  summary: {
+    total_dials: number;
+    connects: number;
+    connect_rate: number | null;
+    talk_time_seconds: number;
+    active_queue_count: number;
+  };
+  calls: CallLedgerItem[];
+  active_leads: any[];
 }
 
 function formatDuration(totalSeconds: number): string {
@@ -63,6 +120,24 @@ function formatDuration(totalSeconds: number): string {
     return `${minutes}m ${seconds}s`;
   }
   return `${seconds}s`;
+}
+
+function formatTimeAgo(date: Date): string {
+  const diffSec = Math.round((Date.now() - date.getTime()) / 1000);
+  if (diffSec < 15) return "Updated just now";
+  if (diffSec < 60) return `Updated ${diffSec}s ago`;
+  const mins = Math.floor(diffSec / 60);
+  return `Updated ${mins}m ago`;
+}
+
+function formatPhoneDisplay(phone: string | null | undefined): string {
+  if (!phone) return "No Phone";
+  const cleaned = phone.trim().replace(/\D/g, "");
+  let core10 = cleaned;
+  if (cleaned.length === 11 && cleaned.startsWith("0")) core10 = cleaned.slice(1);
+  else if (cleaned.length === 12 && cleaned.startsWith("91")) core10 = cleaned.slice(2);
+  if (core10.length === 10) return `+91 ${core10.slice(0, 5)} ${core10.slice(5)}`;
+  return phone;
 }
 
 function generateTemporaryPassword(): string {
@@ -80,14 +155,22 @@ export default function ManagerTeamPage() {
   const [summary, setSummary] = useState<TeamSummary>({
     total_dials_today: 0,
     total_connects_today: 0,
+    total_talk_time_seconds: 0,
     total_pipeline_escalations: 0,
+    total_callbacks_today: 0,
+    total_rejections_today: 0,
+    total_no_answer_today: 0,
     active_callers: 0,
     total_callers: 0,
+    connect_rate_percent: null,
   });
+  const [quarantineCount, setQuarantineCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
+  const [sortBy, setSortBy] = useState<"queue" | "dials" | "connects" | "name">("queue");
+  const [timeRange, setTimeRange] = useState<"today" | "24h">("today");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(new Date());
   const [countdown, setCountdown] = useState(30);
@@ -100,32 +183,53 @@ export default function ManagerTeamPage() {
   const [resetSuccess, setResetSuccess] = useState<string | null>(null);
   const [copiedPassword, setCopiedPassword] = useState(false);
 
-  const fetchTeamStats = useCallback(async (isManual: boolean = false) => {
-    if (isManual) {
-      setRefreshing(true);
-    }
-    try {
-      const res = await fetch("/api/manager/team-stats");
-      if (res.ok) {
-        const data = await res.json();
-        setCallers(data.callers || []);
-        if (data.summary) {
-          setSummary(data.summary);
-        }
-        setLastRefreshedAt(new Date());
-        setCountdown(30);
-      } else {
-        console.warn("Failed to load team stats:", res.status);
-      }
-    } catch (err) {
-      console.warn("Team stats network error:", err);
-    } finally {
-      setLoading(false);
+  // Caller detail drawer state
+  const [detailCallerId, setDetailCallerId] = useState<string | null>(null);
+  const [detailData, setDetailData] = useState<CallerActivityDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailTab, setDetailTab] = useState<"calls" | "queue">("calls");
+
+  // Rebalance modal state
+  const [rebalanceModalOpen, setRebalanceModalOpen] = useState(false);
+  const [rebalanceSource, setRebalanceSource] = useState<string>("");
+  const [rebalanceTarget, setRebalanceTarget] = useState<string>("");
+  const [rebalanceCount, setRebalanceCount] = useState<number>(10);
+  const [rebalancing, setRebalancing] = useState(false);
+  const [rebalanceError, setRebalanceError] = useState<string | null>(null);
+  const [rebalanceSuccess, setRebalanceSuccess] = useState<string | null>(null);
+
+  const fetchTeamStats = useCallback(
+    async (isManual: boolean = false) => {
       if (isManual) {
-        setRefreshing(false);
+        setRefreshing(true);
       }
-    }
-  }, []);
+      try {
+        const res = await fetch(`/api/manager/team-stats?range=${timeRange}`);
+        if (res.ok) {
+          const data = await res.json();
+          setCallers(data.callers || []);
+          if (data.summary) {
+            setSummary(data.summary);
+          }
+          if (typeof data.quarantine_count === "number") {
+            setQuarantineCount(data.quarantine_count);
+          }
+          setLastRefreshedAt(new Date());
+          setCountdown(30);
+        } else {
+          console.warn("Failed to load team stats:", res.status);
+        }
+      } catch (err) {
+        console.warn("Team stats network error:", err);
+      } finally {
+        setLoading(false);
+        if (isManual) {
+          setRefreshing(false);
+        }
+      }
+    },
+    [timeRange]
+  );
 
   useEffect(() => {
     fetchTeamStats();
@@ -148,26 +252,58 @@ export default function ManagerTeamPage() {
     return () => clearInterval(timer);
   }, [autoRefresh, fetchTeamStats]);
 
-  // Filtered callers list
+  // Fetch Caller Activity Detail when drawer is opened
+  const openCallerDetail = async (callerId: string) => {
+    setDetailCallerId(callerId);
+    setDetailLoading(true);
+    setDetailTab("calls");
+    try {
+      const res = await fetch(`/api/manager/caller-activity?caller_id=${callerId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDetailData(data);
+      } else {
+        console.error("Failed to load caller detail");
+      }
+    } catch (err) {
+      console.error("Error loading caller detail:", err);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeCallerDetail = () => {
+    setDetailCallerId(null);
+    setDetailData(null);
+  };
+
+  // Filtered & Sorted callers list
   const filteredCallers = useMemo(() => {
-    return callers.filter((c) => {
+    const list = callers.filter((c) => {
       const matchesSearch =
         c.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         c.email.toLowerCase().includes(searchQuery.toLowerCase());
 
       if (!matchesSearch) return false;
 
-      if (statusFilter === "online") {
-        return c.is_online;
-      }
-      if (statusFilter === "offline") {
-        return !c.is_online;
-      }
+      if (statusFilter === "online") return c.is_online;
+      if (statusFilter === "offline") return !c.is_online;
       return true;
     });
-  }, [callers, searchQuery, statusFilter]);
 
-  function handleOpenResetModal(caller: CallerStat) {
+    list.sort((a, b) => {
+      if (sortBy === "queue") return b.active_leads_count - a.active_leads_count;
+      if (sortBy === "dials") return b.dials_today - a.dials_today;
+      if (sortBy === "connects") return b.connects_today - a.connects_today;
+      if (sortBy === "name") return a.full_name.localeCompare(b.full_name);
+      return 0;
+    });
+
+    return list;
+  }, [callers, searchQuery, statusFilter, sortBy]);
+
+  function handleOpenResetModal(caller: CallerStat, e?: React.MouseEvent) {
+    if (e) e.stopPropagation();
     setTargetCaller(caller);
     setTempPassword(generateTemporaryPassword());
     setResetError(null);
@@ -213,7 +349,7 @@ export default function ManagerTeamPage() {
       }
 
       setResetSuccess(
-        `Temporary password for ${targetCaller.full_name} set successfully. The caller will be prompted to choose a new password upon their next login.`
+        `Temporary password for ${targetCaller.full_name} set successfully. The caller will be prompted to choose a permanent password upon their next login.`
       );
 
       // Optimistically update caller state
@@ -238,8 +374,77 @@ export default function ManagerTeamPage() {
     setTimeout(() => setCopiedPassword(false), 2000);
   }
 
+  // Handle Rebalance Execution
+  async function handleExecuteRebalance(e: React.FormEvent) {
+    e.preventDefault();
+    if (!rebalanceSource || !rebalanceTarget) {
+      setRebalanceError("Please select both source and target callers");
+      return;
+    }
+    if (rebalanceSource === rebalanceTarget) {
+      setRebalanceError("Source and target callers cannot be the same");
+      return;
+    }
+    if (rebalanceCount <= 0) {
+      setRebalanceError("Lead count must be at least 1");
+      return;
+    }
+
+    setRebalancing(true);
+    setRebalanceError(null);
+    setRebalanceSuccess(null);
+
+    try {
+      const res = await fetch("/api/manager/leads/rebalance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_caller_id: rebalanceSource,
+          target_caller_id: rebalanceTarget,
+          count: rebalanceCount,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to rebalance leads");
+      }
+
+      setRebalanceSuccess(`Successfully transferred ${data.rebalanced_count} leads!`);
+      await fetchTeamStats(true);
+      setTimeout(() => {
+        setRebalanceModalOpen(false);
+        setRebalanceSuccess(null);
+      }, 1500);
+    } catch (err: any) {
+      setRebalanceError(err.message || "An unexpected error occurred during rebalance");
+    } finally {
+      setRebalancing(false);
+    }
+  }
+
+  function openRebalanceModalWithCaller(sourceCallerId?: string) {
+    setRebalanceError(null);
+    setRebalanceSuccess(null);
+    if (sourceCallerId) {
+      setRebalanceSource(sourceCallerId);
+      // Select first other caller as target
+      const other = callers.find((c) => c.id !== sourceCallerId);
+      if (other) setRebalanceTarget(other.id);
+    } else {
+      // Default: Highest queue caller to lowest queue caller
+      const sorted = [...callers].sort((a, b) => b.active_leads_count - a.active_leads_count);
+      if (sorted.length >= 2) {
+        setRebalanceSource(sorted[0].id);
+        setRebalanceTarget(sorted[sorted.length - 1].id);
+      }
+    }
+    setRebalanceCount(10);
+    setRebalanceModalOpen(true);
+  }
+
   return (
-    <div className="space-y-8 max-w-6xl mx-auto pb-12">
+    <div className="space-y-8 max-w-6xl mx-auto pb-16">
       {/* Header & Sub-Navigation */}
       <div className="pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924] pt-2 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -247,160 +452,227 @@ export default function ManagerTeamPage() {
             TEAM COMMAND CENTER
           </span>
           <h1 className="text-3xl sm:text-4xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-1">
-            Caller roster & telemetry.
+            Caller roster & telemetry
           </h1>
-          <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1.5">
-            Monitor daily call output, talk time, queue depth, mirror live caller decks, and manage credentials.
+          <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1.5 flex items-center gap-2">
+            <span>Monitor daily caller output, live talk time, queue depth, and rebalance leads.</span>
+            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
+              IST (UTC+5:30)
+            </span>
           </p>
         </div>
 
-        {/* Manager Navigation Pills */}
+        {/* Manager Navigation Pills with Live Quarantine Badge */}
         <div className="flex items-center gap-1.5 p-1 bg-black/5 dark:bg-white/5 rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
           <Link
             href="/manager/team"
-            className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#F95721] text-white shadow-sm transition-all flex items-center gap-1.5 shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#F95721] text-white shadow-sm transition-all"
           >
             <Users className="w-3.5 h-3.5" />
             <span>Team Roster</span>
           </Link>
           <Link
             href="/manager/quarantine"
-            className="px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5 transition-all flex items-center gap-1.5 shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] transition-all"
           >
-            <ShieldAlert className="w-3.5 h-3.5" />
+            <Inbox className="w-3.5 h-3.5" />
             <span>Quarantine</span>
+            {quarantineCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-red-500/10 text-red-500 border border-red-500/20 font-bold">
+                {quarantineCount}
+              </span>
+            )}
           </Link>
           <Link
             href="/manager/invites"
-            className="px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5 transition-all shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] transition-all"
           >
-            Invites
+            <span>Invites</span>
           </Link>
           <Link
             href="/manager/ingestion"
-            className="px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5 transition-all shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] transition-all"
           >
-            CSV Ingestion
+            <span>CSV Ingestion</span>
           </Link>
         </div>
       </div>
 
-      {/* Top Controls: Auto Refresh & Manual Trigger */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white dark:bg-[#1C1A17] p-3 px-4 rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm text-xs">
-        <div className="flex items-center gap-2 text-[#6E6B66] dark:text-[#8A8680]">
-          <span className="inline-flex items-center gap-1.5">
-            <Radio className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+      {/* Telemetry Status Bar & Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-mono">
+            <Radio className="w-4 h-4 animate-pulse" />
             <span>Live telemetry</span>
+          </div>
+          <span className="text-[#6E6B66] dark:text-[#8A8680]">&bull;</span>
+          <span className="text-[#6E6B66] dark:text-[#8A8680] font-mono">
+            {formatTimeAgo(lastRefreshedAt)}
           </span>
-          <span>•</span>
-          <span>Updated {lastRefreshedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+
+          {/* Time Range Selector */}
+          <div className="flex items-center p-0.5 bg-black/5 dark:bg-white/5 rounded-xl border border-[#ECE8E1] dark:border-[#2D2924] ml-2">
+            <button
+              type="button"
+              onClick={() => setTimeRange("today")}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                timeRange === "today"
+                  ? "bg-white dark:bg-[#1C1A17] text-[#111110] dark:text-[#F5F3EF] shadow-sm font-semibold"
+                  : "text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+              }`}
+            >
+              Today (IST)
+            </button>
+            <button
+              type="button"
+              onClick={() => setTimeRange("24h")}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                timeRange === "24h"
+                  ? "bg-white dark:bg-[#1C1A17] text-[#111110] dark:text-[#F5F3EF] shadow-sm font-semibold"
+                  : "text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+              }`}
+            >
+              Last 24h
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          {/* Rebalance Leads Button */}
           <button
             type="button"
-            onClick={() => setAutoRefresh((prev) => !prev)}
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors border ${
-              autoRefresh
-                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                : "bg-black/5 dark:bg-white/5 text-[#8A8680] border-transparent"
-            }`}
+            onClick={() => openRebalanceModalWithCaller()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#F95721]/10 text-[#F95721] hover:bg-[#F95721] hover:text-white font-semibold transition-all shadow-sm border border-[#F95721]/20"
           >
-            {autoRefresh ? `Auto-refresh: ${countdown}s` : "Auto-refresh: Paused"}
+            <PhoneForwarded className="w-3.5 h-3.5" />
+            <span>Rebalance Leads</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className={`px-2.5 py-1.5 rounded-xl font-mono text-[11px] transition-all flex items-center gap-1.5 ${
+              autoRefresh
+                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                : "bg-black/5 dark:bg-white/5 text-[#8A8680] border border-transparent"
+            }`}
+            title={autoRefresh ? "Auto-refreshing every 30 seconds" : "Auto-refresh paused"}
+          >
+            <span>Auto: {autoRefresh ? `${countdown}s` : "Off"}</span>
           </button>
 
           <button
             type="button"
             onClick={() => fetchTeamStats(true)}
             disabled={refreshing}
-            className="flex items-center gap-1.5 px-3 py-1 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-lg text-xs font-medium text-[#111110] dark:text-[#F5F3EF] border border-[#ECE8E1] dark:border-[#2D2924] transition-all disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721] text-[#111110] dark:text-[#F5F3EF] shadow-sm transition-all disabled:opacity-50"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-[#F95721] ${refreshing ? "animate-spin" : ""}`} />
-            <span>{refreshing ? "Syncing..." : "Refresh"}</span>
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-[#F95721]" : ""}`} />
+            <span>Refresh</span>
           </button>
         </div>
       </div>
 
-      {/* KPI Metric Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* KPI Metric Cards — Real Numbers, Team-Level Totals */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {/* Card 1: Total Dials Today */}
-        <div className="p-5 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
+        <div className="p-4 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
-              Total Dials Today
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
+              Total Dials
             </span>
-            <div className="w-8 h-8 rounded-2xl bg-[#F95721]/10 flex items-center justify-center text-[#F95721]">
-              <PhoneCall className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-2xl bg-orange-500/10 flex items-center justify-center text-orange-500">
+              <PhoneCall className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div className="mt-4">
+          <div className="mt-3">
             <h3 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
               {summary.total_dials_today}
             </h3>
-            <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
+            <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
               Outbound attempts across team
             </p>
           </div>
         </div>
 
-        {/* Card 2: Total Connects */}
-        <div className="p-5 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
+        {/* Card 2: Total Connects (Kill % until >= 20 dials) */}
+        <div className="p-4 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
               Total Connects
             </span>
-            <div className="w-8 h-8 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-              <Zap className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+              <Zap className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div className="mt-4">
+          <div className="mt-3">
             <div className="flex items-baseline gap-2">
               <h3 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
                 {summary.total_connects_today}
               </h3>
-              {summary.total_dials_today > 0 && (
-                <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                  {Math.round((summary.total_connects_today / summary.total_dials_today) * 100)}%
+              {summary.connect_rate_percent !== null && (
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                  {summary.connect_rate_percent}%
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
+            <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
               Live human conversations
             </p>
           </div>
         </div>
 
-        {/* Card 3: Total Pipeline Escalations */}
-        <div className="p-5 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
+        {/* Card 3: Total Talk Time */}
+        <div className="p-4 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
-              Hot Escalations
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
+              Total Talk Time
             </span>
-            <div className="w-8 h-8 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500">
-              <Flame className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+              <Clock className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div className="mt-4">
+          <div className="mt-3">
+            <h3 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
+              {formatDuration(summary.total_talk_time_seconds)}
+            </h3>
+            <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
+              Cumulative team call duration
+            </p>
+          </div>
+        </div>
+
+        {/* Card 4: Hot Escalations */}
+        <div className="p-4 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
+              Hot Escalations
+            </span>
+            <div className="w-7 h-7 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+              <Flame className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="mt-3">
             <h3 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
               {summary.total_pipeline_escalations}
             </h3>
-            <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
+            <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
               Qualified deals marked interested
             </p>
           </div>
         </div>
 
-        {/* Card 4: Active Callers */}
-        <div className="p-5 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
+        {/* Card 5: Active Callers */}
+        <div className="p-4 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
               Active Callers
             </span>
-            <div className="w-8 h-8 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500">
-              <UserCheck className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-2xl bg-purple-500/10 flex items-center justify-center text-purple-500">
+              <UserCheck className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div className="mt-4">
+          <div className="mt-3">
             <div className="flex items-baseline gap-2">
               <h3 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
                 {summary.active_callers}
@@ -409,27 +681,44 @@ export default function ManagerTeamPage() {
                 / {summary.total_callers || callers.length} roster
               </span>
             </div>
-            <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
+            <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
               Available & logged in now
             </p>
           </div>
         </div>
       </div>
 
-      {/* Filter & Search Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8A8680]" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search callers by name or email..."
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-xs text-[#111110] dark:text-[#F5F3EF] outline-none shadow-sm transition-all"
-          />
+      {/* Filter, Search & Sort Bar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-1 max-w-md">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8A8680]" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search callers by name or email..."
+              className="w-full pl-10 pr-4 py-2 bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-xs text-[#111110] dark:text-[#F5F3EF] outline-none shadow-sm transition-all"
+            />
+          </div>
+
+          {/* Sort Dropdown */}
+          <div className="relative">
+            <select
+              value={sortBy}
+              onChange={(e: any) => setSortBy(e.target.value)}
+              className="px-3 py-2 bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl text-xs text-[#111110] dark:text-[#F5F3EF] outline-none shadow-sm cursor-pointer font-medium"
+            >
+              <option value="queue">Sort: Queue Depth</option>
+              <option value="dials">Sort: Most Dials</option>
+              <option value="connects">Sort: Connects</option>
+              <option value="name">Sort: Name (A-Z)</option>
+            </select>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5 p-1 bg-white dark:bg-[#1C1A17] rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm self-start sm:self-auto text-xs">
+        {/* Status Filter Tabs */}
+        <div className="flex items-center gap-1.5 p-1 bg-white dark:bg-[#1C1A17] rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm self-start md:self-auto text-xs">
           <button
             type="button"
             onClick={() => setStatusFilter("all")}
@@ -450,7 +739,7 @@ export default function ManagerTeamPage() {
                 : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
             }`}
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
             Online ({callers.filter((c) => c.is_online).length})
           </button>
           <button
@@ -458,56 +747,63 @@ export default function ManagerTeamPage() {
             onClick={() => setStatusFilter("offline")}
             className={`px-3 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 ${
               statusFilter === "offline"
-                ? "bg-stone-600 text-white"
+                ? "bg-stone-700 text-white"
                 : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
             }`}
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-stone-400"></span>
+            <span className="w-2 h-2 rounded-full bg-stone-400" />
             Offline ({callers.filter((c) => !c.is_online).length})
           </button>
         </div>
       </div>
 
-      {/* Callers Roster: Responsive Cards / Table */}
+      {/* Caller Cards Grid */}
       {loading ? (
-        <div className="p-12 text-center rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924]">
-          <RefreshCw className="w-6 h-6 animate-spin text-[#F95721] mx-auto mb-2" />
-          <p className="text-xs text-[#8A8680]">Loading live team telemetry...</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div
+              key={i}
+              className="p-6 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] animate-pulse space-y-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-black/5 dark:bg-white/5" />
+                <div className="space-y-2 flex-1">
+                  <div className="h-4 bg-black/5 dark:bg-white/5 rounded w-1/2" />
+                  <div className="h-3 bg-black/5 dark:bg-white/5 rounded w-3/4" />
+                </div>
+              </div>
+              <div className="h-16 bg-black/5 dark:bg-white/5 rounded-2xl" />
+            </div>
+          ))}
         </div>
       ) : filteredCallers.length === 0 ? (
-        <div className="p-12 text-center rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924]">
-          <Inbox className="w-8 h-8 text-[#8A8680] mx-auto mb-2" />
-          <h3 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">No callers found</h3>
-          <p className="text-xs text-[#8A8680] mt-1 max-w-sm mx-auto">
-            {searchQuery
-              ? `No caller matching "${searchQuery}" was found.`
-              : "No outbound callers currently in your workspace. Invite new members via Team Access Control."}
+        <div className="text-center py-16 px-4 bg-white dark:bg-[#1C1A17] rounded-3xl border border-[#ECE8E1] dark:border-[#2D2924] space-y-3">
+          <Users className="w-10 h-10 text-[#8A8680] mx-auto opacity-50" />
+          <h3 className="text-base font-bold text-[#111110] dark:text-[#F5F3EF]">
+            No callers match current filters
+          </h3>
+          <p className="text-xs text-[#6E6B66] dark:text-[#8A8680]">
+            Try adjusting your search query or status filter.
           </p>
-          <Link
-            href="/manager/invites"
-            className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 bg-[#F95721] text-white rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity"
-          >
-            Issue Seat Invite
-          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredCallers.map((caller) => {
             const initials = caller.full_name
               .split(" ")
-              .filter(Boolean)
               .map((n) => n[0])
               .join("")
               .toUpperCase()
-              .slice(0, 2) || "C";
+              .slice(0, 2);
 
             return (
               <div
                 key={caller.id}
-                className="p-5 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm hover:border-[#F95721]/30 transition-all flex flex-col justify-between"
+                onClick={() => openCallerDetail(caller.id)}
+                className="p-5 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm hover:border-[#F95721]/50 hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group"
               >
-                {/* Caller Top Identity Row */}
                 <div>
+                  {/* Top: Avatar, Name, Email, Real Status */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="relative shrink-0">
@@ -516,20 +812,20 @@ export default function ManagerTeamPage() {
                             {initials}
                           </div>
                         </div>
-                        {/* Status Dot Indicator */}
+                        {/* Live Status Dot Indicator */}
                         <span
                           className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-[#1C1A17] ${
                             caller.is_online
                               ? "bg-emerald-500 shadow-sm"
                               : "bg-stone-400"
                           }`}
-                          title={caller.is_online ? "Available & Online" : "Offline / Away"}
+                          title={caller.is_online ? "🟢 Idle & Available" : "⚫ Offline"}
                         />
                       </div>
 
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF] truncate">
+                          <h4 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF] truncate group-hover:text-[#F95721] transition-colors">
                             {caller.full_name}
                           </h4>
                           {caller.require_password_change && (
@@ -579,41 +875,100 @@ export default function ManagerTeamPage() {
                     </div>
                   </div>
 
-                  {/* Queue Depth & Pipeline Sub-metrics */}
+                  {/* Outcome Breakdown (Missing 6 — The Coaching Signal) */}
+                  <div className="mt-3 p-2 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/60 dark:border-[#2D2924]/60">
+                    <div className="text-[9px] font-mono uppercase tracking-wider text-[#8A8680] mb-1.5 flex items-center justify-between">
+                      <span>Today&apos;s Outcomes</span>
+                      <span>Total: {caller.dials_today}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-medium">
+                      <span
+                        className="px-2 py-0.5 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20"
+                        title="Interested deals"
+                      >
+                        🔥 {caller.outcomes_breakdown?.interested || 0}
+                      </span>
+                      <span
+                        className="px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+                        title="Callbacks scheduled"
+                      >
+                        📞 {caller.outcomes_breakdown?.callback || 0}
+                      </span>
+                      <span
+                        className="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                        title="No Answer (Cadence)"
+                      >
+                        ⏳ {caller.outcomes_breakdown?.no_answer || 0}
+                      </span>
+                      <span
+                        className="px-2 py-0.5 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
+                        title="Gatekeeper"
+                      >
+                        🛡️ {caller.outcomes_breakdown?.gatekeeper || 0}
+                      </span>
+                      <span
+                        className="px-2 py-0.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
+                        title="Rejected / Quarantine"
+                      >
+                        ❌ {caller.outcomes_breakdown?.not_interested || 0}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Queue Depth & Rebalance Shortcut */}
                   <div className="mt-3 flex items-center justify-between text-xs px-1 text-[#6E6B66] dark:text-[#8A8680]">
                     <span className="flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5 text-[#F95721]" />
                       <span>Queue Active:</span>
-                      <strong className="text-[#111110] dark:text-[#F5F3EF]">{caller.active_leads_count}</strong>
+                      <strong className="text-[#111110] dark:text-[#F5F3EF]">
+                        {caller.active_leads_count} leads
+                      </strong>
                     </span>
 
-                    <span className="flex items-center gap-1.5">
-                      <Flame className="w-3.5 h-3.5 text-amber-500" />
-                      <span>Interested:</span>
-                      <strong className="text-amber-600 dark:text-amber-400">{caller.interested_today}</strong>
-                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openRebalanceModalWithCaller(caller.id);
+                      }}
+                      className="text-[11px] font-semibold text-[#F95721] hover:underline flex items-center gap-1"
+                    >
+                      <PhoneForwarded className="w-3 h-3" />
+                      <span>Shift</span>
+                    </button>
                   </div>
                 </div>
 
-                {/* Card Actions: Mirror View & Reset Password */}
-                <div className="grid grid-cols-2 gap-2 mt-5 pt-3 border-t border-[#ECE8E1] dark:border-[#2D2924]">
+                {/* Card Actions: Mirror View, Activity Ledger, De-emphasized Reset Pass */}
+                <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-[#ECE8E1] dark:border-[#2D2924]" onClick={(e) => e.stopPropagation()}>
                   <Link
                     href={`/queue?impersonate=${caller.id}`}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-[#F95721] hover:text-white text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all group"
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-[#F95721] hover:text-white text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all group/btn"
                     title={`Mirror view of ${caller.full_name}'s dial queue`}
                   >
-                    <ExternalLink className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                    <ExternalLink className="w-3.5 h-3.5 group-hover/btn:scale-110 transition-transform" />
                     <span>Mirror View</span>
                   </Link>
 
                   <button
                     type="button"
-                    onClick={() => handleOpenResetModal(caller)}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] text-xs font-medium transition-all"
-                    title={`Set temporary password for ${caller.full_name}`}
+                    onClick={() => openCallerDetail(caller.id)}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all"
                   >
-                    <KeyRound className="w-3.5 h-3.5 text-[#F95721]" />
-                    <span>Reset Pass</span>
+                    <FileText className="w-3.5 h-3.5 text-[#F95721]" />
+                    <span>Activity</span>
+                  </button>
+                </div>
+
+                {/* Secondary De-emphasized Action: Reset Password */}
+                <div className="mt-2 text-center" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={(e) => handleOpenResetModal(caller, e)}
+                    className="text-[10px] text-[#8A8680] hover:text-amber-500 font-mono flex items-center justify-center gap-1 mx-auto transition-colors"
+                  >
+                    <KeyRound className="w-3 h-3" />
+                    <span>Reset Credentials</span>
                   </button>
                 </div>
               </div>
@@ -622,7 +977,360 @@ export default function ManagerTeamPage() {
         </div>
       )}
 
-      {/* Temporary Password Reset Modal */}
+      {/* ========================================================================= */}
+      {/* CALLER ACTIVITY LEDGER DRAWER / SLIDE-OVER (Missing 7 — The Tracking Fix) */}
+      {/* ========================================================================= */}
+      {detailCallerId && (
+        <div className="fixed inset-0 z-[400] bg-black/50 backdrop-blur-sm flex justify-end">
+          <div
+            className="w-full max-w-xl h-full bg-white dark:bg-[#1C1A17] border-l border-[#ECE8E1] dark:border-[#2D2924] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Drawer Header */}
+            <div className="p-5 border-b border-[#ECE8E1] dark:border-[#2D2924] flex items-start justify-between gap-4 bg-black/[0.01] dark:bg-white/[0.01]">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#F95721] to-[#FF8A65] p-0.5">
+                  <div className="w-full h-full rounded-[14px] bg-white dark:bg-[#1C1A17] flex items-center justify-center font-bold text-sm text-[#F95721]">
+                    {detailData?.caller.full_name?.slice(0, 2).toUpperCase() || "CL"}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#111110] dark:text-[#F5F3EF]">
+                    {detailData?.caller.full_name || "Caller Activity"}
+                  </h3>
+                  <p className="text-xs text-[#6E6B66] dark:text-[#8A8680]">
+                    {detailData?.caller.email}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/queue?impersonate=${detailCallerId}`}
+                  className="px-3 py-1.5 rounded-xl bg-[#F95721] text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm hover:opacity-90"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Mirror View</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={closeCallerDetail}
+                  className="p-1.5 rounded-xl text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Summary Pill Bar */}
+            {detailData && (
+              <div className="grid grid-cols-4 gap-2 p-4 bg-black/[0.02] dark:bg-white/[0.02] border-b border-[#ECE8E1] dark:border-[#2D2924] text-center text-xs">
+                <div>
+                  <span className="text-[10px] font-mono text-[#8A8680] block">Dials</span>
+                  <strong className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
+                    {detailData.summary.total_dials}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-[10px] font-mono text-[#8A8680] block">Connects</span>
+                  <strong className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                    {detailData.summary.connects}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-[10px] font-mono text-[#8A8680] block">Talk Time</span>
+                  <strong className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
+                    {formatDuration(detailData.summary.talk_time_seconds)}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-[10px] font-mono text-[#8A8680] block">Queue Depth</span>
+                  <strong className="text-sm font-bold text-[#F95721]">
+                    {detailData.summary.active_queue_count}
+                  </strong>
+                </div>
+              </div>
+            )}
+
+            {/* Drawer Tabs */}
+            <div className="flex border-b border-[#ECE8E1] dark:border-[#2D2924] text-xs">
+              <button
+                type="button"
+                onClick={() => setDetailTab("calls")}
+                className={`flex-1 py-3 font-semibold text-center border-b-2 transition-all ${
+                  detailTab === "calls"
+                    ? "border-[#F95721] text-[#F95721]"
+                    : "border-transparent text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                }`}
+              >
+                Call Activity Ledger ({detailData?.calls?.length || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetailTab("queue")}
+                className={`flex-1 py-3 font-semibold text-center border-b-2 transition-all ${
+                  detailTab === "queue"
+                    ? "border-[#F95721] text-[#F95721]"
+                    : "border-transparent text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                }`}
+              >
+                Assigned Queue ({detailData?.active_leads?.length || 0})
+              </button>
+            </div>
+
+            {/* Drawer Content */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {detailLoading ? (
+                <div className="py-16 text-center text-[#8A8680]">
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto text-[#F95721] mb-2" />
+                  <p className="text-xs">Loading activity ledger...</p>
+                </div>
+              ) : detailTab === "calls" ? (
+                detailData?.calls?.length === 0 ? (
+                  <div className="py-16 text-center text-[#8A8680] space-y-2">
+                    <PhoneOff className="w-8 h-8 mx-auto opacity-40" />
+                    <p className="text-xs">No calls logged yet for this period.</p>
+                  </div>
+                ) : (
+                  detailData?.calls?.map((call) => (
+                    <div
+                      key={call.id}
+                      className="p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h4 className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                            {call.lead?.name || "Unknown Lead"}
+                          </h4>
+                          <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] font-mono">
+                            {formatPhoneDisplay(call.lead?.phone)} &bull; {call.lead?.niche || "Sales"}
+                          </p>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
+                              call.outcome === "interested"
+                                ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
+                                : call.outcome === "callback"
+                                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                                : call.outcome === "gatekeeper"
+                                ? "bg-purple-500/10 text-purple-600 dark:text-purple-400"
+                                : call.outcome === "not_interested"
+                                ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                                : "bg-black/5 dark:bg-white/5 text-[#8A8680]"
+                            }`}
+                          >
+                            {call.outcome}
+                          </span>
+                          <span className="block text-[10px] font-mono text-[#8A8680] mt-0.5">
+                            {formatDuration(call.duration_seconds)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {call.notes && (
+                        <p className="text-xs bg-white dark:bg-[#1C1A17] p-2 rounded-xl border border-[#ECE8E1] dark:border-[#2D2924] text-[#111110] dark:text-[#F5F3EF] italic">
+                          &ldquo;{call.notes}&rdquo;
+                        </p>
+                      )}
+
+                      <div className="text-[10px] font-mono text-[#8A8680] flex items-center justify-between pt-1">
+                        <span>{new Date(call.called_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" })} IST</span>
+                        {call.callback_at && (
+                          <span className="text-blue-500 font-semibold">
+                            Callback: {new Date(call.callback_at).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )
+              ) : (
+                /* Assigned Queue Tab */
+                detailData?.active_leads?.length === 0 ? (
+                  <div className="py-16 text-center text-[#8A8680] space-y-2">
+                    <Inbox className="w-8 h-8 mx-auto opacity-40" />
+                    <p className="text-xs">No active leads assigned in this caller&apos;s queue.</p>
+                  </div>
+                ) : (
+                  detailData?.active_leads?.map((lead) => (
+                    <div
+                      key={lead.id}
+                      className="p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-[#111110] dark:text-[#F5F3EF] truncate">
+                          {lead.name}
+                        </h4>
+                        <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] font-mono truncate">
+                          {formatPhoneDisplay(lead.phone)} &bull; {lead.area || "Pune"}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="px-2 py-0.5 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 font-mono text-[10px] font-bold">
+                          Score: {lead.score}
+                        </span>
+                        <span className="block text-[10px] font-mono text-[#8A8680] mt-0.5">
+                          Attempts: {lead.attempts_count || 0}/5
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* REBALANCE LEADS MODAL (Missing 8 — Shift leads between callers)           */}
+      {/* ========================================================================= */}
+      {rebalanceModalOpen && (
+        <div className="fixed inset-0 z-[400] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div
+            className="w-full max-w-md rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-2xl p-6 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#2D2924]">
+              <div>
+                <span className="text-[10px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
+                  LEAD DISTRIBUTION
+                </span>
+                <h3 className="text-lg font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-0.5">
+                  Rebalance Caller Decks
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRebalanceModalOpen(false)}
+                className="p-1 rounded-xl text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleExecuteRebalance} className="space-y-4 mt-4 text-xs">
+              <p className="text-[#6E6B66] dark:text-[#8A8680]">
+                Transfer uncalled leads from a caller with a heavy queue to another caller with available capacity.
+              </p>
+
+              {rebalanceError && (
+                <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 font-medium">
+                  {rebalanceError}
+                </div>
+              )}
+
+              {rebalanceSuccess && (
+                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-medium">
+                  {rebalanceSuccess}
+                </div>
+              )}
+
+              {/* Source Caller */}
+              <div>
+                <label className="block text-[11px] font-mono uppercase text-[#8A8680] font-semibold mb-1">
+                  From Source Caller
+                </label>
+                <select
+                  value={rebalanceSource}
+                  onChange={(e) => setRebalanceSource(e.target.value)}
+                  className="w-full p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] font-medium text-xs text-[#111110] dark:text-[#F5F3EF] outline-none"
+                >
+                  <option value="">Select source caller...</option>
+                  {callers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.full_name} ({c.active_leads_count} active leads)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Target Caller */}
+              <div>
+                <label className="block text-[11px] font-mono uppercase text-[#8A8680] font-semibold mb-1">
+                  To Receiving Caller
+                </label>
+                <select
+                  value={rebalanceTarget}
+                  onChange={(e) => setRebalanceTarget(e.target.value)}
+                  className="w-full p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] font-medium text-xs text-[#111110] dark:text-[#F5F3EF] outline-none"
+                >
+                  <option value="">Select target caller...</option>
+                  {callers.map((c) => (
+                    <option key={c.id} value={c.id} disabled={c.id === rebalanceSource}>
+                      {c.full_name} ({c.active_leads_count} active leads)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Lead Count & Presets */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-mono uppercase text-[#8A8680] font-semibold">
+                    Number of Leads to Transfer
+                  </label>
+                  <div className="flex gap-1">
+                    {[5, 10, 15, 25].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setRebalanceCount(preset)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                          rebalanceCount === preset
+                            ? "bg-[#F95721] text-white"
+                            : "bg-black/5 dark:bg-white/5 text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                        }`}
+                      >
+                        +{preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={rebalanceCount}
+                  onChange={(e) => setRebalanceCount(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] font-bold text-sm text-[#111110] dark:text-[#F5F3EF] outline-none"
+                />
+              </div>
+
+              {/* Form Buttons */}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setRebalanceModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={rebalancing || !rebalanceSource || !rebalanceTarget}
+                  className="flex-1 py-2.5 rounded-2xl bg-[#F95721] hover:bg-[#e04816] text-white font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {rebalancing ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Transferring...</span>
+                    </>
+                  ) : (
+                    <span>Execute Rebalance</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2-STEP CONFIRMED PASSWORD RESET MODAL (Bug 4 — Safe credential recovery)  */}
+      {/* ========================================================================= */}
       {targetCaller && (
         <div className="fixed inset-0 z-[400] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div
@@ -648,105 +1356,89 @@ export default function ManagerTeamPage() {
               </button>
             </div>
 
-            {/* Target Identity Summary */}
-            <div className="my-4 p-3 rounded-2xl bg-black/5 dark:bg-white/5 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-[#F95721]/10 flex items-center justify-center font-bold text-xs text-[#F95721]">
-                {targetCaller.full_name[0]?.toUpperCase() || "C"}
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF] truncate">
-                  {targetCaller.full_name}
+            <form onSubmit={handleExecutePasswordReset} className="space-y-4 mt-4">
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>Password Reset for {targetCaller.full_name}</span>
                 </p>
-                <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] truncate">
-                  {targetCaller.email}
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  Target Account: <strong>{targetCaller.email}</strong>
+                </p>
+                <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680]">
+                  This issues a one-time temporary password. The user will be required to choose a new password immediately upon logging in.
                 </p>
               </div>
-            </div>
 
-            {resetSuccess ? (
-              <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{resetSuccess}</span>
+              {resetError && (
+                <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium">
+                  {resetError}
                 </div>
+              )}
 
-                <div className="p-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between">
-                  <span className="font-mono text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
-                    {tempPassword}
-                  </span>
+              {resetSuccess && (
+                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    <span>Credentials Updated</span>
+                  </div>
+                  <p className="text-[11px]">{resetSuccess}</p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-mono uppercase text-[#8A8680] font-semibold mb-1">
+                  Temporary Password
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={tempPassword}
+                    onChange={(e) => setTempPassword(e.target.value)}
+                    required
+                    className="w-full pl-3 pr-10 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl font-mono text-xs text-[#111110] dark:text-[#F5F3EF] outline-none"
+                  />
                   <button
                     type="button"
                     onClick={copyPasswordToClipboard}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#F95721] text-white text-xs font-semibold"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-[#8A8680] hover:text-[#F95721]"
+                    title="Copy temporary password"
                   >
-                    {copiedPassword ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedPassword ? "Copied" : "Copy"}</span>
+                    {copiedPassword ? (
+                      <Check className="w-4 h-4 text-emerald-500" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
                   </button>
                 </div>
+              </div>
 
+              <div className="flex items-center gap-2 pt-2">
                 <button
                   type="button"
                   onClick={handleCloseResetModal}
-                  className="w-full py-2.5 rounded-2xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold text-[#111110] dark:text-[#F5F3EF]"
+                  className="flex-1 py-2.5 rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
                 >
-                  Close
+                  {resetSuccess ? "Close" : "Cancel"}
                 </button>
-              </div>
-            ) : (
-              <form onSubmit={handleExecutePasswordReset} className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-semibold text-[#111110] dark:text-[#F5F3EF]">
-                      Temporary Password
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setTempPassword(generateTemporaryPassword())}
-                      className="text-[11px] text-[#F95721] hover:underline font-mono"
-                    >
-                      Regenerate
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    value={tempPassword}
-                    onChange={(e) => setTempPassword(e.target.value)}
-                    className="w-full font-mono text-sm px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none"
-                    placeholder="Enter temporary password..."
-                  />
-                  <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-1">
-                    Minimum 8 characters. The caller will be forced to change this upon login (`require_password_change = true`).
-                  </p>
-                </div>
-
-                {resetError && (
-                  <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{resetError}</span>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleCloseResetModal}
-                    disabled={isResetting}
-                    className="flex-1 py-2.5 rounded-2xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold text-[#6E6B66] dark:text-[#8A8680] transition-colors"
-                  >
-                    Cancel
-                  </button>
+                {!resetSuccess && (
                   <button
                     type="submit"
                     disabled={isResetting || !tempPassword.trim()}
-                    className="flex-1 py-2.5 rounded-2xl bg-[#F95721] hover:opacity-90 disabled:opacity-50 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 rounded-2xl bg-[#F95721] hover:bg-[#e04816] text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
                   >
-                    {isResetting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                    <span>{isResetting ? "Updating..." : "Issue Temp Password"}</span>
+                    {isResetting ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Updating...</span>
+                      </>
+                    ) : (
+                      <span>Confirm & Apply</span>
+                    )}
                   </button>
-                </div>
-              </form>
-            )}
+                )}
+              </div>
+            </form>
           </div>
         </div>
       )}

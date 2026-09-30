@@ -58,74 +58,89 @@ export async function GET(req: NextRequest) {
     }
 
     const admin = getAdminClient();
+    const { searchParams } = new URL(req.url);
+    const rangeParam = searchParams.get("range") || "today"; // "today" | "24h"
 
-    // 1. Fetch user list from auth to map emails
-    const emailMap = new Map<string, string>();
-    try {
-      const { data: authData } = await admin.auth.admin.listUsers({ perPage: 1000 });
-      if (authData?.users) {
-        for (const u of authData.users) {
-          if (u.id && u.email) {
-            emailMap.set(u.id, u.email);
-          }
-        }
-      }
-    } catch (authErr) {
-      console.warn("Could not list auth users for email mapping:", authErr);
-    }
-
-    // 2. Fetch profiles
-    let allProfiles: any[] | null = null;
+    // 1. Fetch profiles for callers (excluding system bot and admin accounts)
     const { data: profData, error: profileErr } = await admin
       .from("profiles")
       .select("id, full_name, role, phone, is_available, active, require_password_change, temp_password_issued_at, created_at")
       .is("deleted_at", null)
+      .eq("role", "caller")
       .order("active", { ascending: false })
       .order("full_name", { ascending: true });
 
     if (profileErr) {
-      // Graceful fallback before migration is run
-      const { data: fbProfData, error: fbProfErr } = await admin
-        .from("profiles")
-        .select("id, full_name, role, phone, is_available, active, created_at")
-        .is("deleted_at", null)
-        .order("active", { ascending: false })
-        .order("full_name", { ascending: true });
-
-      if (fbProfErr) {
-        throw fbProfErr;
-      }
-      allProfiles = (fbProfData || []).map((p) => ({
-        ...p,
-        require_password_change: false,
-        temp_password_issued_at: null,
-      }));
-    } else {
-      allProfiles = profData;
+      throw profileErr;
     }
 
-    // Isolate callers (fallback to all profiles if no designated callers exist)
-    const targetCallers =
-      allProfiles?.filter((p) => p.role === "caller").length > 0
-        ? allProfiles.filter((p) => p.role === "caller")
-        : (allProfiles || []);
+    const targetCallers = profData || [];
 
-    // 3. Compute CURRENT_DATE start boundary in UTC ISO format
-    const todayDateStr = new Date().toISOString().split("T")[0];
-    const todayStartIso = `${todayDateStr}T00:00:00.000Z`;
+    // 2. Map real email addresses from invites and auth
+    const emailMap = new Map<string, string>();
 
-    // 4. Fetch calls made today (called_at >= CURRENT_DATE)
-    const { data: todayCalls, error: callsErr } = await admin
+    // A. Query invites table (maps accepted_by -> email)
+    const { data: invitesData } = await admin
+      .from("invites")
+      .select("accepted_by, email")
+      .not("accepted_by", "is", null);
+
+    if (invitesData) {
+      for (const inv of invitesData) {
+        if (inv.accepted_by && inv.email) {
+          emailMap.set(inv.accepted_by, inv.email.toLowerCase().trim());
+        }
+      }
+    }
+
+    // B. For any caller not found in invites, fetch auth email directly via getUserById
+    await Promise.allSettled(
+      targetCallers.map(async (caller) => {
+        if (!emailMap.has(caller.id)) {
+          try {
+            const { data: userData } = await admin.auth.admin.getUserById(caller.id);
+            if (userData?.user?.email) {
+              emailMap.set(caller.id, userData.user.email.toLowerCase().trim());
+            }
+          } catch {
+            // Ignore individual fetch errors
+          }
+        }
+      })
+    );
+
+    // 3. Compute time boundaries (IST: Asia/Kolkata, UTC+5:30)
+    const now = new Date();
+    let filterStartIso: string;
+    let rangeLabel: string;
+
+    if (rangeParam === "24h") {
+      // Last 24 rolling hours
+      const past24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      filterStartIso = past24h.toISOString();
+      rangeLabel = "Last 24 Hours";
+    } else {
+      // Today in IST (Asia/Kolkata: UTC+5:30)
+      const istOffsetMs = 5.5 * 60 * 60 * 1000;
+      const istNow = new Date(now.getTime() + istOffsetMs);
+      const istDateStr = istNow.toISOString().split("T")[0]; // YYYY-MM-DD
+      // Start of day in IST converted to UTC ISO:
+      const istStartUtc = new Date(new Date(`${istDateStr}T00:00:00.000Z`).getTime() - istOffsetMs);
+      filterStartIso = istStartUtc.toISOString();
+      rangeLabel = "Today (IST)";
+    }
+
+    // 4. Fetch calls in range
+    const { data: callsData, error: callsErr } = await admin
       .from("calls")
-      .select("id, caller_id, outcome, duration_seconds, called_at, callback_at")
-      .gte("called_at", todayStartIso);
+      .select("id, caller_id, outcome, duration_seconds, called_at, callback_at, notes")
+      .gte("called_at", filterStartIso);
 
     if (callsErr) {
       throw callsErr;
     }
 
     // 5. Fetch currently assigned active leads
-    // assigned_to = caller.id AND deleted_at IS NULL AND status NOT IN ('closed_won','closed_lost','dnc','not_interested')
     const { data: activeLeads, error: leadsErr } = await admin
       .from("leads")
       .select("id, assigned_to, status")
@@ -137,30 +152,54 @@ export async function GET(req: NextRequest) {
       throw leadsErr;
     }
 
-    // 6. Aggregate metrics per caller
-    const callsList = todayCalls || [];
+    // 6. Fetch count of leads in quarantine for navigation tab badge
+    const { count: quarantineCount } = await admin
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "not_interested")
+      .is("deleted_at", null);
+
+    // 7. Aggregate metrics per caller
+    const callsList = callsData || [];
     const leadsList = activeLeads || [];
 
-    const connectOutcomes = new Set(["gatekeeper", "dm_reached", "interested", "callback", "closed_won"]);
+    // Real connect definition: Human was reached!
+    // Interested, callback, gatekeeper, or spoken rejected. 'no_answer' is NEVER a connect!
+    const humanConnectOutcomes = new Set([
+      "interested",
+      "callback",
+      "gatekeeper",
+      "dm_reached",
+      "closed_won",
+    ]);
 
-    let totalDialsToday = 0;
-    let totalConnectsToday = 0;
-    let totalPipelineEscalations = 0;
+    let totalDials = 0;
+    let totalConnects = 0;
+    let totalTalkTimeSeconds = 0;
+    let totalInterested = 0;
+    let totalCallbacks = 0;
+    let totalNoAnswer = 0;
+    let totalGatekeeper = 0;
+    let totalRejected = 0;
+    let totalDnc = 0;
     let activeCallersCount = 0;
 
     const callerStats = targetCallers.map((caller) => {
       const callerCalls = callsList.filter((c) => c.caller_id === caller.id);
-      const dialsToday = callerCalls.length;
+      const dials = callerCalls.length;
 
-      const connectsToday = callerCalls.filter(
-        (c) => connectOutcomes.has(c.outcome) || (Number(c.duration_seconds) || 0) >= 30
-      ).length;
+      // Count human connects
+      const connects = callerCalls.filter((c) => {
+        return humanConnectOutcomes.has(c.outcome);
+      }).length;
 
-      const interestedToday = callerCalls.filter((c) => c.outcome === "interested").length;
-
-      const callbacksToday = callerCalls.filter(
-        (c) => c.outcome === "callback" || Boolean(c.callback_at)
-      ).length;
+      // Outcomes breakdown
+      const interested = callerCalls.filter((c) => c.outcome === "interested").length;
+      const callback = callerCalls.filter((c) => c.outcome === "callback" || Boolean(c.callback_at)).length;
+      const no_answer = callerCalls.filter((c) => c.outcome === "no_answer").length;
+      const gatekeeper = callerCalls.filter((c) => c.outcome === "gatekeeper").length;
+      const not_interested = callerCalls.filter((c) => c.outcome === "not_interested").length;
+      const dnc = callerCalls.filter((c) => c.outcome === "dnc").length;
 
       const talkTimeSeconds = callerCalls.reduce(
         (acc, c) => acc + (Number(c.duration_seconds) || 0),
@@ -174,41 +213,63 @@ export async function GET(req: NextRequest) {
         activeCallersCount += 1;
       }
 
-      totalDialsToday += dialsToday;
-      totalConnectsToday += connectsToday;
-      totalPipelineEscalations += interestedToday;
+      totalDials += dials;
+      totalConnects += connects;
+      totalTalkTimeSeconds += talkTimeSeconds;
+      totalInterested += interested;
+      totalCallbacks += callback;
+      totalNoAnswer += no_answer;
+      totalGatekeeper += gatekeeper;
+      totalRejected += not_interested;
+      totalDnc += dnc;
 
       return {
         id: caller.id,
         full_name: caller.full_name,
-        email: emailMap.get(caller.id) || `${caller.full_name.toLowerCase().replace(/\s+/g, ".")}@agency.com`,
+        email: emailMap.get(caller.id) || "Email unavailable",
         role: caller.role,
         active: Boolean(caller.active),
         is_available: Boolean(caller.is_available),
         is_online: isOnline,
         require_password_change: Boolean(caller.require_password_change),
         temp_password_issued_at: caller.temp_password_issued_at || null,
-        dials_today: dialsToday,
-        connects_today: connectsToday,
-        connect_rate_percent: dialsToday > 0 ? Math.round((connectsToday / dialsToday) * 100) : 0,
-        interested_today: interestedToday,
-        callbacks_today: callbacksToday,
+        dials_today: dials,
+        connects_today: connects,
+        connect_rate_percent: dials >= 10 ? Math.round((connects / dials) * 100) : null,
+        interested_today: interested,
+        callbacks_today: callback,
         talk_time_seconds: talkTimeSeconds,
         active_leads_count: activeLeadsCount,
+        outcomes_breakdown: {
+          interested,
+          callback,
+          no_answer,
+          gatekeeper,
+          not_interested,
+          dnc,
+        },
       };
     });
 
-    // Also include any callers that had calls today even if role changed or wasn't strictly 'caller'
     return NextResponse.json({
       callers: callerStats,
       summary: {
-        total_dials_today: totalDialsToday,
-        total_connects_today: totalConnectsToday,
-        total_pipeline_escalations: totalPipelineEscalations,
+        total_dials_today: totalDials,
+        total_connects_today: totalConnects,
+        total_talk_time_seconds: totalTalkTimeSeconds,
+        total_pipeline_escalations: totalInterested,
+        total_callbacks_today: totalCallbacks,
+        total_rejections_today: totalRejected,
+        total_no_answer_today: totalNoAnswer,
         active_callers: activeCallersCount,
         total_callers: targetCallers.length,
+        // Only show connect rate percentage if sample size is sufficient (>= 20 dials)
+        connect_rate_percent: totalDials >= 20 ? Math.round((totalConnects / totalDials) * 100) : null,
       },
-      current_date: todayDateStr,
+      quarantine_count: quarantineCount || 0,
+      range: rangeParam,
+      range_label: rangeLabel,
+      filter_start: filterStartIso,
       timestamp: new Date().toISOString(),
     });
   } catch (err: any) {
