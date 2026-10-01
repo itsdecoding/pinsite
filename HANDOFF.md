@@ -255,6 +255,11 @@ Sprints 6, 7, and 8 are complete. Sprints 9 and 10 represent the final remaining
       - Dismissible PWA install banner supporting iOS Safari and mobile Chrome.
       - Zero deck queue list or coaching discussion clutter on mobile.
     - `AdminQueue` provides the complete 3-column desktop management deck (scope filters, lead reassignment, internal notes, 23-lead queue list, and toggle to preview Caller Cockpit).
+12. **Supabase SSR Auth Cookie Preservation & 400-Day Persistence**:
+    - Previously, users were logged out frequently because Next.js Edge Middleware returned `NextResponse.redirect()` without copying cookies from `supabaseResponse`.
+    - In Supabase Auth, tokens rotate on refresh. When `supabase.auth.getUser()` in middleware refreshed an access/refresh token, returning a plain `NextResponse.redirect()` caused the browser to miss the new rotated refresh token. On subsequent requests, the old token was rejected as revoked, kicking the user back to the login screen.
+    - Fixed by introducing `createRedirect(url, supabaseResponse)` in `src/lib/supabase/middleware.ts` which transfers all refreshed cookies to every redirect response.
+    - Browser client (`src/lib/supabase/client.ts`) and middleware (`src/lib/supabase/middleware.ts`) now explicitly enforce persistent `maxAge: 400 * 24 * 60 * 60` (400-day) cookies, preventing the browser/mobile OS from purging session cookies on app close.
 
 ---
 
