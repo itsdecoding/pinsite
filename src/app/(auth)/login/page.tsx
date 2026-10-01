@@ -47,9 +47,9 @@ function LoginForm() {
         .maybeSingle();
 
       const role = profile?.role || "caller";
-      if (role === "caller") router.push("/queue");
-      else if (role === "developer") router.push("/projects");
-      else router.push("/dashboard");
+      if (role === "caller") router.push("/studio/queue");
+      else if (role === "developer") router.push("/studio/projects");
+      else router.push("/studio/dashboard");
     } catch (err: any) {
       setErrorMsg(err.message || "Invalid email or password.");
       setIsLoading(false);

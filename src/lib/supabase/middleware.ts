@@ -1,6 +1,27 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+const PERSISTENT_COOKIE_OPTIONS: CookieOptions = {
+  path: "/",
+  sameSite: "lax",
+  maxAge: 400 * 24 * 60 * 60, // 400 days (maximum Chrome/Safari cookie expiration)
+};
+
+/**
+ * Creates a redirect response that preserves all refreshed Supabase cookies.
+ * Prevents dropping refreshed access/refresh tokens which causes session loss.
+ */
+function createRedirect(url: URL, sourceResponse: NextResponse, status: number = 307): NextResponse {
+  const redirectResponse = NextResponse.redirect(url, status);
+  sourceResponse.cookies.getAll().forEach((cookie) => {
+    redirectResponse.cookies.set(cookie.name, cookie.value, {
+      ...PERSISTENT_COOKIE_OPTIONS,
+      ...cookie,
+    });
+  });
+  return redirectResponse;
+}
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -10,6 +31,7 @@ export async function updateSession(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key",
     {
+      cookieOptions: PERSISTENT_COOKIE_OPTIONS,
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -20,7 +42,10 @@ export async function updateSession(request: NextRequest) {
             request,
           });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(name, value, {
+              ...PERSISTENT_COOKIE_OPTIONS,
+              ...options,
+            })
           );
         },
       },
@@ -34,8 +59,7 @@ export async function updateSession(request: NextRequest) {
   if ((pathname === "/login" || pathname === "/") && token) {
     const url = request.nextUrl.clone();
     url.pathname = "/signup";
-    const redirectRes = NextResponse.redirect(url);
-    // Delete any obsolete demo cookie if present
+    const redirectRes = createRedirect(url, supabaseResponse);
     redirectRes.cookies.set("agency_demo_role", "", { maxAge: 0, path: "/" });
     return redirectRes;
   }
@@ -74,7 +98,7 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/studio/login";
-    return NextResponse.redirect(url);
+    return createRedirect(url, supabaseResponse);
   }
 
   // If authenticated user is on public routes (login/signup without token, or /studio), redirect to their workspace
@@ -125,7 +149,7 @@ export async function updateSession(request: NextRequest) {
         const url = request.nextUrl.clone();
         url.pathname = "/studio/reset-password";
         url.searchParams.set("forced", "true");
-        return NextResponse.redirect(url, 307);
+        return createRedirect(url, supabaseResponse, 307);
       }
     }
 
@@ -140,7 +164,7 @@ export async function updateSession(request: NextRequest) {
       if (role === "caller") url.pathname = "/studio/queue";
       else if (role === "developer") url.pathname = "/studio/projects";
       else url.pathname = "/studio/dashboard";
-      return NextResponse.redirect(url);
+      return createRedirect(url, supabaseResponse);
     }
 
     // 4. Role-based authorization boundaries (Strict: only restrict if role is explicitly identified)
@@ -153,7 +177,7 @@ export async function updateSession(request: NextRequest) {
       ) {
         const url = request.nextUrl.clone();
         url.pathname = "/studio/unauthorized";
-        return NextResponse.redirect(url);
+        return createRedirect(url, supabaseResponse);
       }
     }
 
@@ -165,7 +189,7 @@ export async function updateSession(request: NextRequest) {
       ) {
         const url = request.nextUrl.clone();
         url.pathname = "/studio/unauthorized";
-        return NextResponse.redirect(url);
+        return createRedirect(url, supabaseResponse);
       }
     }
     // Admins and Managers have unrestricted access to all routes (/dashboard, /queue, /projects, /manager/*, /comms)
