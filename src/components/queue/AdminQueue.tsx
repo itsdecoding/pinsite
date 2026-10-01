@@ -66,30 +66,22 @@ function formatLeadName(name: string) {
 
 function formatPhoneDisplay(phone: string | null | undefined): string {
   if (!phone) return "No Phone";
-  const cleaned = phone.replace(/\D/g, "");
-  if (cleaned.length === 10) {
-    return `+91 ${cleaned.slice(0, 5)} ${cleaned.slice(5)}`;
-  }
-  if (cleaned.length === 12 && cleaned.startsWith("91")) {
-    return `+91 ${cleaned.slice(2, 7)} ${cleaned.slice(7)}`;
-  }
+  const cleaned = phone.trim().replace(/\D/g, "");
+  let core10 = cleaned;
+  if (cleaned.length === 11 && cleaned.startsWith("0")) core10 = cleaned.slice(1);
+  else if (cleaned.length === 12 && cleaned.startsWith("91")) core10 = cleaned.slice(2);
+  if (core10.length === 10) return `+91 ${core10.slice(0, 5)} ${core10.slice(5)}`;
   return phone;
 }
 
 function formatTelLink(phone: string | null | undefined): string {
   if (!phone) return "";
-  const cleaned = phone.trim();
-  if (cleaned.startsWith("+91")) {
-    return `tel:+91${cleaned.slice(3).replace(/\D/g, "")}`;
-  }
-  const digits = cleaned.replace(/\D/g, "");
-  if (digits.length === 11 && digits.startsWith("0")) {
-    return `tel:+91${digits.slice(1)}`;
-  }
-  if (digits.length === 12 && digits.startsWith("91")) {
-    return `tel:+91${digits.slice(2)}`;
-  }
-  return `tel:+91${digits}`;
+  const cleaned = phone.trim().replace(/\D/g, "");
+  let core10 = cleaned;
+  if (cleaned.length === 11 && cleaned.startsWith("0")) core10 = cleaned.slice(1);
+  else if (cleaned.length === 12 && cleaned.startsWith("91")) core10 = cleaned.slice(2);
+  if (core10.length === 10) return `tel:+91${core10}`;
+  return `tel:+91${cleaned}`;
 }
 
 function resolveDecisionMaker(lead: Lead | null): string {

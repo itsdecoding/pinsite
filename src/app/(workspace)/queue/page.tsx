@@ -88,49 +88,24 @@ type QueueScope = "all" | "unassigned" | "assigned" | "mine" | string;
 /**
  * Normalizes phone number to strict E.164 tel: URI (+91 for Indian numbers)
  */
-function formatTelLink(phone: string | null | undefined): string {
-  if (!phone) return "";
-  const cleaned = phone.trim();
-  if (cleaned.startsWith("+91")) {
-    return `tel:+91${cleaned.slice(3).replace(/\D/g, "")}`;
-  }
-  const digits = cleaned.replace(/\D/g, "");
-  // If 11 digits starting with 0 (e.g. 09226414192)
-  if (digits.length === 11 && digits.startsWith("0")) {
-    return `tel:+91${digits.slice(1)}`;
-  }
-  // If 12 digits starting with 91 (e.g. 919226414192)
-  if (digits.length === 12 && digits.startsWith("91")) {
-    return `tel:+${digits}`;
-  }
-  // If 10 digits standard mobile (e.g. 9226414192)
-  if (digits.length === 10) {
-    return `tel:+91${digits}`;
-  }
-  // Fallback
-  return `tel:${cleaned.startsWith("+") ? cleaned : `+91${digits}`}`;
-}
-
-/**
- * Formats a phone number for clean human readability: +91 92264 14192
- */
 function formatPhoneDisplay(phone: string | null | undefined): string {
   if (!phone) return "No Phone";
-  const cleaned = phone.trim();
-  const digits = cleaned.replace(/\D/g, "");
-
-  let core10 = digits;
-  if (digits.length === 11 && digits.startsWith("0")) {
-    core10 = digits.slice(1);
-  } else if (digits.length === 12 && digits.startsWith("91")) {
-    core10 = digits.slice(2);
-  }
-
-  if (core10.length === 10) {
-    return `+91 ${core10.slice(0, 5)} ${core10.slice(5)}`;
-  }
-
+  const cleaned = phone.trim().replace(/\D/g, "");
+  let core10 = cleaned;
+  if (cleaned.length === 11 && cleaned.startsWith("0")) core10 = cleaned.slice(1);
+  else if (cleaned.length === 12 && cleaned.startsWith("91")) core10 = cleaned.slice(2);
+  if (core10.length === 10) return `+91 ${core10.slice(0, 5)} ${core10.slice(5)}`;
   return phone;
+}
+
+function formatTelLink(phone: string | null | undefined): string {
+  if (!phone) return "";
+  const cleaned = phone.trim().replace(/\D/g, "");
+  let core10 = cleaned;
+  if (cleaned.length === 11 && cleaned.startsWith("0")) core10 = cleaned.slice(1);
+  else if (cleaned.length === 12 && cleaned.startsWith("91")) core10 = cleaned.slice(2);
+  if (core10.length === 10) return `tel:+91${core10}`;
+  return `tel:+91${cleaned}`;
 }
 
 /**
@@ -228,19 +203,28 @@ function CallerQueueContent() {
 
   // Auto-open disposition drawer when caller returns from native phone dialer
   useEffect(() => {
-    function handleVisibilityOrFocus() {
-      if (document.visibilityState === "visible" && dialerOpenedRef.current) {
+    function handleReturnFromDialer() {
+      const isDialing =
+        dialerOpenedRef.current ||
+        (typeof window !== "undefined" && sessionStorage.getItem("pinsite_dialer_active") === "true");
+
+      if (document.visibilityState === "visible" && isDialing) {
         dialerOpenedRef.current = false;
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem("pinsite_dialer_active");
+        }
         setIsDrawerOpen(true);
       }
     }
 
-    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
-    window.addEventListener("focus", handleVisibilityOrFocus);
+    document.addEventListener("visibilitychange", handleReturnFromDialer);
+    window.addEventListener("focus", handleReturnFromDialer);
+    window.addEventListener("pageshow", handleReturnFromDialer);
 
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
-      window.removeEventListener("focus", handleVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", handleReturnFromDialer);
+      window.removeEventListener("focus", handleReturnFromDialer);
+      window.removeEventListener("pageshow", handleReturnFromDialer);
     };
   }, []);
   const [latestCallNote, setLatestCallNote] = useState<CallLogSummary | null>(null);
@@ -642,6 +626,9 @@ function CallerQueueContent() {
     setCallActive(true);
     setCallStartTime(Date.now());
     dialerOpenedRef.current = true;
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("pinsite_dialer_active", "true");
+    }
     setSelectedOutcome("no_answer");
     setCallNotes("");
     setCallbackDateTime("");

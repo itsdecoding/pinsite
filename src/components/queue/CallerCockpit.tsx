@@ -80,30 +80,22 @@ function formatLeadName(name: string) {
 
 function formatPhoneDisplay(phone: string | null | undefined): string {
   if (!phone) return "No Phone";
-  const cleaned = phone.replace(/\D/g, "");
-  if (cleaned.length === 10) {
-    return `+91 ${cleaned.slice(0, 5)} ${cleaned.slice(5)}`;
-  }
-  if (cleaned.length === 12 && cleaned.startsWith("91")) {
-    return `+91 ${cleaned.slice(2, 7)} ${cleaned.slice(7)}`;
-  }
+  const cleaned = phone.trim().replace(/\D/g, "");
+  let core10 = cleaned;
+  if (cleaned.length === 11 && cleaned.startsWith("0")) core10 = cleaned.slice(1);
+  else if (cleaned.length === 12 && cleaned.startsWith("91")) core10 = cleaned.slice(2);
+  if (core10.length === 10) return `+91 ${core10.slice(0, 5)} ${core10.slice(5)}`;
   return phone;
 }
 
 function formatTelLink(phone: string | null | undefined): string {
   if (!phone) return "";
-  const cleaned = phone.trim();
-  if (cleaned.startsWith("+91")) {
-    return `tel:+91${cleaned.slice(3).replace(/\D/g, "")}`;
-  }
-  const digits = cleaned.replace(/\D/g, "");
-  if (digits.length === 11 && digits.startsWith("0")) {
-    return `tel:+91${digits.slice(1)}`;
-  }
-  if (digits.length === 12 && digits.startsWith("91")) {
-    return `tel:+91${digits.slice(2)}`;
-  }
-  return `tel:+91${digits}`;
+  const cleaned = phone.trim().replace(/\D/g, "");
+  let core10 = cleaned;
+  if (cleaned.length === 11 && cleaned.startsWith("0")) core10 = cleaned.slice(1);
+  else if (cleaned.length === 12 && cleaned.startsWith("91")) core10 = cleaned.slice(2);
+  if (core10.length === 10) return `tel:+91${core10}`;
+  return `tel:+91${cleaned}`;
 }
 
 function resolveDecisionMaker(lead: Lead | null): string {
@@ -153,17 +145,37 @@ export function CallerCockpit({
   loadLeads,
 }: CallerCockpitProps) {
   const [showDetails, setShowDetails] = useState(false);
-  const [showIosPrompt, setShowIosPrompt] = useState(false);
+  const [showPwaPrompt, setShowPwaPrompt] = useState(false);
+  const [isIosDevice, setIsIosDevice] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
-  // Detect iOS Safari in non-standalone browser mode
+  // Detect Mobile PWA status (iOS Safari and Android Chrome non-standalone mode)
   useEffect(() => {
     if (typeof window !== "undefined") {
       const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
-      const isStandalone = (window.navigator as any).standalone === true;
-      const isDismissed = localStorage.getItem("pinsite_ios_pwa_dismissed") === "true";
-      if (isIos && !isStandalone && !isDismissed) {
-        setShowIosPrompt(true);
+      const isStandalone =
+        (window.navigator as any).standalone === true ||
+        window.matchMedia("(display-mode: standalone)").matches;
+      const isDismissed = localStorage.getItem("pinsite_pwa_dismissed") === "true";
+      const isMobile =
+        /iphone|ipad|ipod|android/i.test(window.navigator.userAgent) || window.innerWidth < 768;
+
+      setIsIosDevice(isIos);
+
+      if (isMobile && !isStandalone && !isDismissed) {
+        setShowPwaPrompt(true);
       }
+
+      const handleBeforeInstall = (e: Event) => {
+        e.preventDefault();
+        setDeferredPrompt(e);
+        if (!isStandalone && !isDismissed) {
+          setShowPwaPrompt(true);
+        }
+      };
+
+      window.addEventListener("beforeinstallprompt", handleBeforeInstall);
+      return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
     }
   }, []);
 
@@ -207,20 +219,43 @@ export function CallerCockpit({
 
   return (
     <div className="w-full max-w-lg mx-auto space-y-3 pb-8">
-      {/* iOS PWA Install Prompt Banner */}
-      {showIosPrompt && (
-        <div className="p-2.5 px-3 rounded-2xl bg-[#F95721]/10 border border-[#F95721]/20 flex items-center justify-between text-xs text-[#111110] dark:text-[#F5F3EF] shadow-sm">
+      {/* Mobile PWA Install Prompt Banner */}
+      {showPwaPrompt && (
+        <div className="p-2.5 px-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs text-[#111110] dark:text-[#F5F3EF] shadow-sm">
           <div className="flex items-center gap-2 min-w-0 pr-2">
             <span className="text-base shrink-0">📲</span>
-            <p className="text-[11px] leading-tight">
-              Install Pinsite: Tap <strong className="text-[#F95721]">Share ⎋</strong> then <strong className="text-[#F95721]">&apos;Add to Home Screen&apos;</strong>
-            </p>
+            {isIosDevice ? (
+              <p className="text-[11px] leading-tight">
+                Install app: Tap <strong className="text-amber-700 dark:text-amber-400">Share ⎋</strong> then <strong className="text-amber-700 dark:text-amber-400">&apos;Add to Home Screen&apos;</strong> for full-screen mode
+              </p>
+            ) : deferredPrompt ? (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const choice = await deferredPrompt.userChoice;
+                    if (choice.outcome === "accepted") {
+                      setShowPwaPrompt(false);
+                    }
+                    setDeferredPrompt(null);
+                  }
+                }}
+                className="text-[11px] font-bold text-amber-700 dark:text-amber-400 underline text-left"
+              >
+                Tap here to install Pinsite app for full-screen mode &rarr;
+              </button>
+            ) : (
+              <p className="text-[11px] leading-tight">
+                Install app: Tap <strong className="text-amber-700 dark:text-amber-400">⋮</strong> then <strong className="text-amber-700 dark:text-amber-400">&apos;Install App&apos;</strong> for full-screen mode
+              </p>
+            )}
           </div>
           <button
             type="button"
             onClick={() => {
-              setShowIosPrompt(false);
-              localStorage.setItem("pinsite_ios_pwa_dismissed", "true");
+              setShowPwaPrompt(false);
+              localStorage.setItem("pinsite_pwa_dismissed", "true");
             }}
             className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-[#8A8680] shrink-0"
           >
@@ -370,12 +405,18 @@ export function CallerCockpit({
               <a
                 href={formatTelLink(currentLead.phone)}
                 onClick={handleStartCall}
-                className="w-full min-h-[50px] py-3.5 px-6 bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-sm uppercase tracking-wider rounded-2xl shadow-lg flex items-center justify-center gap-2.5 transition-transform active:scale-[0.98] text-center"
+                className={`w-full min-h-[50px] py-3.5 px-6 font-bold text-sm uppercase tracking-wider rounded-2xl shadow-lg flex items-center justify-center gap-2.5 transition-all active:scale-[0.98] text-center ${
+                  callActive
+                    ? "bg-red-600 hover:bg-red-700 text-white ring-4 ring-red-500/30 animate-pulse"
+                    : "bg-[#F95721] hover:bg-[#E04612] text-white"
+                }`}
               >
                 {callActive ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping" />
-                    <span>Call in Progress: {formatDurationTimer(callElapsedSeconds)}</span>
+                    <span className="font-mono text-base tracking-wide">
+                      CALL IN PROGRESS: {formatDurationTimer(callElapsedSeconds)}
+                    </span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -436,13 +477,13 @@ export function CallerCockpit({
                     </a>
                   </div>
                 ) : (
-                  <div className="p-3 rounded-2xl bg-[#F95721]/5 dark:bg-[#F95721]/10 border border-[#F95721]/20 flex items-center justify-between gap-2">
+                  <div className="p-3 rounded-2xl bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/20 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-[#F95721] shrink-0" />
+                      <Globe className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                       <span className="font-bold text-[#111110] dark:text-[#F5F3EF]">Website:</span>
                       <span className="text-[#6E6B66] dark:text-[#8A8680]">No official website listed</span>
                     </div>
-                    <span className="px-2 py-0.5 rounded-full bg-[#F95721]/15 text-[#F95721] font-mono font-bold text-[10px] tracking-wide uppercase">
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 font-mono font-bold text-[10px] tracking-wide uppercase">
                       Pitch Needed
                     </span>
                   </div>
