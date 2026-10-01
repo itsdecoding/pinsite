@@ -230,6 +230,10 @@ Sprints 6, 7, and 8 are complete. Sprints 9 and 10 represent the final remaining
    - The root domain `https://pinsite.pro/` hosts the marketing landing page.
    - The entire Agency OS app is mounted under `/studio/*` (e.g., `/studio/login`, `/studio/signup`, `/studio/reset-password`, `/studio/forgot-password`, `/studio/queue`, `/studio/dashboard`).
    - All external email links (Invites, Password Recovery) must explicitly route to `/studio/...` so callers never land on the marketing site.
+9. **Single In-Card Dial Button & Clean Mobile Nav**:
+   - Removed the duplicate floating bottom dial bar from `/queue`.
+   - Callers now dial directly from the large in-card `Dial Now` button with embedded live call duration timer (`Call in progress: MM:SS`).
+   - The bottom of mobile viewports (< 768px) is dedicated exclusively to the high-contrast `MobileNav` bar (`Queue`, `Projects`, `Comms`, `Dashboard`) with zero overlapping clutter.
 
 ---
 
