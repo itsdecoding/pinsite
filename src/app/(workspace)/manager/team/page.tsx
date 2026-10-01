@@ -35,6 +35,8 @@ import {
   ArrowRight,
   Sparkles,
   AlertTriangle,
+  UserCog,
+  Crown,
 } from "lucide-react";
 
 interface OutcomeBreakdown {
@@ -204,6 +206,14 @@ export default function ManagerTeamPage() {
   const [distributing, setDistributing] = useState(false);
   const [distributeNotification, setDistributeNotification] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // Role change modal state
+  const [roleModalCaller, setRoleModalCaller] = useState<CallerStat | null>(null);
+  const [selectedNewRole, setSelectedNewRole] = useState<string>("caller");
+  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
+  const [roleUpdateError, setRoleUpdateError] = useState<string | null>(null);
+  const [roleUpdateSuccess, setRoleUpdateSuccess] = useState<string | null>(null);
+  const [roleFilter, setRoleFilter] = useState<"all" | "caller" | "manager" | "developer" | "admin">("all");
+
   const fetchTeamStats = useCallback(
     async (isManual: boolean = false) => {
       if (isManual) {
@@ -294,6 +304,9 @@ export default function ManagerTeamPage() {
 
       if (statusFilter === "online") return c.is_online;
       if (statusFilter === "offline") return !c.is_online;
+
+      if (roleFilter !== "all" && c.role !== roleFilter) return false;
+
       return true;
     });
 
@@ -306,7 +319,7 @@ export default function ManagerTeamPage() {
     });
 
     return list;
-  }, [callers, searchQuery, statusFilter, sortBy]);
+  }, [callers, searchQuery, statusFilter, roleFilter, sortBy]);
 
   // Proactive Queue Imbalance Detection (> 1.5x team average)
   const teamAverageLeads = useMemo(() => {
@@ -423,6 +436,69 @@ export default function ManagerTeamPage() {
     navigator.clipboard.writeText(tempPassword);
     setCopiedPassword(true);
     setTimeout(() => setCopiedPassword(false), 2000);
+  }
+
+  function handleOpenRoleModal(caller: CallerStat, e?: React.MouseEvent) {
+    if (e) e.stopPropagation();
+    setRoleModalCaller(caller);
+    setSelectedNewRole(caller.role || "caller");
+    setRoleUpdateError(null);
+    setRoleUpdateSuccess(null);
+  }
+
+  function handleCloseRoleModal() {
+    setRoleModalCaller(null);
+    setRoleUpdateError(null);
+    setRoleUpdateSuccess(null);
+  }
+
+  async function handleExecuteRoleChange(e: React.FormEvent) {
+    e.preventDefault();
+    if (!roleModalCaller || isUpdatingRole) return;
+
+    if (selectedNewRole === roleModalCaller.role) {
+      handleCloseRoleModal();
+      return;
+    }
+
+    setIsUpdatingRole(true);
+    setRoleUpdateError(null);
+    setRoleUpdateSuccess(null);
+
+    try {
+      const res = await fetch("/api/manager/team/role", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: roleModalCaller.id,
+          newRole: selectedNewRole,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update role");
+      }
+
+      setRoleUpdateSuccess(
+        data.message || `Successfully updated ${roleModalCaller.full_name}'s role to ${selectedNewRole.toUpperCase()}.`
+      );
+
+      // Optimistically update caller in local state
+      setCallers((prev) =>
+        prev.map((c) =>
+          c.id === roleModalCaller.id ? { ...c, role: selectedNewRole } : c
+        )
+      );
+
+      setTimeout(() => {
+        handleCloseRoleModal();
+      }, 1400);
+    } catch (err: any) {
+      setRoleUpdateError(err.message || "An unexpected error occurred while updating role");
+    } finally {
+      setIsUpdatingRole(false);
+    }
   }
 
   // Handle Rebalance Execution
@@ -849,43 +925,86 @@ export default function ManagerTeamPage() {
           </div>
         </div>
 
-        {/* Status Filter Tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-white dark:bg-[#1C1A17] rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm self-start md:self-auto text-xs">
-          <button
-            type="button"
-            onClick={() => setStatusFilter("all")}
-            className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
-              statusFilter === "all"
-                ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110]"
-                : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-            }`}
-          >
-            All Callers ({callers.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter("online")}
-            className={`px-3 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 ${
-              statusFilter === "online"
-                ? "bg-emerald-600 text-white"
-                : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            Online ({callers.filter((c) => c.is_online).length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter("offline")}
-            className={`px-3 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 ${
-              statusFilter === "offline"
-                ? "bg-stone-700 text-white"
-                : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-stone-400" />
-            Offline ({callers.filter((c) => !c.is_online).length})
-          </button>
+        <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+          {/* Role Filter Tabs */}
+          <div className="flex items-center gap-1 p-1 bg-white dark:bg-[#1C1A17] rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm text-xs">
+            <button
+              type="button"
+              onClick={() => setRoleFilter("all")}
+              className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
+                roleFilter === "all"
+                  ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110]"
+                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+              }`}
+            >
+              All Roles ({callers.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleFilter("caller")}
+              className={`px-2.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1 ${
+                roleFilter === "caller"
+                  ? "bg-[#F95721] text-white"
+                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+              }`}
+            >
+              <span>Callers</span>
+              <span className="text-[10px] font-mono opacity-80">({callers.filter((c) => c.role === "caller").length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleFilter("manager")}
+              className={`px-2.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1 ${
+                roleFilter === "manager"
+                  ? "bg-purple-600 text-white"
+                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+              }`}
+            >
+              <span>Managers</span>
+              <span className="text-[10px] font-mono opacity-80">({callers.filter((c) => c.role === "manager").length})</span>
+            </button>
+          </div>
+
+          {/* Status Filter Tabs */}
+          <div className="flex items-center gap-1.5 p-1 bg-white dark:bg-[#1C1A17] rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm text-xs">
+            <button
+              type="button"
+              onClick={() => setStatusFilter("all")}
+              className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
+                statusFilter === "all"
+                  ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110]"
+                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+              }`}
+            >
+              All Status
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter("online")}
+              className={`px-2.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 ${
+                statusFilter === "online"
+                  ? "bg-emerald-600 text-white"
+                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span>Online</span>
+              <span className="text-[10px] font-mono opacity-80">({callers.filter((c) => c.is_online).length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter("offline")}
+              className={`px-2.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 ${
+                statusFilter === "offline"
+                  ? "bg-stone-700 text-white"
+                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-stone-400" />
+              <span>Offline</span>
+              <span className="text-[10px] font-mono opacity-80">({callers.filter((c) => !c.is_online).length})</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -969,6 +1088,26 @@ export default function ManagerTeamPage() {
                         <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] truncate font-medium">
                           {caller.email}
                         </p>
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => handleOpenRoleModal(caller, e)}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase transition-all hover:scale-105 active:scale-95 ${
+                              caller.role === "manager"
+                                ? "bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30"
+                                : caller.role === "developer"
+                                ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30"
+                                : caller.role === "admin"
+                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                                : "bg-[#F95721]/15 text-[#F95721] border border-[#F95721]/30"
+                            }`}
+                            title="Click to change teammate role"
+                          >
+                            <Shield className="w-2.5 h-2.5" />
+                            <span>{caller.role}</span>
+                            <span className="text-[9px] opacity-60">✏️</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -1092,12 +1231,22 @@ export default function ManagerTeamPage() {
                   </button>
                 </div>
 
-                {/* Secondary De-emphasized Action: Reset Password */}
-                <div className="mt-2 text-center" onClick={(e) => e.stopPropagation()}>
+                {/* Secondary De-emphasized Actions: Change Role & Reset Password */}
+                <div className="mt-2.5 pt-2 border-t border-[#ECE8E1]/60 dark:border-[#2D2924]/60 flex items-center justify-between px-1" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={(e) => handleOpenRoleModal(caller, e)}
+                    className="text-[10px] text-[#8A8680] hover:text-[#F95721] font-mono flex items-center gap-1 transition-colors"
+                    title="Change workspace role"
+                  >
+                    <UserCog className="w-3 h-3 text-[#F95721]" />
+                    <span>Change Role</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={(e) => handleOpenResetModal(caller, e)}
-                    className="text-[10px] text-[#8A8680] hover:text-amber-500 font-mono flex items-center justify-center gap-1 mx-auto transition-colors"
+                    className="text-[10px] text-[#8A8680] hover:text-amber-500 font-mono flex items-center gap-1 transition-colors"
                   >
                     <KeyRound className="w-3 h-3" />
                     <span>Reset Credentials</span>
@@ -1130,9 +1279,23 @@ export default function ManagerTeamPage() {
                   <h3 className="text-base font-bold text-[#111110] dark:text-[#F5F3EF]">
                     {detailData?.caller.full_name || "Caller Activity"}
                   </h3>
-                  <p className="text-xs text-[#6E6B66] dark:text-[#8A8680]">
-                    {detailData?.caller.email}
-                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <p className="text-xs text-[#6E6B66] dark:text-[#8A8680]">
+                      {detailData?.caller.email}
+                    </p>
+                    {detailData?.caller && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenRoleModal(detailData.caller)}
+                        className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-[#F95721]/15 text-[#F95721] hover:bg-[#F95721]/25 transition-colors flex items-center gap-1"
+                        title="Change role"
+                      >
+                        <Shield className="w-2.5 h-2.5" />
+                        <span>{detailData.caller.role}</span>
+                        <span className="text-[9px] opacity-70">✏️</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1566,6 +1729,211 @@ export default function ManagerTeamPage() {
                       </>
                     ) : (
                       <span>Confirm & Apply</span>
+                    )}
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* ROLE CHANGE MODAL (Interactive Role Management)                           */}
+      {/* ========================================================================= */}
+      {roleModalCaller && (
+        <div className="fixed inset-0 z-[400] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div
+            className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-2xl p-6 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-start justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#2D2924]">
+              <div>
+                <span className="text-[10px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
+                  PERMISSION MANAGEMENT
+                </span>
+                <h3 className="text-lg font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-0.5">
+                  Change Role for {roleModalCaller.full_name}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseRoleModal}
+                className="p-1 rounded-xl text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleExecuteRoleChange} className="space-y-4 mt-4">
+              <div className="p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-[#8A8680] block text-[10px] font-mono uppercase">Teammate Account</span>
+                  <span className="font-bold text-[#111110] dark:text-[#F5F3EF]">{roleModalCaller.email}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[#8A8680] block text-[10px] font-mono uppercase">Current Role</span>
+                  <span className="inline-flex items-center gap-1 font-mono font-bold text-xs uppercase text-[#F95721]">
+                    {roleModalCaller.role}
+                  </span>
+                </div>
+              </div>
+
+              {roleUpdateError && (
+                <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium">
+                  {roleUpdateError}
+                </div>
+              )}
+
+              {roleUpdateSuccess && (
+                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    <span>Role Updated</span>
+                  </div>
+                  <p className="text-[11px]">{roleUpdateSuccess}</p>
+                </div>
+              )}
+
+              {/* Role Selection Radio Cards */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-mono uppercase text-[#8A8680] font-semibold">
+                  Select New Role
+                </label>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Caller */}
+                  <label
+                    className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
+                      selectedNewRole === "caller"
+                        ? "bg-[#F95721]/10 border-[#F95721] ring-2 ring-[#F95721]/30"
+                        : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-base">📞</span>
+                        <span className="font-bold text-xs text-[#111110] dark:text-[#F5F3EF]">Caller</span>
+                      </div>
+                      <input
+                        type="radio"
+                        name="newRole"
+                        value="caller"
+                        checked={selectedNewRole === "caller"}
+                        onChange={() => setSelectedNewRole("caller")}
+                        className="accent-[#F95721]"
+                      />
+                    </div>
+                    <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] leading-snug">
+                      Outbound dial queue access, receives distributed leads, logs call outcomes.
+                    </p>
+                  </label>
+
+                  {/* Manager */}
+                  <label
+                    className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
+                      selectedNewRole === "manager"
+                        ? "bg-purple-500/10 border-purple-500 ring-2 ring-purple-500/30"
+                        : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#2D2924] hover:border-purple-500/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-base">🛡️</span>
+                        <span className="font-bold text-xs text-[#111110] dark:text-[#F5F3EF]">Manager</span>
+                      </div>
+                      <input
+                        type="radio"
+                        name="newRole"
+                        value="manager"
+                        checked={selectedNewRole === "manager"}
+                        onChange={() => setSelectedNewRole("manager")}
+                        className="accent-purple-600"
+                      />
+                    </div>
+                    <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] leading-snug">
+                      Team Command Center, Mirror Mode, Lead Rebalancer, Quarantine Holding Bin.
+                    </p>
+                  </label>
+
+                  {/* Developer */}
+                  <label
+                    className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
+                      selectedNewRole === "developer"
+                        ? "bg-cyan-500/10 border-cyan-500 ring-2 ring-cyan-500/30"
+                        : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#2D2924] hover:border-cyan-500/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-base">💻</span>
+                        <span className="font-bold text-xs text-[#111110] dark:text-[#F5F3EF]">Developer</span>
+                      </div>
+                      <input
+                        type="radio"
+                        name="newRole"
+                        value="developer"
+                        checked={selectedNewRole === "developer"}
+                        onChange={() => setSelectedNewRole("developer")}
+                        className="accent-cyan-600"
+                      />
+                    </div>
+                    <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] leading-snug">
+                      Agency Projects, sprint development kanban boards, and Developer Studio.
+                    </p>
+                  </label>
+
+                  {/* Admin */}
+                  <label
+                    className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
+                      selectedNewRole === "admin"
+                        ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/30"
+                        : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#2D2924] hover:border-amber-500/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-base">👑</span>
+                        <span className="font-bold text-xs text-[#111110] dark:text-[#F5F3EF]">Admin</span>
+                      </div>
+                      <input
+                        type="radio"
+                        name="newRole"
+                        value="admin"
+                        checked={selectedNewRole === "admin"}
+                        onChange={() => setSelectedNewRole("admin")}
+                        className="accent-amber-600"
+                      />
+                    </div>
+                    <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] leading-snug">
+                      Full administrative authority across all modules, settings, and team rosters.
+                    </p>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={handleCloseRoleModal}
+                  className="flex-1 py-2.5 rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                >
+                  {roleUpdateSuccess ? "Done" : "Cancel"}
+                </button>
+                {!roleUpdateSuccess && (
+                  <button
+                    type="submit"
+                    disabled={isUpdatingRole || selectedNewRole === roleModalCaller.role}
+                    className="flex-1 py-2.5 rounded-2xl bg-[#F95721] hover:bg-[#e04816] text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    {isUpdatingRole ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Updating Role...</span>
+                      </>
+                    ) : (
+                      <span>Apply Role Change</span>
                     )}
                   </button>
                 )}

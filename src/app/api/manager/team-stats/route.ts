@@ -61,12 +61,13 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const rangeParam = searchParams.get("range") || "today"; // "today" | "24h"
 
-    // 1. Fetch profiles for callers (excluding system bot and admin accounts)
+    // 1. Fetch profiles for team members (excluding system bot and workspace owner)
     const { data: profData, error: profileErr } = await admin
       .from("profiles")
       .select("id, full_name, role, phone, is_available, active, require_password_change, temp_password_issued_at, created_at")
       .is("deleted_at", null)
-      .eq("role", "caller")
+      .neq("id", "00000000-0000-0000-0000-000000000001")
+      .neq("id", "a87c7c79-6c4c-4787-8132-8cff8f7a1e74")
       .order("active", { ascending: false })
       .order("full_name", { ascending: true });
 
