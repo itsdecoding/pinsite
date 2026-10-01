@@ -756,7 +756,7 @@ function CallerQueueContent() {
   }
 
   return (
-    <div className="space-y-6 max-w-full overflow-x-hidden pb-28 md:pb-8">
+    <div className="space-y-6 max-w-full overflow-x-hidden pb-48 md:pb-8">
       {/* Sleek Compact Header Bar (Zero wasted vertical space) */}
       <div className="flex items-center justify-between gap-3 pt-1 pb-1">
         <div className="flex items-center gap-2.5 flex-wrap">
@@ -1392,9 +1392,9 @@ function CallerQueueContent() {
         </div>
       )}
 
-      {/* Floating Bottom-Anchored Dial Bar (Mobile <768px) */}
+      {/* Floating Bottom-Anchored Dial Bar (Positioned above MobileNav on Mobile <768px) */}
       {currentLead && !impersonatedCaller && (
-        <div className="fixed md:hidden bottom-0 left-0 right-0 z-[90] p-3 bg-white/95 dark:bg-[#1C1A17]/95 backdrop-blur-md border-t border-[#ECE8E1] dark:border-[#2D2924] pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-2xl">
+        <div className="fixed md:hidden bottom-16 left-0 right-0 z-40 p-2.5 bg-white/95 dark:bg-[#1C1A17]/95 backdrop-blur-md border-t border-[#ECE8E1] dark:border-[#2D2924] shadow-md">
           <div className="flex items-center gap-2 max-w-lg mx-auto">
             {callActive && (
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 font-mono font-bold text-xs shrink-0 animate-pulse">

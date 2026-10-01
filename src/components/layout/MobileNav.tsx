@@ -7,19 +7,24 @@ import { Phone, FolderKanban, MessageSquare, User } from "lucide-react";
 
 export function MobileNav() {
   const pathname = usePathname();
+  const isStudio = pathname.startsWith("/studio");
+  const prefix = isStudio ? "/studio" : "";
 
   const navItems = [
-    { label: "Queue", href: "/queue", icon: Phone },
-    { label: "Projects", href: "/projects", icon: FolderKanban },
-    { label: "Comms", href: "/comms", icon: MessageSquare },
-    { label: "Dashboard", href: "/dashboard", icon: User },
+    { label: "Queue", href: `${prefix}/queue`, rawPath: "/queue", icon: Phone },
+    { label: "Projects", href: `${prefix}/projects`, rawPath: "/projects", icon: FolderKanban },
+    { label: "Comms", href: `${prefix}/comms`, rawPath: "/comms", icon: MessageSquare },
+    { label: "Dashboard", href: `${prefix}/dashboard`, rawPath: "/dashboard", icon: User },
   ];
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-16 bg-white/90 dark:bg-[#1C1A17]/90 backdrop-blur border-t border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-around px-2 shadow-lg">
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-16 bg-white/95 dark:bg-[#1C1A17]/95 backdrop-blur-md border-t border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-around px-2 shadow-lg">
       {navItems.map((item) => {
         const Icon = item.icon;
-        const isActive = pathname.startsWith(item.href);
+        const normalizedPath = pathname.replace(/^\/studio/, "");
+        const isActive =
+          normalizedPath === item.rawPath ||
+          normalizedPath.startsWith(item.rawPath + "/");
 
         return (
           <Link
