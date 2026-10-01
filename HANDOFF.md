@@ -239,6 +239,20 @@ Sprints 6, 7, and 8 are complete. Sprints 9 and 10 represent the final remaining
     - When generating recovery or invite links, `redirectTo` MUST be explicitly set to `https://pinsite.pro/studio/reset-password` (never `https://www.pinsite.pro/...`).
     - If `www.` is passed to Supabase's `generateLink`, Supabase treats it as untrusted, silently drops the path, and redirects the user to the default root Site URL `https://pinsite.pro` (the marketing landing page).
     - As an extra fail-safe, `public/index.html` has an inline script in `<head>` that instantly intercepts any incoming hash fragments containing `type=recovery` or `access_token=` and forwards them to `/studio/reset-password`.
+11. **Queue Fork by Role (`<CallerCockpit />` vs `<AdminQueue />`)**:
+    - `/queue` is forked by user role rather than relying on CSS breakpoint hiding.
+    - `CallerCockpit` provides a verified zero-scroll ergonomic cockpit (total height ~508px out of 844px on iPhone 12 Pro 390×844):
+      - Workspace `CommandBar` search hidden on mobile (`hidden md:block`).
+      - Top header with compact `Prev` / `Next` lead navigation buttons.
+      - Business name (2-line clamp) + exact existing badge system (niche, area, attempt count, decision maker).
+      - Target phone number block immediately below badges.
+      - High-contrast `DIAL NOW` button with live integrated call duration timer (`Call in progress: MM:SS`).
+      - `Log Outcome` button directly below dial.
+      - Single collapsible `Details & History` disclosure affordance (website, address, maps, past call note remain hidden until tapped).
+      - Auto-opens disposition drawer upon returning from the native phone dialer (`visibilitychange` / `focus` detection).
+      - Dismissible iOS PWA Add to Home Screen install banner.
+      - Zero deck queue list or coaching discussion clutter on mobile.
+    - `AdminQueue` provides the complete 3-column desktop management deck (scope filters, lead reassignment, internal notes, 23-lead queue list, and toggle to preview Caller Cockpit).
 
 ---
 
