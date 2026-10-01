@@ -65,6 +65,15 @@ export async function POST(req: NextRequest) {
         if (resendKey && !resendKey.includes("placeholder")) {
           try {
             const fromEmail = process.env.RESEND_FROM_EMAIL || "Pinsite <invites@pinsite.pro>";
+            const refCode = Math.random().toString(36).substring(2, 7).toUpperCase();
+            const requestTime = new Date().toLocaleTimeString("en-US", {
+              timeZone: "Asia/Kolkata",
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            });
+            const subject = `Reset your Pinsite password (${requestTime} IST) [Ref: #${refCode}]`;
+
             await fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: {
@@ -74,7 +83,11 @@ export async function POST(req: NextRequest) {
               body: JSON.stringify({
                 from: fromEmail,
                 to: [normalizedEmail],
-                subject: "Reset your Pinsite password",
+                subject,
+                headers: {
+                  "X-Entity-Ref-ID": refCode,
+                },
+                text: `Reset your Pinsite password:\n\nWe received a request to reset the password for your Pinsite workspace account.\n\nClick the link below to set a new password:\n${actionLink}\n\nThis link is valid for 1 hour.\nRequest ID: #${refCode} (${requestTime} IST)\nIf you didn't request this, you can safely ignore this email.`,
                 html: `
                   <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; border: 1px solid #ECE8E1; border-radius: 20px; background-color: #FAF8F5;">
                     <div style="margin-bottom: 24px;">
@@ -89,9 +102,14 @@ export async function POST(req: NextRequest) {
                         Reset Password &rarr;
                       </a>
                     </div>
-                    <p style="color: #9E9A93; font-size: 12px; margin-top: 32px; border-top: 1px solid #ECE8E1; padding-top: 16px;">
-                      This link is valid for 1 hour. If you didn't request a password reset, you can safely ignore this email.
+                    <p style="color: #6E6B66; font-size: 12px; line-height: 1.6; margin: 20px 0 0 0; word-break: break-all;">
+                      Or copy and paste this link into your browser:<br/>
+                      <a href="${actionLink}" style="color: #F95721; font-size: 12px; text-decoration: underline;">${actionLink}</a>
                     </p>
+                    <div style="margin-top: 32px; border-top: 1px solid #ECE8E1; padding-top: 16px; font-size: 11px; color: #9E9A93; font-family: monospace;">
+                      <span>This link is valid for 1 hour. If you didn't request this, you can safely ignore this email.</span><br/>
+                      <span>Request ID: #${refCode} &bull; Generated: ${requestTime} IST</span>
+                    </div>
                   </div>
                 `,
               }),
