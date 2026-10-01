@@ -39,7 +39,7 @@ export function CommandBar() {
   );
 
   return (
-    <div className="relative max-w-md w-full mx-auto mb-6">
+    <div className="hidden md:block relative max-w-md w-full mx-auto mb-6">
       <button
         onClick={() => setIsOpen(true)}
         className="w-full flex items-center justify-between px-4 py-2 rounded-full bg-white/80 dark:bg-[#1C1A17]/80 backdrop-blur border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm hover:border-[#F95721]/50 text-xs text-[#6E6B66] dark:text-[#8A8680] transition-all"

@@ -34,6 +34,8 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { EntityComments } from "@/components/comms/EntityComments";
 import { get, set } from "idb-keyval";
+import { CallerCockpit } from "@/components/queue/CallerCockpit";
+import { AdminQueue } from "@/components/queue/AdminQueue";
 
 interface Lead {
   id: string;
@@ -221,6 +223,26 @@ function CallerQueueContent() {
   const [adminActionsCount, setAdminActionsCount] = useState<number>(0);
   const [isMirrorDetailsOpen, setIsMirrorDetailsOpen] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
+  const [viewMode, setViewMode] = useState<"auto" | "cockpit" | "admin">("auto");
+  const dialerOpenedRef = useRef(false);
+
+  // Auto-open disposition drawer when caller returns from native phone dialer
+  useEffect(() => {
+    function handleVisibilityOrFocus() {
+      if (document.visibilityState === "visible" && dialerOpenedRef.current) {
+        dialerOpenedRef.current = false;
+        setIsDrawerOpen(true);
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+    window.addEventListener("focus", handleVisibilityOrFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+    };
+  }, []);
   const [latestCallNote, setLatestCallNote] = useState<CallLogSummary | null>(null);
   const [loadingNote, setLoadingNote] = useState(false);
 
@@ -619,7 +641,7 @@ function CallerQueueContent() {
     if (!currentLead) return;
     setCallActive(true);
     setCallStartTime(Date.now());
-    setIsDrawerOpen(true);
+    dialerOpenedRef.current = true;
     setSelectedOutcome("no_answer");
     setCallNotes("");
     setCallbackDateTime("");
@@ -742,662 +764,71 @@ function CallerQueueContent() {
   }
 
   const isManagement = userRole === "admin" || userRole === "manager";
-
-  // Label for active filter scope
-  let activeScopeLabel = "All Active Leads";
-  if (impersonatedCaller) activeScopeLabel = `${impersonatedCaller.full_name}'s Deck`;
-  else if (queueScope === "unassigned") activeScopeLabel = "Unassigned Pool";
-  else if (queueScope === "assigned") activeScopeLabel = "All Assigned Leads";
-  else if (queueScope === "mine") activeScopeLabel = "My Assigned Queue";
-  else if (queueScope.startsWith("caller_")) {
-    const callerId = queueScope.replace("caller_", "");
-    const caller = callersList.find((c) => c.id === callerId);
-    activeScopeLabel = caller ? `${caller.full_name}'s Queue` : "Caller Queue";
-  }
+  const showCallerCockpit = userRole === "caller" || Boolean(impersonatedCaller) || viewMode === "cockpit";
 
   return (
     <div className="space-y-6 max-w-full overflow-x-hidden pb-24 md:pb-8">
-      {/* Sleek Compact Header Bar (Zero wasted vertical space) */}
-      <div className="flex items-center justify-between gap-3 pt-1 pb-1">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <span className="text-xs font-mono tracking-wider uppercase text-[#F95721] font-bold">
-            {isManagement ? "OUTBOUND DECK" : "DIAL QUEUE"}
-          </span>
-          {isManagement && (
-            <span className="px-2 py-0.5 rounded-full bg-[#F95721]/10 text-[#F95721] text-[10px] font-mono font-bold border border-[#F95721]/20">
-              {userRole.toUpperCase()}
-            </span>
-          )}
-
-          {/* Caller's Queue Number moved directly into the header bar */}
-          {leads.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F95721] text-white text-xs font-mono font-bold shadow-sm">
-              <span>Lead {activeLeadIndex + 1} of {leads.length}</span>
-            </span>
-          )}
-
-          {/* Admin/Manager-Only Scope Filter Dropdown (Strictly hidden from callers) */}
+      {showCallerCockpit ? (
+        <div className="space-y-3">
           {isManagement && !impersonatedCaller && (
-            <div className="flex items-center gap-1.5 ml-1">
-              <span className="text-[10px] font-mono uppercase text-[#6E6B66] dark:text-[#8A8680] font-bold tracking-wider hidden sm:inline">
-                Scope:
+            <div className="flex items-center justify-between pb-2 border-b border-[#ECE8E1] dark:border-[#2D2924] px-1">
+              <span className="text-xs font-mono text-[#F95721] font-bold">
+                📱 PREVIEWING CALLER COCKPIT
               </span>
-              <div className="relative">
-                <select
-                  value={queueScope}
-                  onChange={(e) => handleScopeChange(e.target.value)}
-                  className="text-xs font-semibold py-1 pl-2.5 pr-7 rounded-full bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] text-[#111110] dark:text-[#F5F3EF] hover:border-[#F95721] focus:border-[#F95721] outline-none shadow-sm cursor-pointer transition-colors appearance-none font-mono"
-                >
-                  <option value="all">All Leads ({totalPoolCount ?? 0})</option>
-                  {callersList.map((c) => (
-                    <option key={c.id} value={`caller_${c.id}`}>
-                      {c.full_name} ({c.lead_count})
-                    </option>
-                  ))}
-                  <option value="unassigned">Unassigned ({unassignedPoolCount})</option>
-                </select>
-                <ChevronDown className="w-3 h-3 text-[#6E6B66] dark:text-[#8A8680] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          {/* Subtle Figma/Linear-style Mirror Mode Pill & Popover (when impersonating) */}
-          {impersonatedCaller && (
-            <div className="relative">
               <button
                 type="button"
-                onClick={() => setIsMirrorDetailsOpen((prev) => !prev)}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-700 dark:text-amber-400 font-mono text-xs font-semibold shadow-sm transition-all active:scale-95"
-                title="Click to view Mirror Mode audit trail & session details"
+                onClick={() => setViewMode("admin")}
+                className="px-3 py-1 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 border border-[#ECE8E1] dark:border-[#2D2924] text-xs font-mono font-semibold text-[#111110] dark:text-[#F5F3EF]"
               >
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
-                <span>
-                  MIRRORING • {impersonatedCaller.full_name} • {impersonatedCaller.dials_today} dials • {leads.length} leads
-                </span>
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isMirrorDetailsOpen ? "rotate-180" : ""}`} />
+                &larr; Return to Admin Deck
               </button>
-
-              {/* Expanded detail popover card (Linear/Figma style) */}
-              {isMirrorDetailsOpen && (
-                <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-2xl p-4 z-[150] animate-in fade-in slide-in-from-top-2 duration-150">
-                  <div className="flex items-start justify-between pb-2.5 border-b border-[#ECE8E1] dark:border-[#2D2924]">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm">👁️</span>
-                      <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#F95721]">
-                        Mirror Mode Audit Trail
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsMirrorDetailsOpen(false)}
-                      className="p-1 text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] rounded-lg hover:bg-black/5 dark:hover:bg-white/5"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="py-3 space-y-2.5 text-xs">
-                    {/* Status & Output */}
-                    <div className="p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 space-y-1">
-                      <div className="flex items-center justify-between font-mono text-[11px]">
-                        <span className="text-[#8A8680]">Caller Status:</span>
-                        <span className="inline-flex items-center gap-1 font-bold text-[#111110] dark:text-[#F5F3EF]">
-                          <span className={`w-2 h-2 rounded-full ${impersonatedCaller.is_online ? "bg-emerald-500" : "bg-stone-400"}`} />
-                          {impersonatedCaller.is_online ? "Active / Online" : "Idle / Offline"}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between font-mono text-[11px]">
-                        <span className="text-[#8A8680]">Today&apos;s Dials:</span>
-                        <span className="font-bold text-[#111110] dark:text-[#F5F3EF]">{impersonatedCaller.dials_today} dials</span>
-                      </div>
-                      <div className="flex items-center justify-between font-mono text-[11px]">
-                        <span className="text-[#8A8680]">Active Queue:</span>
-                        <span className="font-bold text-[#F95721]">{leads.length} leads</span>
-                      </div>
-                    </div>
-
-                    {/* Dual Attribution Audit Trail */}
-                    <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] leading-relaxed">
-                      Actions logged here will record as{" "}
-                      <strong className="text-[#111110] dark:text-[#F5F3EF]">
-                        {adminFullName} ({userRole === "admin" ? "Admin" : "Manager"})
-                      </strong>{" "}
-                      acting on behalf of{" "}
-                      <strong className="text-[#111110] dark:text-[#F5F3EF]">{impersonatedCaller.full_name}</strong>.
-                    </p>
-
-                    {adminActionsCount > 0 && (
-                      <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 font-mono text-[10px]">
-                        Session Actions: {adminActionsCount} performed
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="pt-2.5 border-t border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => setIsMirrorDetailsOpen(false)}
-                      className="text-xs text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-                    >
-                      Close
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleExitMirrorMode}
-                      className="px-3.5 py-1.5 bg-black dark:bg-white text-white dark:text-black rounded-xl text-xs font-bold shadow-sm hover:opacity-90 active:scale-95 transition-all"
-                    >
-                      Exit Mirror Mode
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           )}
-
-          {/* Online/Offline indicator */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm text-xs">
-            {isOnline ? (
-              <>
-                <Wifi className="w-3.5 h-3.5 text-feedback-success" />
-                <span className="text-[#6E6B66] dark:text-[#8A8680] font-medium hidden sm:inline">Online</span>
-              </>
-            ) : (
-              <>
-                <WifiOff className="w-3.5 h-3.5 text-[#F95721]" />
-                <span className="text-[#F95721] font-semibold">Offline</span>
-              </>
-            )}
-          </div>
+          <CallerCockpit
+            leads={leads}
+            activeLeadIndex={activeLeadIndex}
+            setActiveLeadIndex={setActiveLeadIndex}
+            currentLead={currentLead}
+            callActive={callActive}
+            callElapsedSeconds={callElapsedSeconds}
+            handleStartCall={handleStartCall}
+            setIsDrawerOpen={setIsDrawerOpen}
+            latestCallNote={latestCallNote}
+            loadingNote={loadingNote}
+            impersonatedCaller={impersonatedCaller}
+            copiedPhone={copiedPhone}
+            setCopiedPhone={setCopiedPhone}
+            loadLeads={loadLeads}
+          />
         </div>
-      </div>
-
-      {/* Main Single-Column Cockpit (< 768px) and Grid (lg+) */}
-      {!currentLead ? (
-        totalPoolCount === 0 ? (
-          <div className="p-8 sm:p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
-            <div className="w-12 h-12 rounded-full bg-[#F95721]/10 text-[#F95721] flex items-center justify-center mx-auto mb-3">
-              <Phone className="w-6 h-6" />
-            </div>
-            <h2 className="text-lg font-bold text-[#111110] dark:text-[#F5F3EF]">No leads in pool</h2>
-            <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1 max-w-sm mx-auto">
-              No leads currently exist in the database. Upload a lead CSV in Lead Ingestion to populate your agency outreach pool.
-            </p>
-            <Link
-              href="/manager/ingestion"
-              className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm"
-            >
-              <span>Upload Lead CSV</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        ) : (isManagement || impersonatedCaller) && queueScope !== "all" && leads.length === 0 ? (
-          <div className="p-8 sm:p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
-            <Layers className="w-12 h-12 text-[#6E6B66] dark:text-[#8A8680] mx-auto mb-3" />
-            <h2 className="text-lg font-bold text-[#111110] dark:text-[#F5F3EF]">
-              No leads in {activeScopeLabel}
-            </h2>
-            <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1 max-w-sm mx-auto">
-              {impersonatedCaller
-                ? `This caller currently has no active leads or all assigned leads are in active cooldown.`
-                : `There are ${totalPoolCount} active leads in the master agency deck waiting to be dialed.`}
-            </p>
-            {impersonatedCaller ? (
-              <button
-                onClick={handleExitMirrorMode}
-                className="mt-6 px-5 py-2.5 bg-black text-white hover:bg-neutral-800 rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm"
-              >
-                Exit Mirror Mode
-              </button>
-            ) : (
-              <button
-                onClick={() => handleScopeChange("all")}
-                className="mt-6 px-5 py-2.5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm"
-              >
-                Switch to All Active Leads ({totalPoolCount})
-              </button>
-            )}
-          </div>
-        ) : !isManagement && leads.length === 0 ? (
-          <div className="p-8 sm:p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
-            <div className="w-12 h-12 rounded-full bg-[#F95721]/10 text-[#F95721] flex items-center justify-center mx-auto mb-3">
-              <CheckCircle className="w-6 h-6" />
-            </div>
-            <h2 className="text-lg font-bold text-[#111110] dark:text-[#F5F3EF]">Queue Complete</h2>
-            <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1 max-w-sm mx-auto">
-              Your queue is up to date. Newly assigned leads and callbacks will appear here automatically.
-            </p>
-            <button
-              onClick={() => loadLeads()}
-              className="mt-6 px-5 py-2.5 bg-black/5 dark:bg-white/5 hover:bg-black/10 text-[#111110] dark:text-[#F5F3EF] rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm inline-flex items-center gap-2"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Check for Updates</span>
-            </button>
-          </div>
-        ) : (
-          <div className="p-8 sm:p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
-            <CheckCircle className="w-12 h-12 text-feedback-success mx-auto mb-3" />
-            <h2 className="text-lg font-bold text-[#111110] dark:text-[#F5F3EF]">Queue Complete</h2>
-            <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1 max-w-sm mx-auto">
-              All assigned leads for this session have been dialed. Leads on cadence cooldown will surface automatically once ready.
-            </p>
-            <button
-              onClick={() => loadLeads()}
-              className="mt-6 px-5 py-2.5 bg-[#F95721] text-white rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm"
-            >
-              Refresh Queue
-            </button>
-          </div>
-        )
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Active Lead Hero Card (2 cols on lg, full width single col on mobile < 768px) */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-5 sm:p-8 shadow-sm relative overflow-hidden">
-              {/* Card Header & Status Badges */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924]">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-mono uppercase tracking-wider text-[#F95721] font-bold">
-                    Lead #{activeLeadIndex + 1} of {leads.length}
-                  </span>
-
-                  {currentLead.assigned_to ? (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[11px] font-medium text-[#111110] dark:text-[#F5F3EF]">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                        <span>Assigned to:</span>
-                        <strong className="text-[#F95721] font-semibold">
-                          {currentLead.assigned_to === currentUserId
-                            ? "You"
-                            : currentLead.profiles?.full_name || "Caller"}
-                        </strong>
-                      </span>
-
-                      {/* Quick Reassign Dropdown: strictly available only in Mirror Mode for Managers */}
-                      {impersonatedCaller && isManagement && (
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            value={currentLead.assigned_to || ""}
-                            onChange={(e) => handleReassignLead(currentLead.id, e.target.value)}
-                            disabled={isReassigning}
-                            className="text-[10px] font-semibold py-1 px-2.5 rounded-full bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:border-[#F95721]/50 outline-none cursor-pointer"
-                          >
-                            <option value={currentLead.assigned_to}>Reassign lead...</option>
-                            <option value="">&rarr; Unassign to Pool</option>
-                            {callersList.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                &rarr; {c.full_name} ({c.lead_count} leads)
-                              </option>
-                            ))}
-                          </select>
-                          {isReassigning && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F95721]" />}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-bold">
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Unassigned Pool</span>
-                      </span>
-
-                      {impersonatedCaller && isManagement && (
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            defaultValue=""
-                            onChange={(e) => handleReassignLead(currentLead.id, e.target.value)}
-                            disabled={isReassigning}
-                            className="text-[10px] font-semibold py-1 px-2.5 rounded-full bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:border-[#F95721]/50 outline-none cursor-pointer"
-                          >
-                            <option value="" disabled>Assign to caller...</option>
-                            {callersList.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                &rarr; Assign to {c.full_name} ({c.lead_count} leads)
-                              </option>
-                            ))}
-                          </select>
-                          {isReassigning && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F95721]" />}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Lead Information (Large Legible Typography) */}
-              <div className="space-y-5 pt-5">
-                <div>
-                  <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight break-words">
-                    {formatLeadName(currentLead.name)}
-                  </h2>
-                  <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#F95721]/10 text-[#F95721] border border-[#F95721]/20">
-                      {currentLead.niche}
-                    </span>
-                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-black/5 dark:bg-white/10 text-[#111110] dark:text-[#F5F3EF] border border-[#ECE8E1] dark:border-[#2D2924]">
-                      {currentLead.area}
-                    </span>
-
-                    {/* Attempt counter with ceiling (e.g. Attempt 2/5) */}
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-mono font-bold border flex items-center gap-1.5 ${
-                        (currentLead.attempts_count || 0) >= 4
-                          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
-                          : "bg-black/5 dark:bg-white/5 text-[#111110] dark:text-[#F5F3EF] border-[#ECE8E1] dark:border-[#2D2924]"
-                      }`}
-                    >
-                      <Clock className="w-3.5 h-3.5 text-[#F95721]" />
-                      <span>
-                        {(currentLead.attempts_count || 0) === 0
-                          ? "Attempt 1/5"
-                          : `Attempt ${Math.min(5, currentLead.attempts_count)}/5`}
-                      </span>
-                    </span>
-
-                    {/* Decision Maker Name */}
-                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-[#F95721]/10 text-[#F95721] border border-[#F95721]/20 flex items-center gap-1.5">
-                      <User className="w-3.5 h-3.5" />
-                      <span>Ask for: <strong>{resolveDecisionMaker(currentLead)}</strong></span>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Previous Call Notes & Cadence Intelligence Card */}
-                {loadingNote ? (
-                  <div className="p-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex items-center gap-2 text-xs text-[#6E6B66] dark:text-[#8A8680]">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F95721]" />
-                    <span>Loading past call history...</span>
-                  </div>
-                ) : latestCallNote?.notes ? (
-                  <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 text-xs space-y-1.5 shadow-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-300 font-mono text-[11px] uppercase tracking-wider">
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>Previous Call Note ({latestCallNote.outcome.replace("_", " ")})</span>
-                      </div>
-                      <span className="text-[10px] text-amber-800/80 dark:text-amber-200/80 font-mono">
-                        {latestCallNote.caller_name} • {formatRelativeTime(latestCallNote.called_at)}
-                      </span>
-                    </div>
-                    <p className="text-[#111110] dark:text-[#F5F3EF] font-medium leading-relaxed italic bg-white/70 dark:bg-black/30 p-2.5 rounded-xl border border-amber-500/20">
-                      &ldquo;{latestCallNote.notes}&rdquo;
-                    </p>
-                  </div>
-                ) : latestCallNote ? (
-                  <div className="p-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between text-xs text-[#6E6B66] dark:text-[#8A8680]">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-3.5 h-3.5 text-[#F95721]" />
-                      <span>Last contact: <strong className="capitalize text-[#111110] dark:text-[#F5F3EF]">{latestCallNote.outcome.replace("_", " ")}</strong></span>
-                    </div>
-                    <span className="text-[10px] font-mono">{latestCallNote.caller_name} • {formatRelativeTime(latestCallNote.called_at)}</span>
-                  </div>
-                ) : (
-                  <div className="p-3 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 font-medium">
-                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                    <span>Fresh Lead — No previous call attempts or notes logged yet.</span>
-                  </div>
-                )}
-
-                {/* Primary High-Contrast Phone Number Block (Single dial action enforced) */}
-                <div className="p-4 sm:p-5 rounded-2xl bg-[#F95721]/5 dark:bg-[#F95721]/10 border border-[#F95721]/20 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] block">
-                      Target Phone Number
-                    </span>
-                    <span className="text-2xl sm:text-3xl font-mono font-black text-[#F95721] tracking-wide select-all block">
-                      {formatPhoneDisplay(currentLead.phone)}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (currentLead?.phone) {
-                        navigator.clipboard.writeText(currentLead.phone);
-                        setCopiedPhone(true);
-                        setTimeout(() => setCopiedPhone(false), 1500);
-                      }
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#6E6B66] dark:text-[#8A8680] text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shrink-0"
-                    title="Copy phone number"
-                  >
-                    {copiedPhone ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-feedback-success" />
-                        <span className="text-[11px] text-feedback-success font-medium">Copied</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span className="text-[11px] font-medium">Copy</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* Website & Address / Maps Intelligence */}
-                {(() => {
-                  const isMapsUrl =
-                    currentLead.website?.includes("google.com/maps") ||
-                    currentLead.website?.includes("maps.app.goo.gl") ||
-                    currentLead.website?.includes("goo.gl/maps");
-
-                  const mapsUrl = isMapsUrl
-                    ? currentLead.website!
-                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                        `${currentLead.name} ${currentLead.address || currentLead.area || ""}`
-                      )}`;
-
-                  const realWebsite =
-                    currentLead.website && !isMapsUrl ? currentLead.website : null;
-
-                  const websiteDisplay = realWebsite
-                    ? realWebsite.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0]
-                    : null;
-
-                  return (
-                    <div className="space-y-2.5 text-xs">
-                      {/* Official Website Status (Crucial for Website Sales Pitch) */}
-                      {realWebsite ? (
-                        <div className="p-3 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Globe className="w-4 h-4 text-emerald-500 shrink-0" />
-                            <span className="font-bold text-[#111110] dark:text-[#F5F3EF]">Website:</span>
-                            <span className="truncate text-emerald-700 dark:text-emerald-300 font-mono font-medium">
-                              {websiteDisplay}
-                            </span>
-                          </div>
-                          <a
-                            href={realWebsite.startsWith("http") ? realWebsite : `https://${realWebsite}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="shrink-0 px-3 py-1 rounded-xl bg-emerald-500 text-white font-bold text-[11px] inline-flex items-center gap-1 transition-transform active:scale-95 shadow-sm"
-                          >
-                            <span>Open Website</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </div>
-                      ) : (
-                        <div className="p-3 rounded-2xl bg-[#F95721]/5 dark:bg-[#F95721]/10 border border-[#F95721]/20 flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <Globe className="w-4 h-4 text-[#F95721] shrink-0" />
-                            <span className="font-bold text-[#111110] dark:text-[#F5F3EF]">Website:</span>
-                            <span className="text-[#6E6B66] dark:text-[#8A8680]">No official website listed</span>
-                          </div>
-                          <span className="px-2.5 py-1 rounded-full bg-[#F95721]/15 text-[#F95721] font-mono font-bold text-[10px] tracking-wide uppercase">
-                            Pitch: Need New Website
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Full Address Block with Open in Maps button */}
-                      {(currentLead.address || currentLead.area) && (
-                        <div className="p-3.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                            <MapPin className="w-4 h-4 text-[#F95721] shrink-0 mt-0.5" />
-                            <div className="min-w-0 flex-1">
-                              <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] block mb-0.5">
-                                Address & Location
-                              </span>
-                              <p className="text-xs text-[#111110] dark:text-[#F5F3EF] font-medium leading-relaxed break-words">
-                                {currentLead.address || currentLead.area}
-                              </p>
-                            </div>
-                          </div>
-
-                          <a
-                            href={mapsUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="shrink-0 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-[#F95721]/10 hover:text-[#F95721] text-[#111110] dark:text-[#F5F3EF] border border-[#ECE8E1] dark:border-[#2D2924] font-semibold text-xs inline-flex items-center gap-1.5 transition-colors active:scale-95"
-                            title="Open in Google Maps"
-                          >
-                            <span>Open in Maps</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                {/* Live Call Duration Banner (Sprint 7 Call Tracking) */}
-                {callActive && (
-                  <div className="w-full p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-between text-xs font-mono shadow-sm">
-                    <div className="flex items-center gap-2 text-red-600 dark:text-red-400 font-bold">
-                      <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping shrink-0" />
-                      <span className="uppercase tracking-wider">Live Call In Progress</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-sm font-black text-red-600 dark:text-red-400">
-                      <span>⏱️</span>
-                      <span>{formatDurationTimer(callElapsedSeconds)}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Primary Dial CTA (Desktop & Tablet) or Diagnostic Observer Card in Mirror Mode */}
-                {impersonatedCaller ? (
-                  <div className="pt-2">
-                    <div className="p-4 sm:p-5 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3.5 text-amber-900 dark:text-amber-200">
-                      <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 text-xl font-bold">
-                        👁️
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs font-bold uppercase tracking-wider font-mono text-amber-700 dark:text-amber-300">
-                          Diagnostic Observer Mode
-                        </p>
-                        <p className="text-xs leading-relaxed text-[#111110]/80 dark:text-[#F5F3EF]/80 max-w-2xl">
-                          Direct dialing and outcome logging are disabled in Mirror Mode to prevent interference with {impersonatedCaller.full_name}&apos;s live call session. You can reassign this lead above or leave guidance in the Coaching Notes below.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="pt-2 flex flex-col sm:flex-row items-center gap-4">
-                    {callActive && (
-                      <div className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 font-mono font-bold text-xs animate-pulse">
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
-                        <span>Call in progress: {formatDurationTimer(callElapsedSeconds)}</span>
-                      </div>
-                    )}
-                    <a
-                      href={formatTelLink(currentLead.phone)}
-                      onClick={handleStartCall}
-                      className="w-full sm:w-auto flex-1 min-h-[50px] py-4 px-8 bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-sm uppercase tracking-wider rounded-full shadow-lg flex items-center justify-center gap-3 transition-transform active:scale-[0.98] text-center"
-                    >
-                      <PhoneCall className="w-5 h-5 animate-pulse" />
-                      <span>Dial Now ({formatPhoneDisplay(currentLead.phone)})</span>
-                    </a>
-
-                    <button
-                      onClick={() => setIsDrawerOpen(true)}
-                      className="w-full sm:w-auto min-h-[50px] py-4 px-6 bg-white dark:bg-[#1C1A17] hover:bg-black/5 dark:hover:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-full text-xs font-semibold text-[#111110] dark:text-[#F5F3EF] transition-colors flex items-center justify-center gap-2"
-                    >
-                      <span>Log Outcome</span>
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Embedded Comments Thread / Coaching Notes */}
-            <div className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-6 shadow-sm space-y-4">
-              {impersonatedCaller && (
-                <div className="flex items-center justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#2D2924]">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">📝</span>
-                    <span className="text-xs font-bold uppercase tracking-wider font-mono text-[#F95721]">
-                      Live Coaching Notes for {impersonatedCaller.full_name}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-mono text-[10px] font-semibold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                    <span>Live sync</span>
-                  </div>
-                </div>
-              )}
-              <EntityComments entityType="lead" entityId={currentLead.id} />
-            </div>
-          </div>
-
-          {/* Up Next Queue Deck (1 col) */}
-          <div className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-6 shadow-sm flex flex-col h-[600px] lg:h-[680px]">
-            <div className="flex items-center justify-between pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924]">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#111110] dark:text-[#F5F3EF] font-mono">
-                Deck Queue
-              </span>
-              <span className="text-xs font-mono font-semibold text-[#F95721]">
-                {leads.length} leads
-              </span>
-            </div>
-
-            {/* Leads List */}
-            <div className="flex-1 overflow-y-auto divide-y divide-[#ECE8E1]/60 dark:divide-[#2D2924]/60 mt-2 pr-1">
-              {leads.map((lead, idx) => (
-                <button
-                  key={lead.id}
-                  onClick={() => setActiveLeadIndex(idx)}
-                  className={`w-full text-left p-3.5 rounded-2xl transition-all flex items-center justify-between gap-3 ${
-                    idx === activeLeadIndex
-                      ? "bg-[#F95721]/10 border border-[#F95721]/30 font-semibold"
-                      : "hover:bg-black/5 dark:hover:bg-white/5"
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className="text-xs text-[#111110] dark:text-[#F5F3EF] font-bold line-clamp-2 leading-snug break-words"
-                      title={formatLeadName(lead.name)}
-                    >
-                      {formatLeadName(lead.name)}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      <span className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] truncate">
-                        {lead.niche} • {lead.area}
-                      </span>
-                      <span className="text-[10px] text-[#6E6B66] dark:text-[#8A8680]">•</span>
-                      {lead.assigned_to ? (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#F95721]/10 text-[#F95721] font-mono text-[9px] font-bold">
-                          <User className="w-2.5 h-2.5" />
-                          <span>{lead.profiles?.full_name || "Caller"}</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[9px] font-bold">
-                          Unassigned
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <ChevronRight className="w-4 h-4 text-[#6E6B66] dark:text-[#8A8680] shrink-0 opacity-40" />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <AdminQueue
+          leads={leads}
+          activeLeadIndex={activeLeadIndex}
+          setActiveLeadIndex={setActiveLeadIndex}
+          currentLead={currentLead}
+          callActive={callActive}
+          callElapsedSeconds={callElapsedSeconds}
+          handleStartCall={handleStartCall}
+          setIsDrawerOpen={setIsDrawerOpen}
+          latestCallNote={latestCallNote}
+          loadingNote={loadingNote}
+          impersonatedCaller={impersonatedCaller}
+          userRole={userRole}
+          currentUserId={currentUserId}
+          callersList={callersList}
+          handleReassignLead={handleReassignLead}
+          isReassigning={isReassigning}
+          queueScope={queueScope}
+          handleScopeChange={handleScopeChange}
+          totalPoolCount={totalPoolCount || 0}
+          unassignedPoolCount={unassignedPoolCount}
+          copiedPhone={copiedPhone}
+          setCopiedPhone={setCopiedPhone}
+          loadLeads={loadLeads}
+          onSwitchToCockpit={() => setViewMode("cockpit")}
+        />
       )}
-
 
       {/* Slide-Up Bottom Sheet Outcome Drawer with Rejection Reason */}
       {isDrawerOpen && currentLead && (
