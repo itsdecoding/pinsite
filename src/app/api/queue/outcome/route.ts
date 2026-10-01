@@ -97,14 +97,14 @@ export async function POST(req: NextRequest) {
 
       const { data: impProfile } = await admin
         .from("profiles")
-        .select("id")
+        .select("id, role, active")
         .eq("id", p_impersonate_caller_id)
         .maybeSingle();
 
-      if (!impProfile) {
+      if (!impProfile || impProfile.role !== "caller" || impProfile.active === false) {
         return NextResponse.json(
-          { error: "Impersonated caller not found" },
-          { status: 404 }
+          { error: "Impersonated user must be an active team member with the caller role" },
+          { status: 400 }
         );
       }
 
@@ -133,25 +133,57 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. Update lead state
+    // 6. Update lead state with application-layer lifecycle parity
+    const newAttemptsCount = (lead.attempts_count || 0) + 1;
+    const nowIso = new Date().toISOString();
+
     const leadUpdate: Record<string, any> = {
       status: p_status,
       assigned_to: lead.assigned_to || effectiveCallerId,
-      attempts_count: (lead.attempts_count || 0) + 1,
-      last_called_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      attempts_count: newAttemptsCount,
+      last_called_at: nowIso,
+      updated_at: nowIso,
     };
 
     if (p_status === "dnc") {
       leadUpdate.dnc_flag = true;
-    }
-
-    if (p_status === "callback" && p_callback_at) {
-      leadUpdate.next_callback_at = p_callback_at;
-    }
-
-    if (p_status === "not_interested") {
+      leadUpdate.assigned_to = null;
+      leadUpdate.deleted_at = nowIso;
+    } else if (p_status === "not_interested") {
       leadUpdate.rejection_reason = p_rejection_reason?.trim() || "Rejected by caller";
+      leadUpdate.quarantined_at = nowIso;
+      const disposalDate = new Date();
+      disposalDate.setDate(disposalDate.getDate() + 7);
+      leadUpdate.disposal_scheduled_at = disposalDate.toISOString();
+      leadUpdate.rejected_by = lead.assigned_to || effectiveCallerId;
+      leadUpdate.assigned_to = null;
+      leadUpdate.cooldown_until = null;
+    } else if (p_status === "interested") {
+      leadUpdate.escalated_at = nowIso;
+      leadUpdate.cooldown_until = null;
+    } else if (p_status === "callback" && p_callback_at) {
+      leadUpdate.next_callback_at = p_callback_at;
+    } else if (p_status === "no_answer" || p_status === "gatekeeper") {
+      if (newAttemptsCount === 1) {
+        leadUpdate.cooldown_until = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+      } else if (newAttemptsCount === 2) {
+        leadUpdate.cooldown_until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      } else if (newAttemptsCount === 3) {
+        leadUpdate.cooldown_until = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+      } else if (newAttemptsCount === 4) {
+        leadUpdate.cooldown_until = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+      } else {
+        // >= 5 attempts -> Cadence exhausted -> Auto-quarantine
+        leadUpdate.status = "not_interested";
+        leadUpdate.rejection_reason = "Cadence exhausted (5 attempts with no contact)";
+        leadUpdate.quarantined_at = nowIso;
+        const disposalDate = new Date();
+        disposalDate.setDate(disposalDate.getDate() + 7);
+        leadUpdate.disposal_scheduled_at = disposalDate.toISOString();
+        leadUpdate.rejected_by = lead.assigned_to || effectiveCallerId;
+        leadUpdate.assigned_to = null;
+        leadUpdate.cooldown_until = null;
+      }
     }
 
     let { error: updateError } = await admin
@@ -161,6 +193,11 @@ export async function POST(req: NextRequest) {
 
     if (updateError && (updateError.message?.includes("rejection_reason") || updateError.code === "42703")) {
       delete leadUpdate.rejection_reason;
+      delete leadUpdate.quarantined_at;
+      delete leadUpdate.disposal_scheduled_at;
+      delete leadUpdate.rejected_by;
+      delete leadUpdate.cooldown_until;
+      delete leadUpdate.escalated_at;
       const retryUpdate = await admin
         .from("leads")
         .update(leadUpdate)

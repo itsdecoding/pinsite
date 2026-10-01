@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, Suspense } from "react";
+import React, { useState, useMemo, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -33,6 +33,32 @@ function ResetPasswordForm() {
   const [redirectPath, setRedirectPath] = useState<string | null>(null);
 
   const supabase = createClient();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // Check for error parameters in URL hash fragment or query params (e.g. expired link)
+      const hash = window.location.hash.substring(1);
+      const hashParams = new URLSearchParams(hash);
+      const errorDesc =
+        hashParams.get("error_description") || searchParams.get("error_description");
+      if (errorDesc) {
+        setErrorMsg(decodeURIComponent(errorDesc.replace(/\+/g, " ")));
+      }
+
+      // Listen for auth state change to confirm session recovery tokens are processed
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((event) => {
+        if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
+          setErrorMsg(null);
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+  }, [searchParams, supabase]);
 
   // Password requirement checklist calculation
   const requirements = useMemo(() => {

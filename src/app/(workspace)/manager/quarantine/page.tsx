@@ -189,8 +189,12 @@ export default function ManagerQuarantinePage() {
     setRescueError(null);
     setRescueSuccess(null);
 
-    // Default to returning to original caller if known, otherwise unassigned
-    if (lead.rejected_by) {
+    // Default to returning to original caller ONLY if they are an active caller, otherwise unassigned
+    const isOriginalCallerActive = Boolean(
+      lead.rejected_by && activeCallers.some((c) => c.id === lead.rejected_by)
+    );
+
+    if (isOriginalCallerActive) {
       setRescueChoice("original");
     } else {
       setRescueChoice("unassigned");
@@ -554,35 +558,46 @@ export default function ManagerQuarantinePage() {
                 {/* 3-Way Choice Cards */}
                 <div className="space-y-2.5">
                   {/* Choice 1: Return to Original Caller */}
-                  <label
-                    className={`block p-3.5 rounded-2xl border cursor-pointer transition-all ${
-                      rescueChoice === "original"
-                        ? "bg-[#F95721]/5 border-[#F95721] text-[#111110] dark:text-[#F5F3EF]"
-                        : "bg-white dark:bg-[#1C1A17] border-[#ECE8E1] dark:border-[#2D2924] opacity-80 hover:opacity-100"
-                    } ${!targetLead.rejected_by ? "opacity-40 cursor-not-allowed" : ""}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="radio"
-                        name="rescueChoice"
-                        value="original"
-                        disabled={!targetLead.rejected_by}
-                        checked={rescueChoice === "original"}
-                        onChange={() => setRescueChoice("original")}
-                        className="mt-1 text-[#F95721] focus:ring-[#F95721]"
-                      />
-                      <div className="min-w-0">
-                        <span className="text-xs font-bold block">
-                          1. Return to Original Caller
-                        </span>
-                        <span className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] block mt-0.5">
-                          {targetLead.rejected_by
-                            ? `Route lead back to ${targetLead.disposing_caller}'s active queue for another pass.`
-                            : "Original disposing caller record not found (lead was system-quarantined)."}
-                        </span>
-                      </div>
-                    </div>
-                  </label>
+                  {(() => {
+                    const isCallerActive = Boolean(
+                      targetLead.rejected_by && activeCallers.some((c) => c.id === targetLead.rejected_by)
+                    );
+                    return (
+                      <label
+                        className={`block p-3.5 rounded-2xl border transition-all ${
+                          !isCallerActive
+                            ? "opacity-40 cursor-not-allowed bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#2D2924]"
+                            : rescueChoice === "original"
+                            ? "bg-[#F95721]/5 border-[#F95721] text-[#111110] dark:text-[#F5F3EF] cursor-pointer"
+                            : "bg-white dark:bg-[#1C1A17] border-[#ECE8E1] dark:border-[#2D2924] opacity-80 hover:opacity-100 cursor-pointer"
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <input
+                            type="radio"
+                            name="rescueChoice"
+                            value="original"
+                            disabled={!isCallerActive}
+                            checked={rescueChoice === "original"}
+                            onChange={() => setRescueChoice("original")}
+                            className="mt-1 text-[#F95721] focus:ring-[#F95721]"
+                          />
+                          <div className="min-w-0">
+                            <span className="text-xs font-bold block">
+                              1. Return to Original Caller
+                            </span>
+                            <span className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] block mt-0.5">
+                              {targetLead.rejected_by
+                                ? isCallerActive
+                                  ? `Route lead back to ${targetLead.disposing_caller}'s active queue for another pass.`
+                                  : `Original teammate (${targetLead.disposing_caller}) is no longer an active caller (promoted or inactive).`
+                                : "Original disposing caller record not found (lead was system-quarantined)."}
+                            </span>
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })()}
 
                   {/* Choice 2: Move to Unassigned Pool */}
                   <label

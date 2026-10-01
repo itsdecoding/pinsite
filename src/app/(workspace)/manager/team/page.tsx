@@ -1232,30 +1232,42 @@ export default function ManagerTeamPage() {
                       </strong>
                     </span>
 
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openRebalanceModalWithCaller(caller.id);
-                      }}
-                      className="text-[11px] font-semibold text-[#F95721] hover:underline flex items-center gap-1"
-                    >
-                      <PhoneForwarded className="w-3 h-3" />
-                      <span>Shift</span>
-                    </button>
+                    {caller.role === "caller" && caller.active_leads_count > 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRebalanceModalWithCaller(caller.id);
+                        }}
+                        className="text-[11px] font-semibold text-[#F95721] hover:underline flex items-center gap-1"
+                      >
+                        <PhoneForwarded className="w-3 h-3" />
+                        <span>Shift</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
                 {/* Card Actions: Mirror View, Activity Ledger, De-emphasized Reset Pass */}
                 <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-[#ECE8E1] dark:border-[#2D2924]" onClick={(e) => e.stopPropagation()}>
-                  <Link
-                    href={`/queue?impersonate=${caller.id}`}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-[#F95721] hover:text-white text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all group/btn"
-                    title={`Mirror view of ${caller.full_name}'s dial queue`}
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 group-hover/btn:scale-110 transition-transform" />
-                    <span>Mirror View</span>
-                  </Link>
+                  {caller.role === "caller" ? (
+                    <Link
+                      href={`/queue?impersonate=${caller.id}`}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-[#F95721] hover:text-white text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all group/btn"
+                      title={`Mirror view of ${caller.full_name}'s dial queue`}
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 group-hover/btn:scale-110 transition-transform" />
+                      <span>Mirror View</span>
+                    </Link>
+                  ) : (
+                    <div
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] text-[#8A8680] text-xs font-medium border border-dashed border-[#ECE8E1] dark:border-[#2D2924]"
+                      title="Teammate is in management and does not hold a dial queue"
+                    >
+                      <Shield className="w-3.5 h-3.5 text-purple-500" />
+                      <span className="capitalize">{caller.role}</span>
+                    </div>
+                  )}
 
                   <button
                     type="button"

@@ -163,12 +163,16 @@ export async function POST(req: NextRequest) {
 
     const existingPhoneSet = new Set(existingRecords?.map((r) => r.normalized_phone) || []);
 
-    // Step 3: Batch DNC check
+    // Step 3: Batch DNC check (DPDP Compliance against dnc_blacklist)
     const allHashes = Array.from(new Set(candidates.map((c) => c.phoneHash)));
-    const { data: dncRecords } = await supabase
-      .from("dnc_registry")
+    const { data: dncRecords, error: dncErr } = await supabase
+      .from("dnc_blacklist")
       .select("phone_hash")
       .in("phone_hash", allHashes);
+
+    if (dncErr) {
+      console.warn("Could not query dnc_blacklist during ingestion:", dncErr.message);
+    }
 
     const dncHashSet = new Set(dncRecords?.map((d) => d.phone_hash) || []);
 

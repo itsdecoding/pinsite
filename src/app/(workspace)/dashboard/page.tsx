@@ -114,6 +114,7 @@ export default function ManagerDashboardPage() {
         .from("leads")
         .select("id, name, niche, score, status, next_callback_at")
         .is("deleted_at", null)
+        .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")')
         .order("score", { ascending: false })
         .limit(4);
 

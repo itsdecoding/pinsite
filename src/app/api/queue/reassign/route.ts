@@ -48,6 +48,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing lead_id parameter" }, { status: 400 });
     }
 
+    // Verify recipient caller role if caller_id is specified
+    if (caller_id) {
+      const { data: targetProf, error: targetProfErr } = await admin
+        .from("profiles")
+        .select("role, active")
+        .eq("id", caller_id)
+        .maybeSingle();
+
+      if (targetProfErr || !targetProf || targetProf.role !== "caller" || targetProf.active === false) {
+        return NextResponse.json(
+          { error: "Target recipient must be an active team member with the caller role" },
+          { status: 400 }
+        );
+      }
+    }
+
     // 3. Fetch current lead assignment state for audit trail
     const { data: currentLead } = await admin
       .from("leads")

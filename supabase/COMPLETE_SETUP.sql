@@ -877,30 +877,50 @@ GRANT EXECUTE ON FUNCTION public.claim_email_batch(INT) TO service_role;
 -- 5.3 Codified SQL Bodies for All 7 Automation Functions
 --------------------------------------------------------------------------------
 
--- CRON 1: Daily 6:00 AM IST Lead Top-Up
-CREATE OR REPLACE FUNCTION public.assign_daily_leads()
-RETURNS void
+-- CRON 1: Daily 6:00 AM IST Lead Top-Up (v1.8 Depth-Aware Algorithm)
+CREATE OR REPLACE FUNCTION public.assign_daily_leads(p_target_cap INT DEFAULT 30)
+RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_caller RECORD;
-  v_uncalled INT;
   v_needed INT;
   v_lead_ids UUID[];
+  v_total_assigned INT := 0;
+  v_remaining_pool INT;
 BEGIN
-  FOR v_caller IN 
-    SELECT id FROM public.profiles 
-    WHERE role = 'caller' AND is_available = TRUE AND active = TRUE AND deleted_at IS NULL
-  LOOP
-    SELECT COUNT(*) INTO v_uncalled 
-    FROM public.leads 
-    WHERE assigned_to = v_caller.id 
-      AND deleted_at IS NULL
-      AND (status = 'assigned' OR (status = 'callback' AND next_callback_at::date <= CURRENT_DATE));
+  -- Count available unassigned pool
+  SELECT COUNT(*) INTO v_remaining_pool
+  FROM public.leads
+  WHERE status = 'unassigned' AND score >= 70 AND dnc_flag = FALSE AND deleted_at IS NULL;
 
-    v_needed := GREATEST(0, 100 - v_uncalled);
+  IF v_remaining_pool = 0 THEN
+    RETURN json_build_object('success', true, 'assigned_count', 0, 'message', 'Unassigned pool is empty');
+  END IF;
+
+  -- Iterate through callers ORDERED BY CURRENT ACTIVE QUEUE ASC (lightest caller first)
+  FOR v_caller IN 
+    SELECT 
+      p.id, 
+      p.full_name,
+      COALESCE(l_count.cnt, 0) AS current_load
+    FROM public.profiles p
+    LEFT JOIN (
+      SELECT assigned_to, COUNT(*) AS cnt 
+      FROM public.leads 
+      WHERE deleted_at IS NULL 
+        AND status NOT IN ('closed_won', 'closed_lost', 'dnc', 'not_interested')
+      GROUP BY assigned_to
+    ) l_count ON l_count.assigned_to = p.id
+    WHERE p.role = 'caller' AND p.is_available = TRUE AND p.active = TRUE AND p.deleted_at IS NULL
+    ORDER BY current_load ASC, p.created_at ASC
+  LOOP
+    EXIT WHEN v_remaining_pool <= 0;
+
+    v_needed := GREATEST(0, p_target_cap - v_caller.current_load);
+    v_needed := LEAST(v_needed, v_remaining_pool);
 
     IF v_needed > 0 THEN
       SELECT ARRAY_AGG(id) INTO v_lead_ids FROM (
@@ -920,10 +940,15 @@ BEGIN
         SELECT unnest(v_lead_ids), v_caller.id, 'daily_6am_topup';
 
         INSERT INTO public.notifications (user_id, type, title, body, link)
-        VALUES (v_caller.id, 'leads_ready', '100 Leads Ready', 'Your daily queue of 100 leads is ready to call.', '/queue');
+        VALUES (v_caller.id, 'leads_ready', 'Leads Assigned', 'Your queue has been refreshed with new leads.', '/queue');
+
+        v_total_assigned := v_total_assigned + ARRAY_LENGTH(v_lead_ids, 1);
+        v_remaining_pool := v_remaining_pool - ARRAY_LENGTH(v_lead_ids, 1);
       END IF;
     END IF;
   END LOOP;
+
+  RETURN json_build_object('success', true, 'assigned_count', v_total_assigned);
 END;
 $$;
 

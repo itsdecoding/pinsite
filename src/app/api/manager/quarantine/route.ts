@@ -160,22 +160,60 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    // 2. Resolve destination caller
+    // 2. Resolve destination caller (strictly enforcing caller role boundary)
     let resolvedCallerId: string | null = null;
     let resolvedStatus: "assigned" | "unassigned" = "unassigned";
 
     if (choice === "original") {
       resolvedCallerId = lead.rejected_by || null;
+      if (resolvedCallerId) {
+        const { data: targetProf } = await admin
+          .from("profiles")
+          .select("role, active")
+          .eq("id", resolvedCallerId)
+          .maybeSingle();
+
+        // If the original teammate is no longer an active caller (e.g. promoted to manager or deactivated),
+        // safely fallback to unassigned pool
+        if (!targetProf || targetProf.role !== "caller" || targetProf.active === false) {
+          resolvedCallerId = null;
+        }
+      }
       resolvedStatus = resolvedCallerId ? "assigned" : "unassigned";
     } else if (choice === "unassigned") {
       resolvedCallerId = null;
       resolvedStatus = "unassigned";
     } else if (choice === "specific") {
       resolvedCallerId = target_caller_id || null;
+      if (resolvedCallerId) {
+        const { data: targetProf } = await admin
+          .from("profiles")
+          .select("role, active")
+          .eq("id", resolvedCallerId)
+          .maybeSingle();
+
+        if (!targetProf || targetProf.role !== "caller" || targetProf.active === false) {
+          return NextResponse.json(
+            { error: "Target recipient must be an active team member with the caller role" },
+            { status: 400 }
+          );
+        }
+      }
       resolvedStatus = resolvedCallerId ? "assigned" : "unassigned";
     } else {
       // Fallback if caller_id is passed directly
       resolvedCallerId = target_caller_id || null;
+      if (resolvedCallerId) {
+        const { data: targetProf } = await admin
+          .from("profiles")
+          .select("role, active")
+          .eq("id", resolvedCallerId)
+          .maybeSingle();
+
+        if (!targetProf || targetProf.role !== "caller" || targetProf.active === false) {
+          resolvedCallerId = null;
+        }
+      }
       resolvedStatus = resolvedCallerId ? "assigned" : "unassigned";
     }
 
