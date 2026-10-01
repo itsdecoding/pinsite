@@ -42,9 +42,7 @@ export default function ForgotPasswordPage() {
 
       // If backend API route is not mounted (404), fallback seamlessly to Supabase client
       if (res.status === 404) {
-        const redirectTo = typeof window !== "undefined"
-          ? `${window.location.origin}/reset-password`
-          : undefined;
+        const redirectTo = "https://pinsite.pro/studio/reset-password";
 
         const { error: sbError } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
           redirectTo,
@@ -117,7 +115,7 @@ export default function ForgotPasswordPage() {
 
             <div className="space-y-3">
               <Link
-                href="/studio/login"
+                href="/login"
                 className="w-full py-2.5 px-4 bg-[#F95721] hover:bg-[#E04612] active:bg-[#C83B0D] text-white font-semibold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -192,7 +190,7 @@ export default function ForgotPasswordPage() {
             Remember your password?
           </span>
           <Link
-            href="/studio/login"
+            href="/login"
             className="text-[#F95721] hover:underline font-medium inline-flex items-center gap-1"
           >
             Log in

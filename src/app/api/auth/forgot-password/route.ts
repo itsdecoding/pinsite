@@ -22,13 +22,9 @@ export async function POST(req: NextRequest) {
     const normalizedEmail = email.trim().toLowerCase();
     const admin = getAdminClient();
 
-    // Resolve base application URL for redirection
-    const rawAppUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      req.nextUrl?.origin ||
-      req.headers.get("origin") ||
-      "https://pinsite.pro";
-    const appUrl = rawAppUrl.replace(/\/studio\/?$/, "").replace(/\/+$/, "");
+    // Supabase Auth URL whitelist strictly matches https://pinsite.pro (WITHOUT www).
+    // We enforce https://pinsite.pro/studio/reset-password so Supabase never falls back to root landing page.
+    const appUrl = "https://pinsite.pro";
     const redirectTo = `${appUrl}/studio/reset-password`;
 
     // Generate recovery link via Supabase Admin Client
@@ -60,11 +56,11 @@ export async function POST(req: NextRequest) {
 
       if (shouldSend) {
         let actionLink = linkData.properties.action_link;
-        // Bulletproof guard: Ensure redirect_to parameter explicitly points to /studio/reset-password
-        if (actionLink && !actionLink.includes("/studio/reset-password")) {
+        // Bulletproof guard: Ensure redirect_to parameter explicitly points to https://pinsite.pro/studio/reset-password (no www)
+        if (actionLink) {
           actionLink = actionLink.replace(
             /redirect_to=[^&]*/,
-            `redirect_to=${encodeURIComponent(`${appUrl}/studio/reset-password`)}`
+            `redirect_to=${encodeURIComponent("https://pinsite.pro/studio/reset-password")}`
           );
         }
 
@@ -82,7 +78,7 @@ export async function POST(req: NextRequest) {
             });
             const subject = `Reset your Pinsite password (${requestTime} IST) [Ref: #${refCode}]`;
 
-            await fetch("https://api.resend.com/emails", {
+            const emailRes = await fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: {
                 Authorization: `Bearer ${resendKey}`,
@@ -122,6 +118,11 @@ export async function POST(req: NextRequest) {
                 `,
               }),
             });
+
+            if (!emailRes.ok) {
+              const resendErrorBody = await emailRes.text();
+              console.error("Resend delivery failed with status", emailRes.status, ":", resendErrorBody);
+            }
           } catch (emailErr) {
             console.error("Resend email delivery failed:", emailErr);
           }

@@ -199,10 +199,10 @@ function ResetPasswordForm() {
       // manager/admin -> /dashboard
       const destination =
         role === "caller"
-          ? "/studio/queue"
+          ? "/queue"
           : role === "developer"
-          ? "/studio/projects"
-          : "/studio/dashboard";
+          ? "/projects"
+          : "/dashboard";
 
       setRedirectPath(destination);
       setIsSuccess(true);
@@ -456,7 +456,7 @@ function ResetPasswordForm() {
           Already know your password?
         </span>
         <Link
-          href="/studio/login"
+          href="/login"
           className="text-[#F95721] hover:underline font-medium inline-flex items-center gap-1"
         >
           Log in
