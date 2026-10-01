@@ -246,11 +246,13 @@ Sprints 6, 7, and 8 are complete. Sprints 9 and 10 represent the final remaining
       - Top header with compact `Prev` / `Next` lead navigation buttons.
       - Business name (2-line clamp) + exact existing badge system (niche, area, attempt count, decision maker).
       - Target phone number block immediately below badges.
-      - High-contrast `DIAL NOW` button with live integrated call duration timer (`Call in progress: MM:SS`).
+      - **Phone Formatter Rule**: Must handle 11-digit numbers starting with `0` (e.g. `09765407679`) by slicing off leading `0` so `core10` becomes `9765407679` and displays as `+91 97654 07679` (same exact formatter as Team Center).
+      - High-contrast `DIAL NOW` button with live integrated call duration timer (`CALL IN PROGRESS: MM:SS`) pulsing when call is active.
       - `Log Outcome` button directly below dial.
       - Single collapsible `Details & History` disclosure affordance (website, address, maps, past call note remain hidden until tapped).
-      - Auto-opens disposition drawer upon returning from the native phone dialer (`visibilitychange` / `focus` detection).
-      - Dismissible iOS PWA Add to Home Screen install banner.
+      - **Amber Pitch Needed Badge**: Website opportunity flag uses amber (`bg-amber-500/10 text-amber-700 border-amber-500/30`), not red.
+      - **Bulletproof Dialer Auto-Open**: Armed via `dialerOpenedRef` and backed up by `sessionStorage.getItem("pinsite_dialer_active")`. Listens to `visibilitychange`, `window.focus`, and iOS Safari `pageshow` events to reliably slide up the disposition drawer when caller returns from dialing.
+      - Dismissible PWA install banner supporting iOS Safari and mobile Chrome.
       - Zero deck queue list or coaching discussion clutter on mobile.
     - `AdminQueue` provides the complete 3-column desktop management deck (scope filters, lead reassignment, internal notes, 23-lead queue list, and toggle to preview Caller Cockpit).
 
