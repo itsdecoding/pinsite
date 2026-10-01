@@ -1,309 +1,259 @@
-# Pinsite v1.8 Blueprint: Mobile Cockpit, Team Oversight & Lead Lifecycle
-
-An end-to-end technical, architectural, and product execution plan for **Pinsite (Agency OS) v1.8**. This blueprint builds directly on the fully shipped v1.7 foundation (Sprints 1–5) and incorporates all 16 audited architectural and runtime corrections.
+# Pinsite (Agency OS) v1.8: Master Architectural Blueprint, Operational State & Technical Reference
+**Comprehensive Single Source of Truth (SSOT)**  
+*Last Updated: 2026-10-01 (Sprints 1–8 Production Ready | Sprints 9–10 Ready for Execution)*  
+*Target Production URL:* `https://pinsite.pro` | *Git Branch:* `main` (auto-deploys via Vercel)
 
 ---
 
-## 1. Executive Summary & Sprint Mapping
+## 1. Executive Summary & Sprint Master Roadmap
 
-### 1.1 Sprint Alignment (v1.8 Sequence)
-v1.7 is in production. The v1.8 workstream is organized into **Sprints 6 through 10** (~1.5–2 weeks each, ~8 weeks total delivery):
+Pinsite is an enterprise-grade cold calling CRM and sales pipeline automation platform built for high-throughput telemarketing teams, managers, and closers.
 
-| Sprint | Focus Area | Primary Deliverables | Target Window |
+### 1.1 Sprint Progress Tracker
+| Sprint | Focus Area | Status | Deliverables Shipped / Planned |
 | :--- | :--- | :--- | :--- |
-| **Sprint 6** | **Lifecycle DB & Password Recovery** | Quarantine/cooldown schema, Mirror Mode audit columns, security triggers, self-service `/forgot-password`, `/reset-password`, server-side manager reset API, middleware gate & public routes, CRON 3 fix. | Weeks 1–2 |
-| **Sprint 7** | **Mobile Caller Cockpit & Mirror View** | Mobile-first stacked layout (< 768px), `tel:` telephony flow, bottom-sheet outcome drawer with rejection reason, Manager Mirror Mode guard & banner, cadence cooldown countdown. | Weeks 3–4 |
-| **Sprint 8** | **Team Command Center & Quarantine Bin** | `/manager/team` live telemetry grid, daily dial ledgers, `/manager/quarantine` countdown bin, 3-way rescue modal (clearing quarantine attribution). | Weeks 5–6 |
-| **Sprint 9** | **FCM Push Engine & PWA Onboarding** | Firebase Admin SDK, `public.fcm_tokens` UPSERT registry & RLS update policy, service worker, lock-screen notifications, iOS PWA install guide. | Weeks 7–8 |
-| **Sprint 10** | **Escalation Polish, #wins Bot & E2E Acceptance** | Realtime manager escalation, `#wins` System Bot poster, CRON 4 callback enhancement, end-to-end audit. | Weeks 8–9 |
+| **Sprints 1–5** | **Core Foundation & Ingestion** | ✅ Shipped | Supabase auth, CSV lead ingestion, pipeline boards, basic queue, assignment history, audit logs. |
+| **Sprint 6** | **Lifecycle DB & Password Recovery** | ✅ Shipped | Quarantine & cooldown schema, Mirror Mode audit columns (`acted_by`, `on_behalf_of`), security triggers, self-service `/forgot-password`, `/reset-password`, server-side manager reset API, middleware gate & public routes, CRON 3 fix. |
+| **Sprint 7** | **Mobile Caller Cockpit & Mirror View** | ✅ Shipped | Responsive single-column layout (< 768px), `tel:` protocol dialer, bottom-sheet outcome drawer, persistent amber Mirror Mode banner, live call timer, queue data hygiene, cadence cooldown countdown. |
+| **Sprint 8** | **Team Command Center & Quarantine Bin** | ✅ Shipped | `/manager/team` live telemetry grid, real emails, connect rate threshold guard (raw numbers until $\ge 20$ dials), unified `[ ⚖️ Distribute ▾ ]` dropdown, proactive lead rebalancing, role management modal, `/manager/quarantine` countdown bin with 3-way rescue modal. |
+| **Sprint 9** | **FCM Push Engine & PWA Onboarding** | ⏳ Up Next | Firebase Admin SDK, `public.fcm_tokens` UPSERT registry & RLS update policy, service worker, lock-screen notifications, iOS PWA install guide. |
+| **Sprint 10** | **Escalation Polish, #wins Bot & Acceptance** | ⏳ Planned | Realtime manager escalation, `#wins` System Bot poster (`00000000-0000-0000-0000-000000000001`), CRON 4 callback enhancement, end-to-end audit. |
 
 ---
 
-## 2. Lead Lifecycle State Machine (v1.8 Verified)
+## 2. Production Team Directory & Role Scoping
+
+### 2.1 Owner & Super Admin
+- **Muzammil Pathan**: `muzammilpathan6047@gmail.com`
+  - **Role**: `admin`
+  - **UI Label**: `Muzammil (Admin)` *(strictly matches enum `admin` — never display `(Owner)` to avoid enum mismatches)*.
+  - **Security Rule**: Protected identity. The backend strictly forbids modifying, demoting, or triggering password resets on this account.
+
+### 2.2 Active Team Roster
+| Team Member | Email Address | Role | Lead Holdings | Caller Pool Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **Ali Pathan** | `alipathan808063@gmail.com` | `caller` | 37 leads | Active Caller (Target of rebalancing) |
+| **Sayyed Maaz** | `sayyedmaaz1020@gmail.com` | `caller` | 13 leads | Active Caller |
+| **Melikecookie (Habib)** | `habib.yst255@gmail.com` | `caller` | 12 leads | Active Caller (Lightest caller) |
+| **Anas Shaikh** | `anasshaikh17862010@gmail.com` | `caller` | 12 leads | Active Caller (Lightest caller) |
+| **Yadullah** | *(Internal Account)* | `manager` | 0 leads | **EXCLUDED from caller pool** |
+
+> [!CRITICAL]
+> **Yadullah & Manager Role Boundary**:
+> Yadullah was promoted to `manager` on Sept 27. **Managers are NOT callers.**
+> - Team average lead calculations MUST strictly filter: `callers.filter(c => c.role === 'caller')`.
+> - Active roster math: 4 callers hold 74 leads $\rightarrow$ Team average = 18.5 (~19 leads).
+> - Yadullah must NEVER be targeted by lead assignment, automated crons, lightest-caller detection, or rebalance transfers.
+> - Header KPI Card 5 displays: `{active} / {total_callers} callers` (e.g. `4 / 4 callers`).
+
+---
+
+## 3. Lead Lifecycle State Machine
 
 ```mermaid
 stateDiagram-v2
-    [*] --> UnassignedPool : Ingested via CSV / API
-    UnassignedPool --> Assigned : Round-Robin or Manager Reassignment
+    [*] --> UnassignedPool : CSV / API Ingestion (status = unassigned)
+    UnassignedPool --> Assigned : Round-Robin Cron / Manager Distribute
     
     state "Active Caller Deck" as Deck {
         Assigned --> Dialing : Caller taps "Dial Now" (tel: protocol)
         Dialing --> OutcomePrompt : Call Ends / Drawer Slides Up
     }
 
-    OutcomePrompt --> Interested : Outcome: Interested (Hot)
-    OutcomePrompt --> Callback : Outcome: Callback Scheduled
-    OutcomePrompt --> NoAnswer : Outcome: No Answer / Busy
-    OutcomePrompt --> Gatekeeper : Outcome: Gatekeeper Block
-    OutcomePrompt --> Quarantined : Outcome: Rejected / Bad Fit
-    OutcomePrompt --> DNC : Outcome: Do Not Call
+    OutcomePrompt --> Interested : 🔥 Interested (Hot Escalation)
+    OutcomePrompt --> Callback : 📞 Callback Scheduled
+    OutcomePrompt --> NoAnswer : ⏳ No Answer / Busy
+    OutcomePrompt --> Gatekeeper : 🛡️ Gatekeeper Block
+    OutcomePrompt --> Quarantined : ❌ Rejected / Bad Fit
+    OutcomePrompt --> DNC : 🚫 Do Not Call (DNC)
 
     state "Tier 1: Escalation" as T1 {
-        Interested --> ManagerHandOff : Realtime alert + FCM Push + Post to #wins
+        Interested --> ManagerHandOff : escalated_at = NOW() -> Push + #wins Bot
         ManagerHandOff --> InPipelineDeal : Converted to Pipeline Deal
     }
 
-    state "Tier 2: 7-Day Quarantine & Disposal" as T2 {
-        Quarantined --> HoldingBin : 7-Day Holding Lock (status = not_interested, hidden from all active queues)
-        HoldingBin --> AutoDisposed : Nightly Cron (disposal_scheduled_at <= NOW) -> Soft Delete
-        HoldingBin --> Rescued : Manager Rescues Lead (Target: Caller / Pool)
-        Rescued --> Assigned : Quarantined, Disposal & Rejected_by Timestamps Cleared (Bug 2 & 11 Fix)
+    state "Tier 2: 7-Day Quarantine Holding Bin" as T2 {
+        Quarantined --> HoldingBin : 7-Day Lock (quarantined_at = NOW, disposal_scheduled_at = NOW + 7d)
+        HoldingBin --> AutoDisposed : Nightly Cron 2:00 UTC (soft-delete deleted_at = NOW)
+        HoldingBin --> Rescued : Manager Rescues Lead (3 choices)
+        Rescued --> Assigned : Quarantined, Disposal & Rejected_by Timestamps Cleared
     }
 
-    state "Tier 3: Cadence Re-queue" as T3 {
-        NoAnswer --> Cooldown : Attempt < 5 (cooldown_until = NOW + 3h / 24h)
-        Gatekeeper --> Cooldown : Attempt < 5 (cooldown_until = NOW + 48h)
-        Cooldown --> Assigned : cooldown_until <= NOW -> Appears in Active Deck
-        Cooldown --> Quarantined : Attempt >= 5 -> Auto-Quarantine (7-day clock starts, cooldown cleared)
+    state "Tier 3: Cadence Re-queue (Exponential Cooldown)" as T3 {
+        NoAnswer --> Cooldown : Attempt 1 (+3h), Attempt 2 (+24h), Attempt 4 (+72h)
+        Gatekeeper --> Cooldown : Attempt 3 (+48h)
+        Cooldown --> Assigned : cooldown_until <= NOW -> Resurfaces in Queue
+        Cooldown --> Quarantined : Attempt >= 5 -> Auto-Quarantine (Cadence Exhausted)
     }
 
-    state "Tier 4: Callbacks" as T4 {
+    state "Tier 4: Scheduled Callbacks" as T4 {
         Callback --> LockedToCaller : next_callback_at set
-        LockedToCaller --> Dialing : CRON 4 fires FCM Push at next_callback_at - 15m
+        LockedToCaller --> Dialing : CRON 4 fires notification at next_callback_at - 15m
     }
 
-    DNC --> DNCBlacklist : Added to dnc_blacklist (SHA-256 hash); Lead flagged deleted_at = NOW()
+    DNC --> DNCBlacklist : SHA-256 hashed into dnc_blacklist; deleted_at = NOW(), dnc_flag = TRUE
 ```
 
 ---
 
-## 3. Bug Fixes & Technical Clarifications
+## 4. Lead Distribution & Rebalancing Engine
 
-### Bug 1: DNC vs. 7-Day Quarantine Auto-Disposal & DPDP Compliance
-- **Defect**: Disposal cron targeted `status IN ('not_interested', 'dnc')`, but `disposal_scheduled_at` was only calculated for `not_interested`. Furthermore, inserting raw phone numbers into `dnc_blacklist` violates India DPDP compliance and table schema (`phone_hash CHAR(64)`).
-- **Resolution**: **DNC is a permanent legal compliance state.** When a lead is marked `dnc`:
-  1. The phone number is cryptographically hashed using SHA-256 (`encode(digest(COALESCE(NEW.normalized_phone, NEW.phone), 'sha256'), 'hex')`) and upserted into `public.dnc_blacklist(phone_hash, reason)`.
-  2. The lead row in `public.leads` is marked `deleted_at = NOW()` and `dnc_flag = TRUE` immediately (removed from all queues forever).
-  3. `cron_dispose_quarantined_leads()` strictly targets `status = 'not_interested' AND disposal_scheduled_at <= NOW()`.
+### 4.1 Ingestion Behavior
+- Leads ingested via CSV (`POST /api/leads/ingest`) enter `public.leads` in `unassigned` status (`assigned_to = NULL`, `status = 'unassigned'`).
+- Ingestion does NOT auto-assign instantly in bulk, preventing queue flooding.
 
-### Bug 2: Rescued Leads Data Loss Prevention & Attribution Cleanup
-- **Defect**: When a manager rescued a quarantined lead (`status` $\rightarrow$ `'assigned'`), `quarantined_at` and `disposal_scheduled_at` remained populated, causing the nightly cron to soft-delete active rescued leads. Furthermore, `rejected_by` retained stale attribution on active leads.
-- **Resolution**: The trigger `handle_lead_disposition_lifecycle()` includes an explicit rescue branch that clears all quarantine metadata and attribution:
-  ```sql
-  ELSIF OLD.status = 'not_interested' AND NEW.status != 'not_interested' THEN
-    NEW.quarantined_at := NULL;
-    NEW.disposal_scheduled_at := NULL;
-    NEW.rejection_reason := NULL;
-    NEW.rejected_by := NULL;
-  END IF;
-  ```
+### 4.2 Daily Distribution Cron (`assign_daily_leads`)
+- **Schedule**: `30 0 * * *` (6:00 AM IST daily via `pg_cron`).
+- **Algorithm**:
+  1. Identifies active callers (`role = 'caller'`, `active = true`, `is_available = true`).
+  2. Evaluates each caller's `current_load` (active leads where `status NOT IN ('closed_won', 'closed_lost', 'dnc', 'not_interested')`).
+  3. Sorts callers with `ORDER BY current_load ASC` (lightest caller gets leads first).
+  4. Caps depth at **30 leads per caller maximum** (`target := 30 - current_load`). If caller already holds 30+, target = 0.
+  5. Includes early `EXIT WHEN pool_empty`.
 
-### Bug 3: Preserving Disposing Caller (`rejected_by`) on All Lead Types
-- **Defect**: Setting `NEW.rejected_by := OLD.assigned_to;` caused `rejected_by` to become `NULL` if an unassigned lead was quarantined or if a caller claimed and disposed of a lead in the same request.
-- **Resolution**: Added `rejected_by UUID REFERENCES public.profiles(id)` to `public.leads`. When entering quarantine, the trigger sets:
-  ```sql
-  NEW.rejected_by := COALESCE(OLD.assigned_to, NEW.assigned_to, auth.uid());
-  NEW.assigned_to := NULL;
-  ```
-  The Quarantine Bin joins `leads.rejected_by` directly to `profiles.full_name`.
+### 4.3 Automated Depth-Aware Rebalancing Cron (`rebalance_overloaded_callers`)
+- **Schedule**: Every 4 hours (`0 */4 * * *`).
+- **Trigger**: Any caller queue holding $> 1.5\times$ team caller average AND queue $> 20$ leads.
+- **Action**: Moves excess leads to the lightest callers until within tolerance.
+- **Audit**: Writes to `public.assignment_history` with `reason = 'automated_depth_rebalance'`.
 
-### Bug 4: Enforcing `require_password_change` Gate & Middleware Public Routes
-- **Defect**: Callers issued temporary passwords (`Pinsite-8821!`) could bypass changing credentials. Additionally, `src/lib/supabase/middleware.ts` lacked `/forgot-password` and `/reset-password` in `isPublicRoute`, causing unauthenticated users visiting reset links to be redirected to `/login`. Finally, resetting passwords did not clear `require_password_change`, causing infinite redirect loops.
-- **Resolution**:
-  1. Add `/forgot-password` and `/reset-password` to `isPublicRoute` in `src/lib/supabase/middleware.ts`.
-  2. In `middleware.ts`, when authenticated session contains `profile.require_password_change === true`:
-     - If `pathname` is NOT `/reset-password`, `/login`, or starts with `/api/`:
-     - Enforce immediate 307 redirect to `/reset-password?forced=true`.
-  3. When the user successfully submits their new password, the reset endpoint atomically updates `public.profiles.require_password_change = FALSE`.
-
-### Bug 5: Server-Side Manager Password Reset Security
-- **Defect**: Client-side execution of `supabase.auth.admin.updateUserById` exposes the `SUPABASE_SERVICE_ROLE_KEY` in the browser, creating a critical security vulnerability.
-- **Resolution**: Created a dedicated, authenticated server-side route:
-  - **Endpoint**: `POST /api/manager/team/reset-password`
-  - **Guard**: `verifyManagerSession(req)` strictly requiring role `admin` or `manager`.
-  - **Execution**: Runs `supabaseAdmin.auth.admin.updateUserById` inside Next.js server runtime using `process.env.SUPABASE_SERVICE_ROLE_KEY`. Sets `require_password_change = TRUE` and `temp_password_issued_at = NOW()`. The service key never touches client bundles.
-
-### Bug 6: FCM Token UPSERT Semantics & PostgreSQL RLS
-- **Defect**: When Caller A logs out and Caller B logs in on the same physical phone/browser, an `INSERT INTO fcm_tokens` crashes with a UNIQUE constraint violation on `token`. Furthermore, PostgreSQL RLS requires an `UPDATE` policy for `INSERT ... ON CONFLICT DO UPDATE`, which was missing from the security spec.
-- **Resolution**:
-  1. Add explicit `UPDATE` RLS policy to `public.fcm_tokens` for authenticated users.
-  2. Implement server-side route `POST /api/notifications/fcm-token` using the admin client for seamless multi-user device handoff.
-  3. Database table `public.fcm_tokens` utilizes UPSERT:
-  ```sql
-  INSERT INTO public.fcm_tokens (user_id, token, device_type, user_agent, last_used_at)
-  VALUES ($1, $2, $3, $4, NOW())
-  ON CONFLICT (token) DO UPDATE 
-  SET user_id = EXCLUDED.user_id,
-      device_type = EXCLUDED.device_type,
-      user_agent = EXCLUDED.user_agent,
-      last_used_at = NOW();
-  ```
-
-### Bug 7: Cadence Engine Cooldown Data Model & Deck Query Isolation
-- **Defect**: Database lacked a column to store cooldown expiration, and existing deck queries did not exclude `not_interested` (quarantined) leads, causing them to leak into the unassigned pool.
-- **Resolution**:
-  1. Added `cooldown_until TIMESTAMPTZ` to `public.leads` with an index.
-  2. Cooldown calculation in trigger:
-     - Attempt 1 (`no_answer`): `cooldown_until = NOW() + INTERVAL '3 hours'`
-     - Attempt 2 (`no_answer`): `cooldown_until = NOW() + INTERVAL '24 hours'`
-     - Attempt 3 (`gatekeeper`): `cooldown_until = NOW() + INTERVAL '48 hours'`
-     - Attempt 4 (`no_answer`): `cooldown_until = NOW() + INTERVAL '72 hours'`
-     - Attempt 5: Auto-moves to `not_interested` (Quarantine, `cooldown_until` cleared).
-  3. Deck query filter across all active views:
-     - `AND status NOT IN ('closed_won', 'closed_lost', 'dnc', 'not_interested')`
-     - `AND (cooldown_until IS NULL OR cooldown_until <= NOW())`.
-  4. Mobile cockpit includes automated client-side interval refresh (every 60s) to surface leads as their cooldown expires.
-
-### Bug 8: CRON 3 (`recycle_stale_leads`) Quarantined Lead Resurrection Conflict
-- **Defect**: CRON 3 in `COMPLETE_SETUP.sql` recycled leads with `attempts_count >= 3` and no calls in 7 days back to `unassigned`, filtering only `status NOT IN ('closed_won', 'closed_lost', 'dnc')`. This inadvertently resurrected quarantined leads (`not_interested`) back into the active dialer pool.
-- **Resolution**: CRON 3 query is updated in the migration to explicitly exclude `not_interested`:
-  ```sql
-  WHERE attempts_count >= 3 
-    AND last_called_at < NOW() - INTERVAL '7 days'
-    AND status NOT IN ('closed_won', 'closed_lost', 'dnc', 'not_interested');
-  ```
-
-### Bug 9: Mirror Mode Audit Trail Columns
-- **Defect**: Section 4.2 specified that calls and reassignments in Mirror Mode write `acted_by` and `on_behalf_of`, but neither `public.calls` nor `public.assignment_history` had these columns.
-- **Resolution**: Migration extends both `public.calls` and `public.assignment_history` with:
-  ```sql
-  ALTER TABLE public.calls 
-    ADD COLUMN IF NOT EXISTS acted_by UUID REFERENCES public.profiles(id),
-    ADD COLUMN IF NOT EXISTS on_behalf_of UUID REFERENCES public.profiles(id);
-
-  ALTER TABLE public.assignment_history 
-    ADD COLUMN IF NOT EXISTS acted_by UUID REFERENCES public.profiles(id),
-    ADD COLUMN IF NOT EXISTS on_behalf_of UUID REFERENCES public.profiles(id);
-  ```
-
-### Bug 10: Pinsite Bot Foreign Key Bootstrap
-- **Defect**: `public.profiles.id` references `auth.users(id)`. Seeding `00000000-0000-0000-0000-000000000001` directly into `profiles` causes a foreign key constraint violation.
-- **Resolution**: The migration creates the internal system user in `auth.users` first before inserting into `public.profiles`.
-
-### Bug 11: Caller Rejection Reason Flow
-- **Defect**: Callers logging rejections could not save `rejection_reason` to `public.leads` because neither `/api/queue/outcome` nor `caller_update_lead` accepted `p_rejection_reason`.
-- **Resolution**: Add `p_rejection_reason` to `/api/queue/outcome/route.ts` payload and set `rejection_reason` on `public.leads` when `status === 'not_interested'`.
+### 4.4 Header UI Controls (`[ ⚖️ Distribute ▾ ]`)
+- Unified dropdown replaces separate buttons:
+  - **`Distribute Unassigned`**: Calls `POST /api/manager/leads/distribute`, pulling from unassigned pool up to ceiling.
+  - **`Rebalance Overloaded`**: Opens targeted modal calling `POST /api/manager/leads/rebalance` (with +5, +10, +15, +25 presets).
+- **Caller UI Safety**: The "Claim Leads" button on `/queue` was **permanently removed**. Callers cannot trigger distribution.
 
 ---
 
-## 4. Resolving Product & Architectural Ambiguities
+## 5. Team Command Center (`/manager/team`)
 
-### 4.1 Ambiguity 1: "Claim Lead" vs. "Supervise"
-| Action | Database State | Operational Meaning |
-| :--- | :--- | :--- |
-| **Claim Lead** | `assigned_to := manager_id`, `claimed_by_manager := manager_id`, `supervisor_id := NULL` | Manager takes full ownership. Lead moves to Manager's personal closing queue. Removed from caller's active deck. |
-| **Supervise** | `assigned_to := original_caller_id`, `supervisor_id := manager_id` | Caller remains primary operator. Manager receives copy of call outcomes and comments to mentor the caller through the close. |
+### 5.1 Telemetry & KPI Calculations
+- **Total Dials Today**: Total call rows logged today (`called_at >= CURRENT_DATE`).
+- **Total Connects**: Count where outcome IN (`interested`, `callback`, `gatekeeper`, `not_interested`).
+- **Connect Rate Guard**:
+  - Cold calling connect rates average 15–30%.
+  - **Rule**: If total dials $< 20$, percentage is HIDDEN to prevent misleading 100% metrics. Raw counts are displayed (`4 dials, 4 connects`).
+- **Talk Time**: Cumulative call duration logged across all active calls today.
+- **Hot Escalations**: Qualified leads marked `interested` today.
+- **Active Callers**: Roster count showing `{available_and_logged_in} / {total_callers} callers` (only `role === 'caller'`).
 
-### 4.2 Ambiguity 2: Mirror Mode Mutation & Notification Rules
-- When a manager takes action while inside **Mirror Mode** (`/queue?impersonate=[caller_id]`):
-  - **Reassigning Lead to Another Caller**: Triggers an FCM push to the *newly assigned caller* (`"📦 New lead assigned"`). For the *mirrored caller*, the lead silently disappears from their queue via Supabase Realtime (no spam push notification).
-  - **Adding Manager Coaching Notes**: Fires an FCM push to the mirrored caller: `"📝 Manager left a coaching note on [Lead Name]"`.
-  - **Audit Trail**: Every call or reassignment made in Mirror Mode writes to `public.assignment_history` or `public.calls` with `acted_by := manager_id` and `on_behalf_of := caller_id`.
-
-### 4.3 Ambiguity 3: Quarantine Rescue Target Selection
-When a manager clicks **"Rescue Lead"** in `/manager/quarantine`, an interactive modal presents 3 explicit choices:
-1. **Return to Original Caller**: Targets `rejected_by` (restores lead to their active deck).
-2. **Move to Unassigned Pool**: Sets `assigned_to := NULL`, `status := 'unassigned'`, available for round-robin.
-3. **Reassign to Specific Caller**: Dropdown selector of active callers.
-*Note: In all rescue actions, `quarantined_at`, `disposal_scheduled_at`, `rejection_reason`, and `rejected_by` are reset to `NULL` via the trigger.*
-
-### 4.4 Ambiguity 4: 10-Minute Callback Scanner Integration
-- **Zero New Crons**: We do **not** add a 9th pg_cron job.
-- **Architecture**: We expand **CRON 4 (`dispatch_due_notifications`)**, which already scans every 5 minutes:
-  - When `next_callback_at BETWEEN NOW() AND NOW() + INTERVAL '15 minutes'`:
-  - In addition to writing to `public.notifications` and `public.email_queue`, it writes a row to `public.notifications` with type `'urgent_callback'` which triggers FCM push dispatch via database webhook or server worker.
-
-### 4.5 Ambiguity 5: #wins Auto-Poster Identity
-- **Bot Identity**: Seeded System Profile in `public.profiles`:
-  - `id`: `'00000000-0000-0000-0000-000000000001'`
-  - `full_name`: `'Pinsite Bot'`
-  - `role`: `'admin'`
-  - `active`: `true`
-- When an `interested` lead escalates, the server-side trigger or API inserts into `public.messages`:
-  - `sender_id`: `'00000000-0000-0000-0000-000000000001'`
-  - `channel_id`: `(SELECT id FROM public.channels WHERE name = 'wins')`
-  - `body`: `"🔥 HOT DEAL QUALIFIED: [Caller] just marked [Company] as INTERESTED! (Niche: [Niche] • Area: [Area])"`
+### 5.2 User Management Modals
+1. **Password Reset Modal**:
+   - **Option A (Temporary Password)**: Generates high-entropy temp password, calls `POST /api/manager/team/reset-password`, flags `require_password_change = true`.
+   - **Option B (Recovery Email Link)**: Generates Supabase recovery token and sends branded email via Resend (`invites@pinsite.pro`).
+2. **Role Management Modal**:
+   - Allows promoting/demoting members between `caller`, `manager`, and `developer`.
+   - Protects super-admin and prevents self-demotion.
 
 ---
 
-## 5. Security & RLS Policy Addendum
+## 6. Manager Mirror Mode (`/queue?impersonate=[caller_id]`)
 
-### 5.1 RLS for `public.fcm_tokens`
-```sql
-ALTER TABLE public.fcm_tokens ENABLE ROW LEVEL SECURITY;
+### 6.1 Dual Attribution Audit Trail
+When a manager mirrors a caller's queue:
+- **Audit Requirement**: Any action logged in Mirror Mode MUST preserve accountability.
+- `public.calls` records:
+  - `acted_by`: Manager UUID
+  - `on_behalf_of`: Mirrored Caller UUID
+- `public.assignment_history` records:
+  - `acted_by`: Manager UUID
+  - `on_behalf_of`: Mirrored Caller UUID
+- **Scoreboard Integrity**: Caller's raw dial count reflects their own work; manager activity is explicitly partitioned.
 
--- 1. Users can view their own registered device tokens
-CREATE POLICY "Users view own fcm tokens"
-  ON public.fcm_tokens FOR SELECT
-  TO authenticated
-  USING (auth.uid() = user_id);
-
--- 2. Users can insert their own device tokens
-CREATE POLICY "Users insert own fcm tokens"
-  ON public.fcm_tokens FOR INSERT
-  TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
--- 3. Users can update their own device tokens (Required for UPSERT)
-CREATE POLICY "Users update own fcm tokens"
-  ON public.fcm_tokens FOR UPDATE
-  TO authenticated
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
--- 4. Users can delete their own tokens (e.g. on logout)
-CREATE POLICY "Users delete own fcm tokens"
-  ON public.fcm_tokens FOR DELETE
-  TO authenticated
-  USING (auth.uid() = user_id);
-
--- 5. Service Role has full access for push dispatch & device handoff
-CREATE POLICY "Service role full access on fcm tokens"
-  ON public.fcm_tokens FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
-```
-
-### 5.2 Unified Tamper Protection Architecture (Trigger Ordering Fix)
-To prevent alphabetical trigger ordering conflicts (where a separate tamper trigger would intercept and block legitimate lifecycle transitions like `escalated_at`), **tamper protection is unified directly inside `handle_lead_disposition_lifecycle()`**.
-
-- **Caller-Restricted Columns**: Callers are strictly blocked from manually modifying `claimed_by_manager`, `supervisor_id`, or `deleted_at` directly.
-- **Trigger-Owned Columns**: Lifecycle metadata (`escalated_at`, `quarantined_at`, `disposal_scheduled_at`, `cooldown_until`, `rejected_by`) is maintained exclusively by the lifecycle trigger below. Because both checks live in the same function, legitimate transitions never conflict.
+### 6.2 Mirror Mode UI & Diagnostic Safety
+- **High-Visibility Banner**: Sticky amber banner across the top of `/queue`:
+  `"Actions logged here will record as Muzammil (Admin) acting on behalf of [Caller Name]."`
+  - Proper padding (`px-4 py-3`, no text clipped on left edge).
+  - Duplicate role strings like `Muzammil (Admin) (Admin)` are sanitized.
+- **Read-Only Observer Mode**:
+  - Diagnostic Observer Mode card clearly disables direct caller outcome logging.
+  - Confusing test dial stubs removed.
+  - Live caller telemetry is displayed in the banner (today's dials, connects, and current queue load).
+- **Live Realtime Coaching Notes**:
+  - Manager writes coaching notes on active leads $\rightarrow$ writes directly to `lead_notes` table.
+  - Caller sees notes update instantly via Supabase Realtime without page reload.
 
 ---
 
-## 6. Firebase Cloud Messaging (FCM) Setup Guide
+## 7. Caller Mobile Cockpit & Deck Data Hygiene
 
-### 6.1 Required IAM Permissions & Scopes
-Pinsite uses FCM **exclusively for push notifications** (we do not use Firebase Auth or Firestore).
-- **Service Account Role**: **`Firebase Cloud Messaging API Admin`** (`roles/firebasemessaging.admin`).
-- **GCP API Enabled**: `Firebase Cloud Messaging API` (`fcm.googleapis.com`).
+### 7.1 Mobile-First Viewport (< 768px)
+- Zero horizontal scrolling on all phone viewports.
+- Large, high-contrast badges for business name, niche, phone, and territory.
+- Bottom-anchored floating dial bar with native `tel:` protocol integration.
+- Live call duration timer tracking elapsed talk time.
 
-### 6.2 Step-by-Step Console Configuration
-1. Open [Firebase Console](https://console.firebase.google.com) $\rightarrow$ Create project `pinsite-production`.
-2. Go to **Project Settings** $\rightarrow$ **Service Accounts** tab.
-3. Click **Generate New Private Key** $\rightarrow$ downloads JSON credentials.
-4. Go to **Project Settings** $\rightarrow$ **Cloud Messaging** tab:
-   - Under **Web Configuration**, click **Generate key pair** to generate the **Web Push Certificate (VAPID key)**.
-5. Add Secrets to Environments:
-   - In GitHub Secrets & Vercel:
-     - `FIREBASE_SERVICE_ACCOUNT_KEY`: Base64 encoded or stringified service account JSON.
-     - `NEXT_PUBLIC_FIREBASE_VAPID_KEY`: The generated VAPID public key string.
-     - `NEXT_PUBLIC_FIREBASE_CONFIG`: Client SDK config JSON (`apiKey`, `projectId`, `messagingSenderId`, `appId`).
+### 7.2 4 Required Caller Fields
+1. **Decision Maker**: e.g., `John Doe — Owner`
+2. **Notes / Context**: Prior gatekeeper notes, previous objections, or gatekeeper history.
+3. **Website Link**: Active clickable external link alongside Google Maps link.
+4. **Attempt Counter with Ceiling**: Formatted as `Attempt 2 / 5` so caller understands cadence limit.
 
-### 6.3 iOS PWA Web Push Caveat
-> [!IMPORTANT]
-> **Apple iOS Constraint**: Apple Safari does not permit Web Push in standard browser tabs. Push notifications only function on **iOS 16.4+** when the website is **added to the Home Screen as a standalone PWA**.
-> 
-> **Caller Onboarding Rule**: All mobile caller onboarding guides must mandate:
-> 1. Open `https://pinsite.pro` in Safari.
-> 2. Tap **Share** $\rightarrow$ Tap **Add to Home Screen**.
-> 3. Open the Pinsite icon from the Home Screen and allow notifications.
+### 7.3 Data Hygiene & Name Title-Casing
+- **Honorifics Fix**: The title-case formatter strictly preserves spaces after honorifics:
+  - `Dr. Archana's` (preserves period and space).
+  - `Dr. Phadatare` (consistent honorific styling).
+- **Queue Overflow**: Long lead names wrap cleanly over 2-3 lines or truncate with a tooltip; never clipped mid-word.
 
 ---
 
-## 7. Complete SQL Migration Script (Sprint 6 Release)
+## 8. 7-Day Quarantine Holding Bin (`/manager/quarantine`)
+
+### 8.1 Auto-Disposal Lifecycle
+- When a lead is marked `not_interested` or exhausts 5 dial attempts:
+  - `quarantined_at := NOW()`
+  - `disposal_scheduled_at := NOW() + INTERVAL '7 days'`
+  - `assigned_to := NULL` (frees caller quota immediately)
+  - `rejected_by := COALESCE(OLD.assigned_to, auth.uid())`
+- **Nightly Disposal Worker**: `cron_dispose_quarantined_leads()` runs daily at 2:00 AM UTC. Any lead with `disposal_scheduled_at <= NOW()` is soft-deleted (`deleted_at = NOW()`).
+
+### 8.2 3-Way Rescue Modal
+When a manager rescues a lead from `/manager/quarantine`:
+1. **Return to Original Caller**: Targets `rejected_by`.
+2. **Move to Unassigned Pool**: Sets `assigned_to = NULL`, `status = 'unassigned'`.
+3. **Reassign to Specific Active Caller**: Selects from active users with `role === 'caller'`.
+- **Trigger Rescue Cleanup**: All quarantine metadata (`quarantined_at`, `disposal_scheduled_at`, `rejection_reason`, `rejected_by`) is reset to `NULL`.
+
+---
+
+## 9. Auth, Middleware & Password Recovery
+
+### 9.1 Edge Middleware Gate (`src/lib/supabase/middleware.ts`)
+- **Public Routes**:
+  ```ts
+  const isPublicRoute =
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/signup") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password") ||
+    pathname.startsWith("/unauthorized") ||
+    pathname.startsWith("/api") ||
+    pathname === "/";
+  ```
+- **Forced Password Reset Gate**:
+  If authenticated user profile has `require_password_change === true`:
+  - Intercepts requests to protected pages.
+  - Returns `307 Temporary Redirect` to `/reset-password?forced=true`.
+
+### 9.2 Reset Password Flow
+- Submitting a new password calls `POST /api/auth/reset-password`:
+  - Enforces minimum 8 characters, uppercase, lowercase, number/special character.
+  - Atomically updates Supabase Auth password.
+  - Updates `public.profiles SET require_password_change = FALSE`.
+  - Redirects to role home: `/queue` for callers, `/dashboard` for managers/admins.
+
+---
+
+## 10. Complete Database Migration & Security Triggers
 
 ```sql
 -- ============================================================================
--- PINSITE v1.8: DATABASE FOUNDATION & SECURITY MIGRATION (AUDITED & VERIFIED)
+-- PINSITE v1.8 COMPLETE MIGRATION & LIFECYCLE SCHEMA
 -- ============================================================================
 
--- 0. Ensure pgcrypto extension is active (v1.7 verified)
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- 1. Extend public.leads for Quarantine, Cooldown, and Escalation
+-- 1. Extend Leads Table
 ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS dnc_flag BOOLEAN DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS quarantined_at TIMESTAMPTZ,
@@ -315,12 +265,12 @@ ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS rejection_reason TEXT,
   ADD COLUMN IF NOT EXISTS cooldown_until TIMESTAMPTZ;
 
--- 2. Extend public.profiles for Password Management Gate
+-- 2. Extend Profiles Table
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS require_password_change BOOLEAN DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS temp_password_issued_at TIMESTAMPTZ;
 
--- 3. Extend public.calls and public.assignment_history for Mirror Mode Audit
+-- 3. Extend Calls & Assignment History for Dual Attribution
 ALTER TABLE public.calls
   ADD COLUMN IF NOT EXISTS acted_by UUID REFERENCES public.profiles(id),
   ADD COLUMN IF NOT EXISTS on_behalf_of UUID REFERENCES public.profiles(id);
@@ -329,7 +279,7 @@ ALTER TABLE public.assignment_history
   ADD COLUMN IF NOT EXISTS acted_by UUID REFERENCES public.profiles(id),
   ADD COLUMN IF NOT EXISTS on_behalf_of UUID REFERENCES public.profiles(id);
 
--- 4. FCM Device Token Table
+-- 4. FCM Tokens Table with UPSERT Index
 CREATE TABLE IF NOT EXISTS public.fcm_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -340,7 +290,7 @@ CREATE TABLE IF NOT EXISTS public.fcm_tokens (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Seed Pinsite System Bot (Safely inserting auth user first to satisfy foreign key)
+-- 5. Seed Pinsite System Bot
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM auth.users WHERE id = '00000000-0000-0000-0000-000000000001') THEN
@@ -385,37 +335,7 @@ CREATE INDEX IF NOT EXISTS idx_leads_cooldown
 CREATE INDEX IF NOT EXISTS idx_fcm_tokens_user 
   ON public.fcm_tokens(user_id);
 
--- 7. RLS for FCM Tokens
-ALTER TABLE public.fcm_tokens ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Users view own fcm tokens" ON public.fcm_tokens;
-CREATE POLICY "Users view own fcm tokens"
-  ON public.fcm_tokens FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users insert own fcm tokens" ON public.fcm_tokens;
-CREATE POLICY "Users insert own fcm tokens"
-  ON public.fcm_tokens FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users update own fcm tokens" ON public.fcm_tokens;
-CREATE POLICY "Users update own fcm tokens"
-  ON public.fcm_tokens FOR UPDATE TO authenticated
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users delete own fcm tokens" ON public.fcm_tokens;
-CREATE POLICY "Users delete own fcm tokens"
-  ON public.fcm_tokens FOR DELETE TO authenticated
-  USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Service role full access on fcm tokens" ON public.fcm_tokens;
-CREATE POLICY "Service role full access on fcm tokens"
-  ON public.fcm_tokens FOR ALL TO service_role
-  USING (true)
-  WITH CHECK (true);
-
--- 8. Unified Lead Lifecycle & Security Trigger
+-- 7. Unified Lifecycle & DPDP DNC Trigger
 CREATE OR REPLACE FUNCTION public.handle_lead_disposition_lifecycle()
 RETURNS TRIGGER 
 LANGUAGE plpgsql
@@ -425,7 +345,7 @@ AS $$
 DECLARE
   v_role user_role;
 BEGIN
-  -- 1. Security Check: Callers must not manually modify manager-restricted columns
+  -- Caller Tamper Protection
   SELECT role INTO v_role FROM public.profiles WHERE id = auth.uid();
   IF v_role = 'caller' THEN
     IF NEW.claimed_by_manager IS DISTINCT FROM OLD.claimed_by_manager THEN
@@ -439,23 +359,22 @@ BEGIN
     END IF;
   END IF;
 
-  -- 2. State Machine Transitions
-  -- Branch A: Entering 'not_interested' -> 7-Day Quarantine
+  -- Branch A: 7-Day Quarantine
   IF NEW.status = 'not_interested' AND (OLD.status IS DISTINCT FROM 'not_interested') THEN
     NEW.quarantined_at := NOW();
     NEW.disposal_scheduled_at := NOW() + INTERVAL '7 days';
     NEW.rejected_by := COALESCE(OLD.assigned_to, NEW.assigned_to, auth.uid());
-    NEW.assigned_to := NULL; -- Frees caller quota immediately
+    NEW.assigned_to := NULL;
     NEW.cooldown_until := NULL;
-  
-  -- Branch B: Rescuing from 'not_interested' -> Clear All Quarantine Metadata & Attribution
+
+  -- Branch B: Rescue Lead from Quarantine
   ELSIF OLD.status = 'not_interested' AND NEW.status != 'not_interested' THEN
     NEW.quarantined_at := NULL;
     NEW.disposal_scheduled_at := NULL;
     NEW.rejection_reason := NULL;
     NEW.rejected_by := NULL;
 
-  -- Branch C: Entering 'dnc' -> Immediate Soft-Delete & SHA-256 Hash (DPDP Compliance)
+  -- Branch C: DPDP SHA-256 DNC Hashing & Soft-Delete
   ELSIF NEW.status = 'dnc' AND (OLD.status IS DISTINCT FROM 'dnc') THEN
     NEW.deleted_at := NOW();
     NEW.assigned_to := NULL;
@@ -470,12 +389,12 @@ BEGIN
       ON CONFLICT (phone_hash) DO NOTHING;
     END IF;
 
-  -- Branch D: Entering 'interested' -> Hot Escalation Timestamp
+  -- Branch D: Interested Escalation
   ELSIF NEW.status = 'interested' AND (OLD.status IS DISTINCT FROM 'interested') THEN
     NEW.escalated_at := NOW();
     NEW.cooldown_until := NULL;
 
-  -- Branch E: No Answer / Gatekeeper Cadence Cooldown
+  -- Branch E: Cadence Cooldown Ladder
   ELSIF NEW.status IN ('no_answer', 'gatekeeper') 
     AND (OLD.status IS DISTINCT FROM NEW.status OR OLD.attempts_count IS DISTINCT FROM NEW.attempts_count) THEN
     IF NEW.attempts_count = 1 THEN
@@ -487,7 +406,6 @@ BEGIN
     ELSIF NEW.attempts_count = 4 THEN
       NEW.cooldown_until := NOW() + INTERVAL '72 hours';
     ELSE
-      -- Attempt >= 5 exhausted -> auto-quarantine
       NEW.status := 'not_interested';
       NEW.quarantined_at := NOW();
       NEW.disposal_scheduled_at := NOW() + INTERVAL '7 days';
@@ -508,7 +426,7 @@ CREATE TRIGGER trg_lead_lifecycle
   FOR EACH ROW
   EXECUTE FUNCTION public.handle_lead_disposition_lifecycle();
 
--- 9. Nightly Quarantine Disposal Worker (Targets not_interested only)
+-- 8. Nightly Quarantine Disposal Worker
 CREATE OR REPLACE FUNCTION public.cron_dispose_quarantined_leads()
 RETURNS void 
 LANGUAGE plpgsql
@@ -524,7 +442,7 @@ BEGIN
 END;
 $$;
 
--- 10. Update CRON 3: Exclude Quarantined Leads from 7-Day Stale Recycling
+-- 9. Stale Leads Recycler (Excludes Quarantined)
 CREATE OR REPLACE FUNCTION public.recycle_stale_leads()
 RETURNS void
 LANGUAGE plpgsql
@@ -532,89 +450,48 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
-  -- Recycle leads with 3+ attempts and no call in 7 days, excluding closed, dnc, and quarantined
   UPDATE public.leads 
   SET status = 'unassigned', assigned_to = NULL, assigned_date = NULL, updated_at = NOW()
   WHERE attempts_count >= 3 
     AND last_called_at < NOW() - INTERVAL '7 days'
     AND status NOT IN ('closed_won', 'closed_lost', 'dnc', 'not_interested');
 
-  -- Prune idempotency keys older than 48 hours
   DELETE FROM public.idempotency_keys WHERE created_at < NOW() - INTERVAL '48 hours';
-
-  -- Recover orphaned 'sending' emails older than 5 minutes
-  UPDATE public.email_queue
-  SET status = 'pending', retry_count = retry_count + 1
-  WHERE status = 'sending' AND claimed_at < NOW() - INTERVAL '5 minutes' AND retry_count < 3;
-
-  -- Retry transient 'failed' emails created in the last 24 hours
-  UPDATE public.email_queue
-  SET status = 'pending', retry_count = retry_count + 1
-  WHERE status = 'failed' 
-    AND retry_count < 3 
-    AND created_at > NOW() - INTERVAL '24 hours';
-
-  -- Mark permanently failed if retry_count >= 3
-  UPDATE public.email_queue
-  SET status = 'failed', error_message = 'Dispatch timeout after 3 attempts'
-  WHERE status = 'pending' AND retry_count >= 3;
 END;
 $$;
-
--- 11. Idempotent Schedule for Nightly Quarantine Disposal Worker
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
-    PERFORM cron.unschedule('dispose-quarantined-leads');
-  END IF;
-EXCEPTION WHEN OTHERS THEN
-END $$;
-
-SELECT cron.schedule(
-  'dispose-quarantined-leads',
-  '0 2 * * *',
-  'SELECT public.cron_dispose_quarantined_leads()'
-);
 ```
 
 ---
 
-## 8. Sprint Breakdown (Sprints 6–10)
+## 11. Sprints 9 & 10 Execution Specifications
 
-```
-Sprint 6 (W1-2): Lifecycle DB + Cooldown + Password Recovery + Middleware Gates
-Sprint 7 (W3-4): Mobile Caller Cockpit + Impersonation Mirror View + Interval Refresh
-Sprint 8 (W5-6): Manager Team Command Center + Quarantine Holding Bin
-Sprint 9 (W7-8): Firebase Cloud Messaging (FCM) + PWA Lock-Screen Alerts
-Sprint 10 (W8-9): Manager Escalation Polish + #wins Bot + E2E Verification
-```
+### 11.1 Sprint 9: FCM Push Notification Engine
+- **Target**: Lock-screen push alerts for hot deal escalations and callbacks.
+- **Required Credentials**:
+  - `FIREBASE_SERVICE_ACCOUNT_KEY` (Base64 JSON in Vercel)
+  - `NEXT_PUBLIC_FIREBASE_VAPID_KEY` (Public web push key)
+  - `NEXT_PUBLIC_FIREBASE_CONFIG` (Client configuration)
+- **iOS Safari PWA Rule**: iOS requires adding website to Home Screen (`manifest.json` + `apple-mobile-web-app-capable`) for Web Push.
 
-### Sprint 6: Lifecycle DB, Cooldown & Password Recovery
-- **Dev 1 (Backend/DB)**: Apply SQL DDL migration; verify unified `trg_lead_lifecycle` with caller tamper protection and DPDP SHA-256 DNC hashing; seed Pinsite Bot user and profile; patch `recycle_stale_leads()`; verify 7-day quarantine and cooldown timestamps.
-- **Dev 2 (Frontend)**: Build `/forgot-password` and `/reset-password` pages; build password strength meter.
-- **Dev 3 (Full-Stack/Security)**: Implement `POST /api/manager/team/reset-password` using server-side service role key; implement Next.js middleware gate for `require_password_change` and ensure `/forgot-password` and `/reset-password` are in `isPublicRoute`; ensure password reset action atomically clears `require_password_change`.
-- **Definition of Done**: Caller can reset password via Resend email token; manager can generate temporary password; temp password forces redirect to `/reset-password`; submitting new password clears gate; cadence cooldown sets timestamps; stale leads cron ignores quarantined leads.
+### 11.2 Sprint 10: Hot Escalations & `#wins` Auto-Poster
+- **Channel**: Insert into `public.messages` targeting channel `wins`.
+- **Sender**: System Bot (`00000000-0000-0000-0000-000000000001`).
+- **Card Format**:
+  ```markdown
+  🔥 **HOT DEAL QUALIFIED!**
+  **Caller:** Ali Pathan
+  **Business:** Smile Care Dental Clinic
+  **Contact:** Dr. Archana (Owner)
+  **Area:** Pune West • **Niche:** Dental Care
+  ```
 
-### Sprint 7: Mobile Caller Cockpit & Mirror View
-- **Dev 1 (Backend/API)**: Guard impersonation on `/queue?impersonate=[caller_id]` (rejects non-managers); wire `p_rejection_reason` through `/api/queue/outcome/route.ts`.
-- **Dev 2 (Frontend/Mobile)**: Implement single-column responsive layout (< 768px); build bottom-anchored floating dial bar with `tel:` protocol; add 60s auto-refresh interval for expired cooldown leads.
-- **Dev 3 (Frontend/UX)**: Implement auto-opening bottom sheet disposition drawer with 48px touch targets; build persistent orange Manager Mirror Mode banner with exit trigger.
-- **Definition of Done**: Caller experiences zero horizontal scrolling on mobile; tapping dial launches phone app; returning to tab pops disposition drawer; manager can view deck exactly as caller; active decks strictly exclude `not_interested`.
+---
 
-### Sprint 8: Team Command Center & Quarantine Bin
-- **Dev 1 (Backend)**: Implement `/api/manager/team-stats` endpoint aggregating dials, connect rates, and talk time grouped by caller for `CURRENT_DATE`.
-- **Dev 2 (Frontend)**: Build `/manager/team` live roster grid with daily dial breakdown and status badges.
-- **Dev 3 (Full-Stack)**: Build `/manager/quarantine` countdown table and interactive 3-way "Rescue Lead" modal (restoring active state and clearing `rejected_by`).
-- **Definition of Done**: Manager sees live caller counters; rescuing a lead clears all quarantine timestamps and returns lead to active pool; quarantine cron deletes expired leads; quarantined leads never leak into active/unassigned views.
+## 12. Operational Checklist for AI Agents & Developers
 
-### Sprint 9: FCM Push Notification Engine
-- **Dev 1 (Backend/DevOps)**: Configure Firebase Service Account credentials; implement `/api/notifications/push` using `firebase-admin` and `/api/notifications/fcm-token` UPSERT route.
-- **Dev 2 (Frontend/PWA)**: Implement PWA `manifest.json`, service worker `public/firebase-messaging-sw.js`, and iOS PWA "Add to Home Screen" onboarding prompt.
-- **Dev 3 (Full-Stack)**: Implement client `useFCM` hook with `fcm_tokens` UPSERT API.
-- **Definition of Done**: PWA installable on iOS/Android; push notification vibrates locked phone when lead is marked interested or 10-minute callback is due.
-
-### Sprint 10: Escalation Polish, #wins Bot & Acceptance
-- **Dev 1 (Backend)**: Expand CRON 4 to trigger FCM push dispatch for due callbacks; connect `#wins` auto-poster to Pinsite Bot profile.
-- **Dev 2 (Frontend)**: Add audio chimes and pulsing alert badges on manager dashboard for hot leads.
-- **Dev 3 (QA/Lead)**: Execute full regression test suite (100% acceptance criteria pass); deploy v1.8 to production.
-- **Definition of Done**: Lead marked interested notifies managers on lock-screen within 3 seconds, creates deal card, and posts formatted card to `#wins`.
+When picking up any task on this repository:
+1. **Never edit `muzammilpathan6047@gmail.com`**: Treat as strictly immutable super-admin.
+2. **Never treat managers as callers**: Yadullah has `role = 'manager'`. Caller operations strictly target `role === 'caller'`.
+3. **Always verify production build**: Run `npm run build` before pushing any commit.
+4. **Always dual-attribute Mirror Mode logs**: Any call or reassignment in mirror mode must write `acted_by` (manager) and `on_behalf_of` (caller).
+5. **Always exclude `not_interested` from active queue queries**: Quarantined leads must remain invisible until rescued.
