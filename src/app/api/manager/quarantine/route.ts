@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
 
     (profiles || []).forEach((p) => {
       profileMap.set(p.id, { id: p.id, full_name: p.full_name, role: p.role });
-      if (p.active && (p.role === "caller" || p.role === "admin" || p.role === "manager")) {
+      if (p.active && p.role === "caller") {
         activeCallers.push(p);
       }
     });

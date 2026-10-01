@@ -77,6 +77,20 @@ export async function POST(req: NextRequest) {
 
     const admin = getAdminClient();
 
+    // Verify target user has role 'caller'
+    const { data: targetProfile, error: targetProfileErr } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", target_caller_id)
+      .maybeSingle();
+
+    if (targetProfileErr || !targetProfile || targetProfile.role !== "caller") {
+      return NextResponse.json(
+        { error: "Target recipient must be an active team member with the caller role" },
+        { status: 400 }
+      );
+    }
+
     // 1. Fetch eligible active leads from source caller
     // Prioritize uncalled leads (attempts_count = 0), then oldest
     const { data: eligibleLeads, error: selectErr } = await admin

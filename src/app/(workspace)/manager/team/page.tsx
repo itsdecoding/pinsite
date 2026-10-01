@@ -37,6 +37,7 @@ import {
   AlertTriangle,
   UserCog,
   Crown,
+  ChevronDown,
 } from "lucide-react";
 
 interface OutcomeBreakdown {
@@ -205,6 +206,7 @@ export default function ManagerTeamPage() {
   // Lead distribution state
   const [distributing, setDistributing] = useState(false);
   const [distributeNotification, setDistributeNotification] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [distributeDropdownOpen, setDistributeDropdownOpen] = useState(false);
 
   // Role change modal state
   const [roleModalCaller, setRoleModalCaller] = useState<CallerStat | null>(null);
@@ -321,22 +323,25 @@ export default function ManagerTeamPage() {
     return list;
   }, [callers, searchQuery, statusFilter, roleFilter, sortBy]);
 
-  // Proactive Queue Imbalance Detection (> 1.5x team average)
+  // Proactive Queue Imbalance Detection (> 1.5x team average over callers only)
   const teamAverageLeads = useMemo(() => {
-    if (callers.length === 0) return 0;
-    const total = callers.reduce((acc, c) => acc + c.active_leads_count, 0);
-    return Math.round(total / callers.length);
+    const onlyCallers = callers.filter((c) => c.role === "caller");
+    if (onlyCallers.length === 0) return 0;
+    const total = onlyCallers.reduce((acc, c) => acc + c.active_leads_count, 0);
+    return Math.round(total / onlyCallers.length);
   }, [callers]);
 
   const overloadedCaller = useMemo(() => {
-    return callers.find(
+    const onlyCallers = callers.filter((c) => c.role === "caller");
+    return onlyCallers.find(
       (c) => c.active_leads_count > Math.max(10, Math.ceil(teamAverageLeads * 1.5))
     );
   }, [callers, teamAverageLeads]);
 
   const lightestCaller = useMemo(() => {
-    if (callers.length === 0) return null;
-    return [...callers].sort((a, b) => a.active_leads_count - b.active_leads_count)[0];
+    const onlyCallers = callers.filter((c) => c.role === "caller");
+    if (onlyCallers.length === 0) return null;
+    return [...onlyCallers].sort((a, b) => a.active_leads_count - b.active_leads_count)[0];
   }, [callers]);
 
   async function handleDistributeNow() {
@@ -553,14 +558,15 @@ export default function ManagerTeamPage() {
   function openRebalanceModalWithCaller(sourceCallerId?: string) {
     setRebalanceError(null);
     setRebalanceSuccess(null);
+    const onlyCallers = callers.filter((c) => c.role === "caller");
     if (sourceCallerId) {
       setRebalanceSource(sourceCallerId);
       // Select first other caller as target
-      const other = callers.find((c) => c.id !== sourceCallerId);
+      const other = onlyCallers.find((c) => c.id !== sourceCallerId);
       if (other) setRebalanceTarget(other.id);
     } else {
       // Default: Highest queue caller to lowest queue caller
-      const sorted = [...callers].sort((a, b) => b.active_leads_count - a.active_leads_count);
+      const sorted = [...onlyCallers].sort((a, b) => b.active_leads_count - a.active_leads_count);
       if (sorted.length >= 2) {
         setRebalanceSource(sorted[0].id);
         setRebalanceTarget(sorted[sorted.length - 1].id);
@@ -665,27 +671,57 @@ export default function ManagerTeamPage() {
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-auto">
-          {/* Admin Distribute Now Button */}
-          <button
-            type="button"
-            onClick={handleDistributeNow}
-            disabled={distributing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white font-semibold transition-all shadow-sm border border-emerald-500/20 disabled:opacity-50"
-            title="Distribute unassigned leads to active callers (lightest caller first, depth-capped at 30)"
-          >
-            <Sparkles className={`w-3.5 h-3.5 ${distributing ? "animate-spin" : ""}`} />
-            <span>{distributing ? "Distributing..." : "Distribute Now"}</span>
-          </button>
+          {/* Merged Lead Operations Dropdown: [ ⚖️ Distribute ▾ ] */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setDistributeDropdownOpen((prev) => !prev)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#F95721] hover:bg-[#E04612] text-white font-semibold text-xs transition-all shadow-sm active:scale-95"
+            >
+              <span>⚖️ Distribute</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${distributeDropdownOpen ? "rotate-180" : ""}`} />
+            </button>
 
-          {/* Rebalance Leads Button */}
-          <button
-            type="button"
-            onClick={() => openRebalanceModalWithCaller()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#F95721]/10 text-[#F95721] hover:bg-[#F95721] hover:text-white font-semibold transition-all shadow-sm border border-[#F95721]/20"
-          >
-            <PhoneForwarded className="w-3.5 h-3.5" />
-            <span>Rebalance Leads</span>
-          </button>
+            {distributeDropdownOpen && (
+              <div
+                className="absolute right-0 top-full mt-1.5 w-64 rounded-2xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-2xl p-1.5 z-[150] animate-in fade-in zoom-in-95 duration-100"
+                onClick={() => setDistributeDropdownOpen(false)}
+              >
+                <button
+                  type="button"
+                  onClick={handleDistributeNow}
+                  disabled={distributing}
+                  className="w-full p-2.5 rounded-xl hover:bg-emerald-500/10 text-left flex items-start gap-2.5 transition-colors group"
+                >
+                  <Sparkles className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF] group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
+                      {distributing ? "Distributing..." : "Distribute Unassigned"}
+                    </p>
+                    <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] leading-tight mt-0.5">
+                      Assign unassigned leads to callers (depth-capped at 30)
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => openRebalanceModalWithCaller()}
+                  className="w-full p-2.5 rounded-xl hover:bg-[#F95721]/10 text-left flex items-start gap-2.5 transition-colors group mt-1"
+                >
+                  <PhoneForwarded className="w-4 h-4 text-[#F95721] shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF] group-hover:text-[#F95721]">
+                      Rebalance Overloaded
+                    </p>
+                    <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] leading-tight mt-0.5">
+                      Shift excess leads from heavy callers to lightest callers
+                    </p>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
 
           <button
             type="button"
@@ -886,7 +922,7 @@ export default function ManagerTeamPage() {
                 {summary.active_callers}
               </h3>
               <span className="text-xs text-[#8A8680] font-mono">
-                / {summary.total_callers || callers.length} roster
+                / {summary.total_callers || callers.filter((c) => c.role === "caller").length} callers
               </span>
             </div>
             <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
@@ -1534,7 +1570,7 @@ export default function ManagerTeamPage() {
                   className="w-full p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] font-medium text-xs text-[#111110] dark:text-[#F5F3EF] outline-none"
                 >
                   <option value="">Select source caller...</option>
-                  {callers.map((c) => (
+                  {callers.filter((c) => c.role === "caller").map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.full_name} ({c.active_leads_count} active leads)
                     </option>
@@ -1553,7 +1589,7 @@ export default function ManagerTeamPage() {
                   className="w-full p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] font-medium text-xs text-[#111110] dark:text-[#F5F3EF] outline-none"
                 >
                   <option value="">Select target caller...</option>
-                  {callers.map((c) => (
+                  {callers.filter((c) => c.role === "caller").map((c) => (
                     <option key={c.id} value={c.id} disabled={c.id === rebalanceSource}>
                       {c.full_name} ({c.active_leads_count} active leads)
                     </option>

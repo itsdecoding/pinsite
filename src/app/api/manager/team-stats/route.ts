@@ -210,7 +210,7 @@ export async function GET(req: NextRequest) {
       const activeLeadsCount = leadsList.filter((l) => l.assigned_to === caller.id).length;
 
       const isOnline = Boolean(caller.active && caller.is_available);
-      if (isOnline) {
+      if (isOnline && caller.role === "caller") {
         activeCallersCount += 1;
       }
 
@@ -263,7 +263,7 @@ export async function GET(req: NextRequest) {
         total_rejections_today: totalRejected,
         total_no_answer_today: totalNoAnswer,
         active_callers: activeCallersCount,
-        total_callers: targetCallers.length,
+        total_callers: targetCallers.filter((c) => c.role === "caller").length,
         // Only show connect rate percentage if sample size is sufficient (>= 20 dials)
         connect_rate_percent: totalDials >= 20 ? Math.round((totalConnects / totalDials) * 100) : null,
       },
