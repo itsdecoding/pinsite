@@ -104,7 +104,7 @@ function LoginForm() {
               Password
             </label>
             <Link
-              href="/forgot-password"
+              href="/studio/forgot-password"
               className="text-xs text-[#F95721] hover:underline font-medium"
             >
               Forgot password?

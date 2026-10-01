@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       req.headers.get("origin") ||
       "https://pinsite.pro";
     const appUrl = rawAppUrl.replace(/\/studio\/?$/, "").replace(/\/+$/, "");
-    const redirectTo = `${appUrl}/reset-password`;
+    const redirectTo = `${appUrl}/studio/reset-password`;
 
     // Generate recovery link via Supabase Admin Client
     const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({

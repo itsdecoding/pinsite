@@ -13,6 +13,14 @@ const nextConfig = {
         destination: '/signup',
       },
       {
+        source: '/studio/forgot-password',
+        destination: '/forgot-password',
+      },
+      {
+        source: '/studio/reset-password',
+        destination: '/reset-password',
+      },
+      {
         source: '/studio/queue',
         destination: '/queue',
       },

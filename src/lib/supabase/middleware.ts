@@ -52,8 +52,14 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/reset-password") ||
     pathname.startsWith("/unauthorized") ||
+    pathname.startsWith("/studio/login") ||
+    pathname.startsWith("/studio/signup") ||
+    pathname.startsWith("/studio/forgot-password") ||
+    pathname.startsWith("/studio/reset-password") ||
+    pathname.startsWith("/studio/unauthorized") ||
     pathname.startsWith("/api") ||
-    pathname === "/";
+    pathname === "/" ||
+    pathname === "/studio";
 
   // 3. Authenticate against real Supabase session (NO demo mode bypass)
   let user = null;
@@ -64,10 +70,10 @@ export async function updateSession(request: NextRequest) {
     user = null;
   }
 
-  // If not authenticated and trying to access protected workspace routes, redirect strictly to login
+  // If not authenticated and trying to access protected workspace routes, redirect strictly to studio login
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = "/studio/login";
     return NextResponse.redirect(url);
   }
 
@@ -109,44 +115,56 @@ export async function updateSession(request: NextRequest) {
     }
 
     if (requirePasswordChange) {
-      if (!pathname.startsWith("/reset-password") && pathname !== "/login" && !pathname.startsWith("/api/")) {
+      if (
+        !pathname.startsWith("/reset-password") &&
+        !pathname.startsWith("/studio/reset-password") &&
+        pathname !== "/login" &&
+        pathname !== "/studio/login" &&
+        !pathname.startsWith("/api/")
+      ) {
         const url = request.nextUrl.clone();
-        url.pathname = "/reset-password";
+        url.pathname = "/studio/reset-password";
         url.searchParams.set("forced", "true");
         return NextResponse.redirect(url, 307);
       }
     }
 
     // 3. Root and public route redirection for authenticated users
-    if (pathname === "/studio" || pathname === "/login" || (pathname === "/signup" && !token)) {
+    if (
+      pathname === "/studio" ||
+      pathname === "/login" ||
+      pathname === "/studio/login" ||
+      ((pathname === "/signup" || pathname === "/studio/signup") && !token)
+    ) {
       const url = request.nextUrl.clone();
-      if (role === "caller") url.pathname = "/queue";
-      else if (role === "developer") url.pathname = "/projects";
-      else url.pathname = "/dashboard";
+      if (role === "caller") url.pathname = "/studio/queue";
+      else if (role === "developer") url.pathname = "/studio/projects";
+      else url.pathname = "/studio/dashboard";
       return NextResponse.redirect(url);
     }
 
     // 4. Role-based authorization boundaries (Strict: only restrict if role is explicitly identified)
+    const normalizedPath = pathname.replace(/^\/studio/, "");
     if (role === "caller") {
       if (
-        pathname.startsWith("/dashboard") ||
-        pathname.startsWith("/projects") ||
-        pathname.startsWith("/manager")
+        normalizedPath.startsWith("/dashboard") ||
+        normalizedPath.startsWith("/projects") ||
+        normalizedPath.startsWith("/manager")
       ) {
         const url = request.nextUrl.clone();
-        url.pathname = "/unauthorized";
+        url.pathname = "/studio/unauthorized";
         return NextResponse.redirect(url);
       }
     }
 
     if (role === "developer") {
       if (
-        pathname.startsWith("/dashboard") ||
-        pathname.startsWith("/queue") ||
-        pathname.startsWith("/manager")
+        normalizedPath.startsWith("/dashboard") ||
+        normalizedPath.startsWith("/queue") ||
+        normalizedPath.startsWith("/manager")
       ) {
         const url = request.nextUrl.clone();
-        url.pathname = "/unauthorized";
+        url.pathname = "/studio/unauthorized";
         return NextResponse.redirect(url);
       }
     }
