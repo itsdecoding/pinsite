@@ -13,8 +13,8 @@ import crypto from "crypto";
 function formatLeadName(rawName: string | null | undefined): string {
   if (!rawName) return "Unnamed Lead";
   let name = String(rawName).trim();
-  name = name.replace(/([a-zA-Z0-9'’])-(?=[a-zA-Z0-9])/g, (_m, p1) => `${p1} - `);
-  name = name.replace(/\bDr\.([A-Za-z])/gi, (_m, p1) => `Dr. ${p1}`);
+  name = name.replace(/([a-zA-Z0-9'’])\s*-\s*([a-zA-Z0-9])/g, "$1 - $2");
+  name = name.replace(/\bDr\.([A-Za-z])/gi, "Dr. $1");
   name = name.replace(/\bDr(?!\.)\s+/gi, "Dr. ");
   name = name.replace(/\s+/g, " ").trim();
   return name;
