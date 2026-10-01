@@ -48,7 +48,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing lead_id parameter" }, { status: 400 });
     }
 
-    // 3. Update lead assignment (clearing quarantine attribution & metadata if rescued)
+    // 3. Fetch current lead assignment state for audit trail
+    const { data: currentLead } = await admin
+      .from("leads")
+      .select("assigned_to")
+      .eq("id", lead_id)
+      .maybeSingle();
+
+    const fromCallerId = currentLead?.assigned_to || null;
+
+    // 4. Update lead assignment (clearing quarantine attribution & metadata if rescued)
     const updateData: Record<string, any> = {
       assigned_to: caller_id || null,
       status: caller_id ? "assigned" : "unassigned",
@@ -68,14 +77,25 @@ export async function POST(req: NextRequest) {
 
     if (updateError) throw updateError;
 
-    // 4. Log in assignment history
+    // 5. Log in assignment history with dual attribution
     const historyReason = reason || (caller_id ? "manager_manual_reassign" : "manager_unassigned");
-    await admin.from("assignment_history").insert({
+    const historyPayload: Record<string, any> = {
       lead_id,
+      from_caller_id: fromCallerId,
       to_caller_id: caller_id || null,
       assigned_by: user.id,
       reason: historyReason,
-    });
+      acted_by: user.id,
+      on_behalf_of: fromCallerId,
+    };
+
+    const { error: histError } = await admin.from("assignment_history").insert(historyPayload);
+    if (histError) {
+      // Fallback if schema migration for acted_by hasn't run yet
+      delete historyPayload.acted_by;
+      delete historyPayload.on_behalf_of;
+      await admin.from("assignment_history").insert(historyPayload);
+    }
 
     // 5. Notify the assigned caller if assigned
     if (caller_id) {

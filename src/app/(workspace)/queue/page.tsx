@@ -28,6 +28,7 @@ import {
   ChevronDown,
   Copy,
   Check,
+  Eye,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { EntityComments } from "@/components/comms/EntityComments";
@@ -209,7 +210,14 @@ function CallerQueueContent() {
   const [queueScope, setQueueScope] = useState<QueueScope>("all");
   const [callersList, setCallersList] = useState<CallerInfo[]>([]);
   const [isReassigning, setIsReassigning] = useState(false);
-  const [impersonatedCaller, setImpersonatedCaller] = useState<{ id: string; full_name: string } | null>(null);
+  const [impersonatedCaller, setImpersonatedCaller] = useState<{
+    id: string;
+    full_name: string;
+    is_online: boolean;
+    dials_today: number;
+  } | null>(null);
+  const [adminFullName, setAdminFullName] = useState<string>("Manager");
+  const [adminActionsCount, setAdminActionsCount] = useState<number>(0);
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [latestCallNote, setLatestCallNote] = useState<CallLogSummary | null>(null);
   const [loadingNote, setLoadingNote] = useState(false);
@@ -342,7 +350,7 @@ function CallerQueueContent() {
 
         setCurrentUserId(user.id);
 
-        // 1. Fetch user role
+        // 1. Fetch user role & admin name
         const { data: profile } = await supabase
           .from("profiles")
           .select("role, full_name")
@@ -351,18 +359,33 @@ function CallerQueueContent() {
 
         const role = profile?.role || "caller";
         setUserRole(role);
+        if (profile?.full_name) {
+          setAdminFullName(profile.full_name);
+        }
 
         // 2. Resolve impersonation (Mirror Mode) if admin or manager
-        let activeImpersonation: { id: string; full_name: string } | null = null;
+        let activeImpersonation: { id: string; full_name: string; is_online: boolean; dials_today: number } | null = null;
         if (impersonateParam && (role === "admin" || role === "manager")) {
           const { data: callerData } = await supabase
             .from("profiles")
-            .select("id, full_name, role")
+            .select("id, full_name, role, is_available, active")
             .eq("id", impersonateParam)
             .maybeSingle();
 
           if (callerData) {
-            activeImpersonation = { id: callerData.id, full_name: callerData.full_name };
+            const todayUtc = `${new Date().toISOString().split("T")[0]}T00:00:00.000Z`;
+            const { count: dialsToday } = await supabase
+              .from("calls")
+              .select("*", { count: "exact", head: true })
+              .eq("caller_id", callerData.id)
+              .gte("called_at", todayUtc);
+
+            activeImpersonation = {
+              id: callerData.id,
+              full_name: callerData.full_name,
+              is_online: Boolean(callerData.active && callerData.is_available),
+              dials_today: dialsToday || 0,
+            };
             setImpersonatedCaller(activeImpersonation);
           } else {
             setImpersonatedCaller(null);
@@ -541,9 +564,8 @@ function CallerQueueContent() {
 
   const handleExitMirrorMode = () => {
     setImpersonatedCaller(null);
-    router.push("/queue");
+    router.push("/manager/team");
   };
-
 
   const handleReassignLead = async (leadId: string, newCallerId: string) => {
     setIsReassigning(true);
@@ -559,6 +581,8 @@ function CallerQueueContent() {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to reassign lead");
+
+      setAdminActionsCount((prev) => prev + 1);
 
       // Update lead in memory
       const targetCaller = callersList.find((c) => c.id === newCallerId);
@@ -727,19 +751,54 @@ function CallerQueueContent() {
     <div className="space-y-6 max-w-full overflow-x-hidden pb-28 md:pb-8">
       {/* Persistent Manager Mirror Mode Banner */}
       {impersonatedCaller && (
-        <div className="sticky top-0 z-[100] -mx-4 sm:-mx-6 lg:-mx-8 -mt-6 sm:-mt-8 mb-4 bg-gradient-to-r from-amber-500 to-amber-600 text-black px-4 py-3 shadow-lg flex flex-wrap items-center justify-between gap-3 font-semibold text-xs sm:text-sm">
-          <div className="flex items-center gap-2">
-            <span className="text-base sm:text-lg">👁️</span>
-            <span>
-              <strong>MIRROR MODE:</strong> Viewing queue as <span className="underline decoration-black/60 font-black">{impersonatedCaller.full_name}</span>. Any logged dials will be attributed to this caller.
-            </span>
+        <div className="sticky top-0 z-[100] -mx-4 sm:-mx-6 lg:-mx-8 -mt-6 sm:-mt-8 mb-4 bg-amber-500 dark:bg-amber-600 text-black px-4 sm:px-6 py-3 shadow-lg border-b border-amber-600/30">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-semibold text-xs sm:text-sm">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/15 text-black font-mono text-xs font-bold uppercase tracking-wider">
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Mirror Mode</span>
+                </span>
+                <span className="font-bold text-black text-sm">
+                  {impersonatedCaller.full_name}
+                </span>
+                {/* Caller Telemetry Status Pill */}
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/10 text-black text-xs font-medium">
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      impersonatedCaller.is_online ? "bg-emerald-700 animate-pulse" : "bg-neutral-600"
+                    }`}
+                  />
+                  <span>
+                    {impersonatedCaller.is_online ? "Active / Online" : "Idle / Offline"} •{" "}
+                    {impersonatedCaller.dials_today} dials today • {leads.length} leads in queue
+                  </span>
+                </span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-black/85 font-normal">
+                Actions logged here will record as{" "}
+                <strong className="font-semibold text-black">
+                  {adminFullName} ({userRole === "admin" ? "Admin" : "Manager"})
+                </strong>{" "}
+                acting on behalf of{" "}
+                <strong className="font-semibold text-black">{impersonatedCaller.full_name}</strong>.
+                {adminActionsCount > 0 && (
+                  <span className="ml-2 font-mono font-bold text-black underline">
+                    ({adminActionsCount} action{adminActionsCount > 1 ? "s" : ""} performed in this session)
+                  </span>
+                )}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleExitMirrorMode}
+                className="px-4 py-1.5 bg-black text-white hover:bg-neutral-800 rounded-full text-xs font-bold transition-all shadow-sm shrink-0 active:scale-95"
+              >
+                Exit Mirror Mode
+              </button>
+            </div>
           </div>
-          <button
-            onClick={handleExitMirrorMode}
-            className="px-3.5 py-1.5 bg-black text-white hover:bg-neutral-800 rounded-full text-xs font-bold transition-all shadow-sm shrink-0 active:scale-95"
-          >
-            Exit Mirror Mode
-          </button>
         </div>
       )}
 
@@ -747,11 +806,7 @@ function CallerQueueContent() {
       <div className="flex items-center justify-between gap-3 pt-1 pb-1">
         <div className="flex items-center gap-2.5 flex-wrap">
           <span className="text-xs font-mono tracking-wider uppercase text-[#F95721] font-bold">
-            {impersonatedCaller
-              ? `MIRRORING: ${impersonatedCaller.full_name.toUpperCase()}`
-              : isManagement
-              ? "OUTBOUND DECK"
-              : "DIAL QUEUE"}
+            {isManagement ? "OUTBOUND DECK" : "DIAL QUEUE"}
           </span>
           {isManagement && (
             <span className="px-2 py-0.5 rounded-full bg-[#F95721]/10 text-[#F95721] text-[10px] font-mono font-bold border border-[#F95721]/20">
@@ -1174,30 +1229,71 @@ function CallerQueueContent() {
                   </div>
                 )}
 
-                {/* Primary Dial CTA (Desktop & Tablet) */}
-                <div className="pt-2 flex flex-col sm:flex-row items-center gap-4">
-                  <a
-                    href={formatTelLink(currentLead.phone)}
-                    onClick={handleStartCall}
-                    className="w-full sm:w-auto flex-1 min-h-[50px] py-4 px-8 bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-sm uppercase tracking-wider rounded-full shadow-lg flex items-center justify-center gap-3 transition-transform active:scale-[0.98] text-center"
-                  >
-                    <PhoneCall className="w-5 h-5 animate-pulse" />
-                    <span>Dial Now ({formatPhoneDisplay(currentLead.phone)})</span>
-                  </a>
+                {/* Primary Dial CTA (Desktop & Tablet) or Diagnostic Observer Card in Mirror Mode */}
+                {impersonatedCaller ? (
+                  <div className="pt-2">
+                    <div className="p-4 sm:p-5 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-amber-900 dark:text-amber-200">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 text-xl font-bold">
+                          👁️
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold uppercase tracking-wider font-mono text-amber-700 dark:text-amber-300">
+                            Diagnostic Observer Mode
+                          </p>
+                          <p className="text-xs leading-relaxed text-[#111110]/80 dark:text-[#F5F3EF]/80 max-w-xl">
+                            Direct dialing and outcome logging are disabled in Mirror Mode to prevent interference with {impersonatedCaller.full_name}&apos;s live call session. You can reassign this lead above or leave guidance in the Coaching Notes below.
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href={formatTelLink(currentLead.phone)}
+                        className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs rounded-xl shadow-sm transition-all shrink-0 active:scale-95 inline-flex items-center gap-1.5"
+                        title="Direct dial test (will not log call)"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>Test Call</span>
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="pt-2 flex flex-col sm:flex-row items-center gap-4">
+                    <a
+                      href={formatTelLink(currentLead.phone)}
+                      onClick={handleStartCall}
+                      className="w-full sm:w-auto flex-1 min-h-[50px] py-4 px-8 bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-sm uppercase tracking-wider rounded-full shadow-lg flex items-center justify-center gap-3 transition-transform active:scale-[0.98] text-center"
+                    >
+                      <PhoneCall className="w-5 h-5 animate-pulse" />
+                      <span>Dial Now ({formatPhoneDisplay(currentLead.phone)})</span>
+                    </a>
 
-                  <button
-                    onClick={() => setIsDrawerOpen(true)}
-                    className="w-full sm:w-auto min-h-[50px] py-4 px-6 bg-white dark:bg-[#1C1A17] hover:bg-black/5 dark:hover:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-full text-xs font-semibold text-[#111110] dark:text-[#F5F3EF] transition-colors flex items-center justify-center gap-2"
-                  >
-                    <span>Log Outcome</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
+                    <button
+                      onClick={() => setIsDrawerOpen(true)}
+                      className="w-full sm:w-auto min-h-[50px] py-4 px-6 bg-white dark:bg-[#1C1A17] hover:bg-black/5 dark:hover:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-full text-xs font-semibold text-[#111110] dark:text-[#F5F3EF] transition-colors flex items-center justify-center gap-2"
+                    >
+                      <span>Log Outcome</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Embedded Comments Thread */}
-            <div className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-6 shadow-sm">
+            {/* Embedded Comments Thread / Coaching Notes */}
+            <div className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-6 shadow-sm space-y-4">
+              {impersonatedCaller && (
+                <div className="flex items-center justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#2D2924]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">📝</span>
+                    <span className="text-xs font-bold uppercase tracking-wider font-mono text-[#F95721]">
+                      Live Coaching Notes for {impersonatedCaller.full_name}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] font-mono">
+                    Realtime sync
+                  </span>
+                </div>
+              )}
               <EntityComments entityType="lead" entityId={currentLead.id} />
             </div>
           </div>
@@ -1259,7 +1355,7 @@ function CallerQueueContent() {
       )}
 
       {/* Floating Bottom-Anchored Dial Bar (Mobile <768px) */}
-      {currentLead && (
+      {currentLead && !impersonatedCaller && (
         <div className="fixed md:hidden bottom-0 left-0 right-0 z-[90] p-3 bg-white/95 dark:bg-[#1C1A17]/95 backdrop-blur-md border-t border-[#ECE8E1] dark:border-[#2D2924] pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-2xl">
           <div className="flex items-center gap-2 max-w-lg mx-auto">
             {callActive && (
