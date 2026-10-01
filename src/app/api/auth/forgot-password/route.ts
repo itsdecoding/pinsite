@@ -59,7 +59,15 @@ export async function POST(req: NextRequest) {
       }
 
       if (shouldSend) {
-        const actionLink = linkData.properties.action_link;
+        let actionLink = linkData.properties.action_link;
+        // Bulletproof guard: Ensure redirect_to parameter explicitly points to /studio/reset-password
+        if (actionLink && !actionLink.includes("/studio/reset-password")) {
+          actionLink = actionLink.replace(
+            /redirect_to=[^&]*/,
+            `redirect_to=${encodeURIComponent(`${appUrl}/studio/reset-password`)}`
+          );
+        }
+
         const resendKey = process.env.RESEND_API_KEY;
 
         if (resendKey && !resendKey.includes("placeholder")) {
@@ -98,17 +106,17 @@ export async function POST(req: NextRequest) {
                       We received a request to reset the password for your Pinsite workspace account. Click the button below to set a new password:
                     </p>
                     <div style="margin: 28px 0;">
-                      <a href="${actionLink}" style="background-color: #F95721; color: white; padding: 13px 28px; text-decoration: none; border-radius: 9999px; font-weight: 700; font-size: 13px; display: inline-block; box-shadow: 0 4px 12px rgba(249, 87, 33, 0.25);">
+                      <a href="${actionLink}" style="background-color: #F95721; color: #FFFFFF !important; padding: 14px 32px; text-decoration: none; border-radius: 9999px; font-weight: 700; font-size: 14px; display: inline-block; box-shadow: 0 4px 14px rgba(249, 87, 33, 0.3);">
                         Reset Password &rarr;
                       </a>
                     </div>
-                    <p style="color: #6E6B66; font-size: 12px; line-height: 1.6; margin: 20px 0 0 0; word-break: break-all;">
-                      Or copy and paste this link into your browser:<br/>
-                      <a href="${actionLink}" style="color: #F95721; font-size: 12px; text-decoration: underline;">${actionLink}</a>
-                    </p>
-                    <div style="margin-top: 32px; border-top: 1px solid #ECE8E1; padding-top: 16px; font-size: 11px; color: #9E9A93; font-family: monospace;">
-                      <span>This link is valid for 1 hour. If you didn't request this, you can safely ignore this email.</span><br/>
-                      <span>Request ID: #${refCode} &bull; Generated: ${requestTime} IST</span>
+                    <div style="margin-top: 32px; border-top: 1px solid #ECE8E1; padding-top: 20px;">
+                      <p style="color: #8A8680; font-size: 12px; line-height: 1.5; margin: 0 0 6px 0;">
+                        This link is valid for 1 hour. If you didn't request a password reset, you can safely ignore this email.
+                      </p>
+                      <p style="color: #B5B2AC; font-size: 11px; margin: 0;">
+                        Ref: #${refCode} &bull; Generated at ${requestTime} IST
+                      </p>
                     </div>
                   </div>
                 `,
