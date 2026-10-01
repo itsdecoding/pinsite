@@ -234,6 +234,11 @@ Sprints 6, 7, and 8 are complete. Sprints 9 and 10 represent the final remaining
    - Removed the duplicate floating bottom dial bar from `/queue`.
    - Callers now dial directly from the large in-card `Dial Now` button with embedded live call duration timer (`Call in progress: MM:SS`).
    - The bottom of mobile viewports (< 768px) is dedicated exclusively to the high-contrast `MobileNav` bar (`Queue`, `Projects`, `Comms`, `Dashboard`) with zero overlapping clutter.
+10. **Supabase Auth Redirect URL Whitelist (Strictly NO `www`)**:
+    - Supabase Auth URL whitelist configuration only permits `https://pinsite.pro/**` (without `www.`).
+    - When generating recovery or invite links, `redirectTo` MUST be explicitly set to `https://pinsite.pro/studio/reset-password` (never `https://www.pinsite.pro/...`).
+    - If `www.` is passed to Supabase's `generateLink`, Supabase treats it as untrusted, silently drops the path, and redirects the user to the default root Site URL `https://pinsite.pro` (the marketing landing page).
+    - As an extra fail-safe, `public/index.html` has an inline script in `<head>` that instantly intercepts any incoming hash fragments containing `type=recovery` or `access_token=` and forwards them to `/studio/reset-password`.
 
 ---
 
