@@ -756,7 +756,7 @@ function CallerQueueContent() {
   }
 
   return (
-    <div className="space-y-6 max-w-full overflow-x-hidden pb-48 md:pb-8">
+    <div className="space-y-6 max-w-full overflow-x-hidden pb-24 md:pb-8">
       {/* Sleek Compact Header Bar (Zero wasted vertical space) */}
       <div className="flex items-center justify-between gap-3 pt-1 pb-1">
         <div className="flex items-center gap-2.5 flex-wrap">
@@ -1295,6 +1295,12 @@ function CallerQueueContent() {
                   </div>
                 ) : (
                   <div className="pt-2 flex flex-col sm:flex-row items-center gap-4">
+                    {callActive && (
+                      <div className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 font-mono font-bold text-xs animate-pulse">
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
+                        <span>Call in progress: {formatDurationTimer(callElapsedSeconds)}</span>
+                      </div>
+                    )}
                     <a
                       href={formatTelLink(currentLead.phone)}
                       onClick={handleStartCall}
@@ -1392,34 +1398,6 @@ function CallerQueueContent() {
         </div>
       )}
 
-      {/* Floating Bottom-Anchored Dial Bar (Positioned above MobileNav on Mobile <768px) */}
-      {currentLead && !impersonatedCaller && (
-        <div className="fixed md:hidden bottom-16 left-0 right-0 z-40 p-2.5 bg-white/95 dark:bg-[#1C1A17]/95 backdrop-blur-md border-t border-[#ECE8E1] dark:border-[#2D2924] shadow-md">
-          <div className="flex items-center gap-2 max-w-lg mx-auto">
-            {callActive && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 font-mono font-bold text-xs shrink-0 animate-pulse">
-                <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
-                <span>{formatDurationTimer(callElapsedSeconds)}</span>
-              </div>
-            )}
-            <a
-              href={formatTelLink(currentLead.phone)}
-              onClick={handleStartCall}
-              className="flex-1 min-h-[48px] py-3.5 px-4 bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-sm uppercase tracking-wider rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-[0.98] transition-all text-center"
-            >
-              <PhoneCall className="w-5 h-5 animate-pulse shrink-0" />
-              <span className="truncate">Dial ({formatPhoneDisplay(currentLead.phone)})</span>
-            </a>
-            <button
-              onClick={() => setIsDrawerOpen(true)}
-              className="min-h-[48px] py-3.5 px-4 bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 text-[#111110] dark:text-[#F5F3EF] font-bold text-xs rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-center gap-1 active:scale-95 transition-all shrink-0"
-            >
-              <span>Outcome</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Slide-Up Bottom Sheet Outcome Drawer with Rejection Reason */}
       {isDrawerOpen && currentLead && (
