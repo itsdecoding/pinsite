@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { DesktopQueue } from "@/components/queue/DesktopQueue";
-import { MobileQueue } from "@/components/queue/MobileQueue";
+import { CallerCockpit } from "@/components/queue/CallerCockpit";
 
 function QueueEntry() {
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
@@ -51,12 +51,19 @@ function QueueEntry() {
     );
   }
 
-  // Forking principle:
-  // If (role === 'caller' || impersonating caller) AND viewport < 768px -> Mobile Cockpit
-  // Otherwise (Desktop 1440px for caller, manager, admin) -> Dense Desktop Deck
-  const isCallerMode = userRole === "caller" || Boolean(impersonateParam);
-  if (isCallerMode && isMobile) {
-    return <MobileQueue />;
+  // Forking principle (Zero media-query hiding):
+  // 1. Mobile Caller -> New Designer 2 Caller Cockpit (5 screens)
+  // 2. Mobile Admin/Manager Mirror -> Same Caller Cockpit in readOnly mode
+  // 3. Desktop (any role) -> Existing dense DesktopQueue
+  const isCaller = userRole === "caller";
+  const isMirroring = Boolean(impersonateParam);
+
+  if (isCaller && isMobile) {
+    return <CallerCockpit />;
+  }
+
+  if (isMirroring && isMobile) {
+    return <CallerCockpit readOnly />;
   }
 
   return <DesktopQueue />;
