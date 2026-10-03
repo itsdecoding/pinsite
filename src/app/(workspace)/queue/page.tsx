@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { DesktopQueue } from "@/components/queue/DesktopQueue";
-import { CallerCockpit } from "@/components/queue/CallerCockpit";
+import { CallerCockpit, CallerCockpitSkeleton } from "@/components/queue/CallerCockpit";
 
 function QueueEntry() {
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
@@ -41,14 +41,9 @@ function QueueEntry() {
     return () => window.removeEventListener("resize", checkViewport);
   }, []);
 
-  // During initial hydration / mount, render sleek loading state
+  // During initial hydration / mount, render sleek loading skeleton inside cockpit
   if (isMobile === null || userRole === null) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-[#6E6B66] dark:text-[#8A8680]">
-        <Loader2 className="w-8 h-8 animate-spin text-[#F95721]" />
-        <p className="text-xs font-mono uppercase tracking-wider">Syncing Outbound Deck...</p>
-      </div>
-    );
+    return <CallerCockpitSkeleton />;
   }
 
   // Forking principle (Zero media-query hiding):
@@ -71,14 +66,7 @@ function QueueEntry() {
 
 export default function QueuePage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-[#6E6B66] dark:text-[#8A8680]">
-          <Loader2 className="w-8 h-8 animate-spin text-[#F95721]" />
-          <p className="text-xs font-mono uppercase tracking-wider">Syncing Outbound Deck...</p>
-        </div>
-      }
-    >
+    <Suspense fallback={<CallerCockpitSkeleton />}>
       <QueueEntry />
     </Suspense>
   );

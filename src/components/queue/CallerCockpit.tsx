@@ -109,6 +109,19 @@ function formatLeadName(name: string | null | undefined): string {
 }
 
 /**
+ * Truncates text at a word boundary so it never cuts mid-word (e.g. "Panchasheel Nagar,...")
+ */
+function cleanTruncateAtWord(text: string | null | undefined, maxChars = 28): string {
+  if (!text) return "";
+  const trimmed = text.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+  const sub = trimmed.slice(0, maxChars);
+  const lastSpace = sub.lastIndexOf(" ");
+  const cleanSub = lastSpace > 10 ? sub.slice(0, lastSpace) : sub;
+  return cleanSub.replace(/[,.-]+$/, "") + "...";
+}
+
+/**
  * Resolves decision maker fallback gracefully:
  * - If name is specified: Dr. Kaustubh Patil (Owner)
  * - If no name in DB: "Ask for the owner" (actionable human instruction, not data label)
@@ -200,6 +213,65 @@ function playHapticTick(freq = 900, duration = 0.018) {
   } catch {
     // Audio context silently ignored if unavailable
   }
+}
+
+export function CallerCockpitSkeleton() {
+  return (
+    <div className="w-full max-w-[420px] mx-auto min-h-screen bg-[#0c0c0e] text-zinc-100 flex flex-col justify-between overflow-x-hidden relative select-none font-sans sm:border-x sm:border-[#202025] pb-24">
+      <div className="flex-1 p-4 space-y-4 flex flex-col justify-between">
+        <div className="flex items-center justify-between">
+          <div className="w-32 h-6 rounded-full bg-zinc-800 animate-pulse" />
+          <div className="w-16 h-5 rounded-md bg-zinc-800 animate-pulse" />
+        </div>
+        <div className="w-full h-[290px] rounded-[26px] bg-zinc-900 border border-white/[0.06] p-5 flex flex-col justify-between animate-pulse">
+          <div className="w-48 h-4 rounded-md bg-zinc-800" />
+          <div className="space-y-2">
+            <div className="w-full h-6 rounded-md bg-zinc-800" />
+            <div className="w-3/4 h-5 rounded-md bg-zinc-800" />
+          </div>
+          <div className="w-full h-12 rounded-xl bg-zinc-800" />
+        </div>
+        <div className="w-full h-14 rounded-[22px] bg-zinc-800 animate-pulse" />
+        <div className="grid grid-cols-2 gap-2">
+          <div className="h-11 rounded-2xl bg-zinc-800 animate-pulse" />
+          <div className="h-11 rounded-2xl bg-zinc-800 animate-pulse" />
+        </div>
+      </div>
+
+      {/* FIXED BOTTOM ANCHORED STRIP & NAVIGATION (Rendered during loading too) */}
+      <div className="fixed bottom-0 left-0 right-0 max-w-[420px] mx-auto z-40 bg-[#0c0c0e] shadow-2xl">
+        <div className="w-full px-5 py-2 bg-[#09090c] border-t border-white/[0.06] flex items-center justify-between text-xs text-zinc-400">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500/40 animate-pulse" />
+            <span className="font-mono text-[10px] text-zinc-400 font-medium">
+              Queue Initializing...
+            </span>
+          </div>
+          <span className="text-zinc-500 font-bold text-[10px]">
+            Shift: Loading...
+          </span>
+        </div>
+        <nav className="w-full bg-[#101014] border-t border-white/[0.08] px-4 py-2 grid grid-cols-4 gap-1 text-center opacity-60 pointer-events-none">
+          <div className="flex flex-col items-center justify-center py-1 text-[#F95721]">
+            <Phone className="w-4 h-4" />
+            <span className="text-[10px] font-bold mt-0.5">Queue</span>
+          </div>
+          <div className="flex flex-col items-center justify-center py-1 text-zinc-500">
+            <MessageSquare className="w-4 h-4" />
+            <span className="text-[10px] font-medium mt-0.5">Comms</span>
+          </div>
+          <div className="flex flex-col items-center justify-center py-1 text-zinc-500">
+            <Calendar className="w-4 h-4" />
+            <span className="text-[10px] font-medium mt-0.5">Today</span>
+          </div>
+          <div className="flex flex-col items-center justify-center py-1 text-zinc-500">
+            <User className="w-4 h-4" />
+            <span className="text-[10px] font-medium mt-0.5">Profile</span>
+          </div>
+        </nav>
+      </div>
+    </div>
+  );
 }
 
 export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
@@ -665,28 +737,10 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
   )}`;
 
   return (
-    <div className="w-full max-w-[420px] mx-auto min-h-screen bg-[#0c0c0e] text-zinc-100 flex flex-col justify-between overflow-x-hidden relative select-none font-sans sm:border-x sm:border-[#202025]">
+    <div className="w-full max-w-[420px] mx-auto min-h-screen bg-[#0c0c0e] text-zinc-100 flex flex-col justify-between overflow-x-hidden relative select-none font-sans sm:border-x sm:border-[#202025] pb-24">
       {/* SKELETON LOADING STATE */}
       {loading ? (
-        <div className="flex-1 p-4 space-y-4 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <div className="w-32 h-6 rounded-full bg-zinc-800 animate-pulse" />
-            <div className="w-16 h-5 rounded-md bg-zinc-800 animate-pulse" />
-          </div>
-          <div className="w-full h-[290px] rounded-[26px] bg-zinc-900 border border-white/[0.06] p-5 flex flex-col justify-between animate-pulse">
-            <div className="w-48 h-4 rounded-md bg-zinc-800" />
-            <div className="space-y-2">
-              <div className="w-full h-6 rounded-md bg-zinc-800" />
-              <div className="w-3/4 h-5 rounded-md bg-zinc-800" />
-            </div>
-            <div className="w-full h-12 rounded-xl bg-zinc-800" />
-          </div>
-          <div className="w-full h-14 rounded-[22px] bg-zinc-800 animate-pulse" />
-          <div className="grid grid-cols-2 gap-2">
-            <div className="h-11 rounded-2xl bg-zinc-800 animate-pulse" />
-            <div className="h-11 rounded-2xl bg-zinc-800 animate-pulse" />
-          </div>
-        </div>
+        <CallerCockpitSkeleton />
       ) : (
         <>
           {/* READ-ONLY / MIRROR MODE AMBER BANNER */}
@@ -756,7 +810,9 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
                 className="flex items-center gap-1.5 bg-zinc-800/90 hover:bg-zinc-700 active:scale-95 text-zinc-300 text-xs px-2.5 py-1 rounded-full border border-zinc-700/60 transition"
               >
                 <FileText className="w-3 h-3 text-[#F95721]" />
-                <span className="text-[11px] font-semibold">Queue ({dialNowLeads.length})</span>
+                <span className="text-[11px] font-semibold">
+                  Queue ({dialNowLeads.length + callbackLeads.length + waitingLeads.length})
+                </span>
               </button>
             </div>
 
@@ -880,8 +936,8 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
                       {/* Attempt & Queue Indicator Bar (Bug 2 & 4 Fixed: whitespace-nowrap, zero wrapping) */}
                       <div className="flex items-center justify-between gap-1.5 px-0.5 mb-2 w-full">
                         <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                          <span className="px-2.5 py-0.5 bg-zinc-800 text-zinc-300 border border-white/10 rounded-full text-[11px] font-semibold max-w-[125px] truncate shrink-0">
-                            {currentLead.niche} • {currentLead.area}
+                          <span className="px-2.5 py-0.5 bg-zinc-800 text-zinc-300 border border-white/10 rounded-full text-[11px] font-semibold shrink-0 whitespace-nowrap">
+                            {cleanTruncateAtWord(`${currentLead.niche} • ${currentLead.area}`, 20)}
                           </span>
                           {/* Neutral Graphite Attempt Badge (NO AMBER COLLISION, ZERO WRAP) */}
                           <span className="px-2.5 py-0.5 bg-zinc-800/90 text-zinc-200 border border-zinc-700/80 rounded-full text-[11px] font-bold inline-flex items-center gap-1.5 shadow-sm whitespace-nowrap shrink-0">
@@ -972,12 +1028,12 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
                           )}
                         </div>
 
-                        {/* Locality & Pitch Needed Flag (Bug 6: 2-line clamp, never cut mid-word) */}
+                        {/* Locality & Pitch Needed Flag (Bug 3: word boundary, no mid-word cut) */}
                         <div className="pt-2.5 flex items-center justify-between border-t border-white/[0.06] text-xs gap-2">
                           <div className="flex items-start gap-1.5 text-zinc-400 flex-1 min-w-0 pr-1">
                             <MapPin className="w-3.5 h-3.5 text-zinc-400 shrink-0 mt-0.5" />
-                            <span className="text-[11px] leading-snug line-clamp-2 text-zinc-300">
-                              {currentLead.address || currentLead.area || "Pune Metro"}
+                            <span className="text-[11px] leading-snug line-clamp-2 text-zinc-300 break-words">
+                              {cleanTruncateAtWord(currentLead.address || currentLead.area || "Pune Metro", 68)}
                             </span>
                           </div>
                           {!realWebsite && (
@@ -1757,83 +1813,86 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
             </div>
           )}
 
-          {/* PERSISTENT FOOTER STRIP (Sits DIRECTLY ABOVE Bottom Nav) */}
-          <div className="w-full px-5 py-2 bg-[#09090c] border-t border-white/[0.04] flex items-center justify-between text-xs text-zinc-400 z-20 shrink-0">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span className="font-mono text-[10px] text-zinc-300 font-medium">
-                Queue Active · Dial Ready
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveScreen("summary");
-                setActiveBottomNav("today");
-                playHapticTick(850, 0.02);
-              }}
-              className="text-[#F95721] hover:text-orange-300 font-bold text-[10px] flex items-center gap-1 active:scale-95 transition"
-            >
-              <span>Shift: {shiftStats.totalDials} Dials</span>
-              <ChevronRight className="w-3 h-3" />
-            </button>
-          </div>
-
-          {/* CALLER BOTTOM NAVIGATION BAR (4 TABS ONLY - SOLE AND EXCLUSIVE NAV) */}
-          <nav className="w-full bg-[#101014] border-t border-white/[0.08] px-4 py-2 z-20 shrink-0 grid grid-cols-4 gap-1 text-center">
-            {/* 1. Queue */}
-            <button
-              type="button"
-              onClick={() => handleBottomNavClick("queue")}
-              className={`flex flex-col items-center justify-center py-1 transition ${
-                activeBottomNav === "queue" && activeScreen === "cockpit"
-                  ? "text-[#F95721]"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              <Phone className="w-4 h-4" />
-              <span className="text-[10px] font-bold mt-0.5">Queue</span>
-            </button>
-
-            {/* 2. Comms */}
-            <button
-              type="button"
-              onClick={() => handleBottomNavClick("comms")}
-              className="relative flex flex-col items-center justify-center py-1 text-zinc-400 hover:text-zinc-200 transition"
-            >
-              <div className="relative">
-                <MessageSquare className="w-4 h-4" />
-                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#F95721]" />
+          {/* FIXED BOTTOM ANCHORED STRIP & NAVIGATION (Always pinned to bottom, never scrolls) */}
+          <div className="fixed bottom-0 left-0 right-0 max-w-[420px] mx-auto z-40 bg-[#0c0c0e] shadow-2xl">
+            {/* PERSISTENT FOOTER STRIP */}
+            <div className="w-full px-5 py-2 bg-[#09090c] border-t border-white/[0.06] flex items-center justify-between text-xs text-zinc-400">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="font-mono text-[10px] text-zinc-300 font-medium">
+                  Queue Active · Dial Ready
+                </span>
               </div>
-              <span className="text-[10px] font-medium mt-0.5">Comms</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveScreen("summary");
+                  setActiveBottomNav("today");
+                  playHapticTick(850, 0.02);
+                }}
+                className="text-[#F95721] hover:text-orange-300 font-bold text-[10px] flex items-center gap-1 active:scale-95 transition"
+              >
+                <span>Shift: {shiftStats.totalDials} Dials</span>
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
 
-            {/* 3. Today (Shift Summary) */}
-            <button
-              type="button"
-              onClick={() => handleBottomNavClick("today")}
-              className={`flex flex-col items-center justify-center py-1 transition ${
-                activeBottomNav === "today" || activeScreen === "summary"
-                  ? "text-[#F95721]"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              <Calendar className="w-4 h-4" />
-              <span className="text-[10px] font-medium mt-0.5">Today</span>
-            </button>
+            {/* CALLER BOTTOM NAVIGATION BAR (4 TABS ONLY - SOLE AND EXCLUSIVE NAV) */}
+            <nav className="w-full bg-[#101014] border-t border-white/[0.08] px-4 py-2 grid grid-cols-4 gap-1 text-center">
+              {/* 1. Queue */}
+              <button
+                type="button"
+                onClick={() => handleBottomNavClick("queue")}
+                className={`flex flex-col items-center justify-center py-1 transition ${
+                  activeBottomNav === "queue" && activeScreen === "cockpit"
+                    ? "text-[#F95721]"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <Phone className="w-4 h-4" />
+                <span className="text-[10px] font-bold mt-0.5">Queue</span>
+              </button>
 
-            {/* 4. Profile */}
-            <button
-              type="button"
-              onClick={() => handleBottomNavClick("profile")}
-              className={`flex flex-col items-center justify-center py-1 transition ${
-                isProfileSheetOpen ? "text-[#F95721]" : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              <User className="w-4 h-4" />
-              <span className="text-[10px] font-medium mt-0.5">Profile</span>
-            </button>
-          </nav>
+              {/* 2. Comms */}
+              <button
+                type="button"
+                onClick={() => handleBottomNavClick("comms")}
+                className="relative flex flex-col items-center justify-center py-1 text-zinc-400 hover:text-zinc-200 transition"
+              >
+                <div className="relative">
+                  <MessageSquare className="w-4 h-4" />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#F95721]" />
+                </div>
+                <span className="text-[10px] font-medium mt-0.5">Comms</span>
+              </button>
+
+              {/* 3. Today (Shift Summary) */}
+              <button
+                type="button"
+                onClick={() => handleBottomNavClick("today")}
+                className={`flex flex-col items-center justify-center py-1 transition ${
+                  activeBottomNav === "today" || activeScreen === "summary"
+                    ? "text-[#F95721]"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <Calendar className="w-4 h-4" />
+                <span className="text-[10px] font-medium mt-0.5">Today</span>
+              </button>
+
+              {/* 4. Profile */}
+              <button
+                type="button"
+                onClick={() => handleBottomNavClick("profile")}
+                className={`flex flex-col items-center justify-center py-1 transition ${
+                  isProfileSheetOpen ? "text-[#F95721]" : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <User className="w-4 h-4" />
+                <span className="text-[10px] font-medium mt-0.5">Profile</span>
+              </button>
+            </nav>
+          </div>
         </>
       )}
     </div>
