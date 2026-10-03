@@ -1,7 +1,6 @@
 import React from "react";
 import { FloatingSidebar } from "@/components/layout/FloatingSidebar";
 import { CommandBar } from "@/components/layout/CommandBar";
-import { MobileNav } from "@/components/layout/MobileNav";
 
 export default function WorkspaceLayout({
   children,
@@ -15,7 +14,7 @@ export default function WorkspaceLayout({
 
       {/* Main Canvas Area (pl-72 gives 288px clearance for the 256px floating sidebar + 32px breathing room) */}
       <div className="flex-1 lg:pl-72 flex flex-col min-h-screen">
-        <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-24 lg:pb-12">
+        <main className="flex-1 max-w-6xl w-full mx-auto px-0 sm:px-6 lg:px-8 pt-0 sm:pt-6 pb-0 lg:pb-12">
           {/* Top Command Palette ⌘K */}
           <CommandBar />
 
@@ -23,9 +22,6 @@ export default function WorkspaceLayout({
           {children}
         </main>
       </div>
-
-      {/* Mobile Bottom Navigation */}
-      <MobileNav />
     </div>
   );
 }

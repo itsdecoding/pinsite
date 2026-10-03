@@ -108,17 +108,47 @@ function formatLeadName(name: string | null | undefined): string {
   return cleaned.replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Resolves decision maker fallback gracefully:
+ * - If name is specified: Dr. Kaustubh Patil (Owner)
+ * - If no name in DB: "Ask for the owner" (actionable human instruction, not data label)
+ */
 function resolveDecisionMaker(lead: Lead | null): string {
-  if (!lead) return "Owner / Managing Director";
+  if (!lead) return "Ask for the owner";
   if (lead.decision_maker && lead.decision_maker.trim()) {
     return lead.decision_maker.trim();
   }
   const match = (lead.name || "").match(/^(Dr\.?\s*[A-Za-z]+('s)?)/i);
   if (match) {
     const docName = match[1].replace(/'s$/i, "").replace(/^Dr\.?/i, "Dr. ");
-    return `${docName.trim()} (Owner / Lead Doctor)`;
+    return `${docName.trim()} (Owner)`;
   }
-  return "Owner / Lead Doctor";
+  return "Ask for the owner";
+}
+
+/**
+ * Formats prior contact summary: "Yesterday, 4:15 PM · No Answer" or "Oct 1, 11:30 AM · Gatekeeper"
+ */
+function formatPriorContactSummary(calledAt: string, outcome: string): string {
+  const d = new Date(calledAt);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
+  const timeMs = d.getTime();
+
+  let dayLabel = "";
+  if (timeMs >= startOfToday) {
+    dayLabel = "Today";
+  } else if (timeMs >= startOfYesterday) {
+    dayLabel = "Yesterday";
+  } else {
+    dayLabel = d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+  }
+
+  const timeLabel = d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true });
+  const outcomeLabel = outcome.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  return `${dayLabel}, ${timeLabel} · ${outcomeLabel}`;
 }
 
 function formatRelativeTime(dateString: string | null | undefined): string {
@@ -341,8 +371,6 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
           }
         }
 
-        const nowIso = new Date().toISOString();
-
         // Query all assigned active leads for this caller
         const { data: leadsData, error: leadsErr } = await supabase
           .from("leads")
@@ -532,7 +560,6 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
       } else if (selectedCallbackSlot) {
         callbackTimestamp = new Date(selectedCallbackSlot).toISOString();
       } else {
-        // default 2 hours
         callbackTimestamp = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
       }
     }
@@ -603,7 +630,6 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
       setActiveScreen("cockpit");
       setIsProfileSheetOpen(false);
     } else if (tabKey === "comms") {
-      // Direct navigation to /comms or inline comms screen
       router.push("/comms");
     } else if (tabKey === "today") {
       setActiveScreen("summary");
@@ -639,7 +665,7 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
   )}`;
 
   return (
-    <div className="w-full max-w-[420px] mx-auto min-h-screen bg-[#0c0c0e] text-zinc-100 flex flex-col justify-between overflow-x-hidden relative select-none font-sans border-x border-[#202025]">
+    <div className="w-full max-w-[420px] mx-auto min-h-screen bg-[#0c0c0e] text-zinc-100 flex flex-col justify-between overflow-x-hidden relative select-none font-sans sm:border-x sm:border-[#202025]">
       {/* SKELETON LOADING STATE */}
       {loading ? (
         <div className="flex-1 p-4 space-y-4 flex flex-col justify-between">
@@ -709,7 +735,7 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
           )}
 
           {/* APP HEADER & SEGMENTED 4-TAB PIPELINE */}
-          <header className="w-full px-4 pt-2 pb-2 bg-[#0c0c0e]/95 backdrop-blur-xl border-b border-white/[0.06] z-30 shrink-0">
+          <header className="w-full px-3.5 sm:px-4 pt-2.5 pb-2 bg-[#0c0c0e]/95 backdrop-blur-xl border-b border-white/[0.06] z-30 shrink-0">
             <div className="flex items-center justify-between mb-2 px-0.5">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-[#F95721] shadow-sm shadow-[#F95721]/50" />
@@ -807,7 +833,7 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
           </header>
 
           {/* MAIN BODY CONTAINER */}
-          <main className="flex-1 relative overflow-hidden flex flex-col px-4 pt-2 pb-2">
+          <main className="flex-1 relative overflow-hidden flex flex-col px-3.5 sm:px-4 pt-2.5 pb-2">
             {/* SCREEN 1: COCKPIT VIEW */}
             {activeScreen === "cockpit" && (
               <div className="flex-1 flex flex-col justify-between">
@@ -851,29 +877,26 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
                   // ACTIVE HERO LEAD CARD
                   <div className="flex-1 flex flex-col justify-between">
                     <div>
-                      {/* Attempt & Queue Indicator Bar */}
-                      <div className="flex items-center justify-between px-1 mb-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-0.5 bg-zinc-800 text-zinc-300 border border-white/10 rounded-full text-[11px] font-semibold">
+                      {/* Attempt & Queue Indicator Bar (Bug 2 & 4 Fixed: whitespace-nowrap, zero wrapping) */}
+                      <div className="flex items-center justify-between gap-1.5 px-0.5 mb-2 w-full">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <span className="px-2.5 py-0.5 bg-zinc-800 text-zinc-300 border border-white/10 rounded-full text-[11px] font-semibold max-w-[125px] truncate shrink-0">
                             {currentLead.niche} • {currentLead.area}
                           </span>
-                          {/* Neutral Graphite Attempt Badge (NO amber collision) */}
-                          <span className="px-2.5 py-0.5 bg-zinc-800/90 text-zinc-200 border border-zinc-700/80 rounded-full text-[11px] font-bold flex items-center gap-1.5 shadow-sm">
-                            <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
-                            Attempt{" "}
-                            <span className="tabular-nums font-mono">
-                              {currentLead.attempts_count || 1} of 5
-                            </span>
+                          {/* Neutral Graphite Attempt Badge (NO AMBER COLLISION, ZERO WRAP) */}
+                          <span className="px-2.5 py-0.5 bg-zinc-800/90 text-zinc-200 border border-zinc-700/80 rounded-full text-[11px] font-bold inline-flex items-center gap-1.5 shadow-sm whitespace-nowrap shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 shrink-0" />
+                            <span>Attempt {currentLead.attempts_count || 1} of 5</span>
                           </span>
                         </div>
-                        <span className="text-xs text-zinc-400 font-mono">
+                        <span className="text-xs text-zinc-400 font-mono whitespace-nowrap shrink-0 text-right">
                           Lead {activeLeadIndex + 1} of {activeLeadsList.length}
                         </span>
                       </div>
 
                       {/* HERO CARD CONTAINER */}
                       <div
-                        className={`rounded-[26px] p-4 relative overflow-hidden flex flex-col justify-between min-h-[295px] bg-gradient-to-b from-[#1c1c21]/90 to-[#121216]/95 border border-white/[0.08] shadow-2xl transition-all duration-200 ${
+                        className={`rounded-[26px] p-4 relative overflow-hidden flex flex-col justify-between min-h-[300px] bg-gradient-to-b from-[#1c1c21]/90 to-[#121216]/95 border border-white/[0.08] shadow-2xl transition-all duration-200 ${
                           cardAnimating ? "scale-95 opacity-0" : "scale-100 opacity-100"
                         }`}
                       >
@@ -881,19 +904,19 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
 
                         {/* Top Status Strip */}
                         <div className="pb-2.5 border-b border-white/[0.08] flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-xs">
+                          <div className="flex items-center gap-2 text-xs min-w-0 pr-2">
                             <span
-                              className={`w-2 h-2 rounded-full ${
+                              className={`w-2 h-2 rounded-full shrink-0 ${
                                 latestHistoricalNote ? "bg-amber-400" : "bg-emerald-400"
                               }`}
                             />
-                            <div className="leading-tight">
+                            <div className="leading-tight min-w-0">
                               <span className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider block">
                                 Prior Contact Status
                               </span>
-                              <strong className="text-white text-xs truncate max-w-[190px] block">
+                              <strong className="text-white text-xs truncate block">
                                 {latestHistoricalNote
-                                  ? `${formatRelativeTime(latestHistoricalNote.called_at)} · ${latestHistoricalNote.outcome.replace("_", " ")}`
+                                  ? formatPriorContactSummary(latestHistoricalNote.called_at, latestHistoricalNote.outcome)
                                   : "Fresh Lead · Ready to Dial"}
                               </strong>
                             </div>
@@ -904,28 +927,28 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
                               setActiveScreen("detail");
                               playHapticTick(850, 0.02);
                             }}
-                            className="text-xs font-bold text-[#F95721] hover:text-orange-300 flex items-center gap-0.5 active:scale-95 transition"
+                            className="text-xs font-bold text-[#F95721] hover:text-orange-300 flex items-center gap-0.5 active:scale-95 transition shrink-0"
                           >
                             <span>Dossier</span>
                             <ChevronRight className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
-                        {/* Business Name & Decision Maker */}
-                        <div className="py-2">
+                        {/* Business Name & Decision Maker (Bug 7: Dominant scale, Bug 8: Human actionable instruction) */}
+                        <div className="py-2.5">
                           <h2
-                            className="text-[19px] font-extrabold text-white tracking-tight leading-snug line-clamp-2"
+                            className="text-2xl sm:text-[28px] font-black tracking-tight text-white leading-tight break-words line-clamp-2"
                             title={formatLeadName(currentLead.name)}
                           >
                             {formatLeadName(currentLead.name)}
                           </h2>
 
                           {/* Target Decision Maker Pill */}
-                          <div className="mt-2 p-2 rounded-2xl bg-[#141418] border border-white/[0.06] flex items-center gap-2">
+                          <div className="mt-2.5 p-2 rounded-2xl bg-[#141418] border border-white/[0.06] flex items-center gap-2">
                             <div className="w-6 h-6 rounded-xl bg-[#F95721]/10 border border-[#F95721]/20 flex items-center justify-center shrink-0">
                               <User className="w-3.5 h-3.5 text-[#F95721]" />
                             </div>
-                            <div className="overflow-hidden">
+                            <div className="overflow-hidden min-w-0">
                               <span className="text-[9px] uppercase font-bold tracking-wider text-zinc-400 block leading-none">
                                 Target Decision Maker
                               </span>
@@ -937,28 +960,28 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
 
                           {/* CALLER NOTE BOX (View-Only Snapshot with prior note) */}
                           {latestHistoricalNote?.notes && (
-                            <div className="mt-2 p-2 bg-amber-950/20 border border-amber-500/20 rounded-xl">
+                            <div className="mt-2.5 p-2.5 bg-amber-950/20 border border-amber-500/20 rounded-xl">
                               <div className="flex items-center justify-between text-[9px] text-amber-300/80 font-bold mb-0.5">
-                                <span>CALLER NOTE ({latestHistoricalNote.caller_name.toUpperCase()})</span>
+                                <span>CALLER NOTE (BY {latestHistoricalNote.caller_name.toUpperCase()})</span>
                                 <span>{formatRelativeTime(latestHistoricalNote.called_at).toUpperCase()}</span>
                               </div>
-                              <p className="text-xs text-zinc-200 line-clamp-2 italic">
+                              <p className="text-xs text-zinc-200 line-clamp-2 italic leading-relaxed">
                                 &ldquo;{latestHistoricalNote.notes}&rdquo;
                               </p>
                             </div>
                           )}
                         </div>
 
-                        {/* Locality & Pitch Needed Flag */}
-                        <div className="pt-2 flex items-center justify-between border-t border-white/[0.06] text-xs">
-                          <div className="flex items-center gap-1.5 text-zinc-400 truncate max-w-[210px]">
-                            <MapPin className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                            <span className="truncate">
+                        {/* Locality & Pitch Needed Flag (Bug 6: 2-line clamp, never cut mid-word) */}
+                        <div className="pt-2.5 flex items-center justify-between border-t border-white/[0.06] text-xs gap-2">
+                          <div className="flex items-start gap-1.5 text-zinc-400 flex-1 min-w-0 pr-1">
+                            <MapPin className="w-3.5 h-3.5 text-zinc-400 shrink-0 mt-0.5" />
+                            <span className="text-[11px] leading-snug line-clamp-2 text-zinc-300">
                               {currentLead.address || currentLead.area || "Pune Metro"}
                             </span>
                           </div>
                           {!realWebsite && (
-                            <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md text-[10px] font-bold uppercase tracking-wider">
+                            <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md text-[10px] font-bold uppercase tracking-wider shrink-0">
                               Pitch Needed
                             </span>
                           )}
@@ -968,7 +991,7 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
 
                     {/* BOTTOM COCKPIT ACTIONS */}
                     <div className="w-full flex flex-col gap-2 pt-2">
-                      {/* Primary Action 1: DIAL BUTTON */}
+                      {/* Primary Action 1: DIAL BUTTON (Bug 3: Whitespace-nowrap phone number) */}
                       {readOnly ? (
                         <div className="w-full py-3.5 px-5 rounded-[22px] bg-zinc-900 border border-amber-500/30 text-amber-300 font-bold text-center text-xs">
                           Diagnostic Observer Mode Active (Dialing Disabled)
@@ -977,22 +1000,22 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
                         <a
                           href={formatTelLink(currentLead.phone)}
                           onClick={handleDialClick}
-                          className="w-full py-3.5 px-5 rounded-[22px] bg-gradient-to-r from-[#F95721] via-orange-600 to-amber-600 text-white font-bold shadow-lg shadow-[#F95721]/30 flex items-center justify-between active:scale-[0.97] transition cursor-pointer relative overflow-hidden group"
+                          className="w-full py-3.5 px-4 sm:px-5 rounded-[22px] bg-gradient-to-r from-[#F95721] via-orange-600 to-amber-600 text-white font-bold shadow-lg shadow-[#F95721]/30 flex items-center justify-between active:scale-[0.97] transition cursor-pointer relative overflow-hidden group"
                         >
-                          <div className="flex items-center gap-3 z-10">
-                            <div className="w-10 h-10 rounded-2xl bg-black/25 flex items-center justify-center shadow-inner">
-                              <Phone className="w-5 h-5 text-white animate-pulse" />
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-black/25 flex items-center justify-center shadow-inner shrink-0">
+                              <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-white animate-pulse" />
                             </div>
-                            <div className="text-left">
-                              <span className="text-[9px] uppercase font-black tracking-widest text-orange-200 block">
+                            <div className="text-left min-w-0">
+                              <span className="text-[9px] uppercase font-black tracking-widest text-orange-200 block leading-tight whitespace-nowrap">
                                 DIAL PRIMARY LINE
                               </span>
-                              <span className="text-base font-black text-white tracking-wide font-mono tabular-nums leading-tight block">
+                              <span className="text-[15px] sm:text-[17px] font-black text-white tracking-normal font-mono tabular-nums leading-tight block whitespace-nowrap">
                                 {formatPhoneDisplay(currentLead.phone)}
                               </span>
                             </div>
                           </div>
-                          <div className="z-10 bg-black/30 backdrop-blur-sm border border-white/20 px-3 py-1.5 rounded-xl text-xs font-bold text-white flex items-center gap-1">
+                          <div className="shrink-0 bg-black/30 backdrop-blur-sm border border-white/20 px-3 py-1.5 rounded-xl text-xs font-bold text-white flex items-center gap-1">
                             <span>Call</span>
                             <ChevronRight className="w-3.5 h-3.5" />
                           </div>
@@ -1756,7 +1779,7 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
             </button>
           </div>
 
-          {/* CALLER BOTTOM NAVIGATION BAR (4 TABS) */}
+          {/* CALLER BOTTOM NAVIGATION BAR (4 TABS ONLY - SOLE AND EXCLUSIVE NAV) */}
           <nav className="w-full bg-[#101014] border-t border-white/[0.08] px-4 py-2 z-20 shrink-0 grid grid-cols-4 gap-1 text-center">
             {/* 1. Queue */}
             <button
