@@ -46,6 +46,60 @@ const nextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      {
+        source: '/queue',
+        destination: '/studio/queue',
+        permanent: true,
+      },
+      {
+        source: '/comms',
+        destination: '/studio/comms',
+        permanent: true,
+      },
+      {
+        source: '/dashboard',
+        destination: '/studio/dashboard',
+        permanent: true,
+      },
+      {
+        source: '/projects',
+        destination: '/studio/projects',
+        permanent: true,
+      },
+      {
+        source: '/manager/:path*',
+        destination: '/studio/manager/:path*',
+        permanent: true,
+      },
+      {
+        source: '/login',
+        destination: '/studio/login',
+        permanent: true,
+      },
+      {
+        source: '/signup',
+        destination: '/studio/signup',
+        permanent: true,
+      },
+      {
+        source: '/forgot-password',
+        destination: '/studio/forgot-password',
+        permanent: true,
+      },
+      {
+        source: '/reset-password',
+        destination: '/studio/reset-password',
+        permanent: true,
+      },
+      {
+        source: '/me',
+        destination: '/studio/me',
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

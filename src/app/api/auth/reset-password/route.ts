@@ -12,24 +12,27 @@ export async function POST(req: NextRequest) {
   try {
     // 1. Authenticate user session via Supabase server client (cookies) or Bearer token
     let activeUser = null;
+    let userToken: string | null = null;
 
-    try {
-      const serverSupabase = createServerClient();
-      const {
-        data: { user: cookieUser },
-      } = await serverSupabase.auth.getUser();
-      activeUser = cookieUser;
-    } catch {
-      activeUser = null;
+    const authHeader = req.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      userToken = authHeader.replace("Bearer ", "").trim();
+      const admin = getAdminClient();
+      const { data: jwtData, error: jwtErr } = await admin.auth.getUser(userToken);
+      if (!jwtErr && jwtData?.user) {
+        activeUser = jwtData.user;
+      }
     }
 
     if (!activeUser) {
-      const authHeader = req.headers.get("authorization");
-      if (authHeader?.startsWith("Bearer ")) {
-        const token = authHeader.replace("Bearer ", "").trim();
-        const admin = getAdminClient();
-        const { data: jwtData } = await admin.auth.getUser(token);
-        activeUser = jwtData.user;
+      try {
+        const serverSupabase = createServerClient();
+        const {
+          data: { user: cookieUser },
+        } = await serverSupabase.auth.getUser();
+        activeUser = cookieUser;
+      } catch {
+        activeUser = null;
       }
     }
 
@@ -64,7 +67,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Update password in Supabase Auth
+    // 2. Invalidate all previous active sessions globally across all devices
+    if (userToken) {
+      try {
+        await admin.auth.admin.signOut(userToken, "global");
+      } catch (signOutErr) {
+        console.warn("Could not globally terminate previous sessions:", signOutErr);
+      }
+    }
+
+    // 3. Update password in Supabase Auth
     const { error: authError } = await admin.auth.admin.updateUserById(activeUser.id, {
       password: newPassword,
     });
@@ -76,7 +88,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Atomically update public.profiles: SET require_password_change = FALSE WHERE id = user.id
+    // 4. Atomically update public.profiles: SET require_password_change = FALSE WHERE id = user.id
     const { error: profileError } = await admin
       .from("profiles")
       .update({
@@ -89,7 +101,7 @@ export async function POST(req: NextRequest) {
       console.error("Failed to update profile require_password_change flag:", profileError);
     }
 
-    // 4. Retrieve profile role for workspace routing
+    // 5. Retrieve profile role for workspace routing
     const { data: profile } = await admin
       .from("profiles")
       .select("role")
@@ -101,6 +113,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       role,
+      email: activeUser.email,
     });
   } catch (err: any) {
     console.error("Reset-password handler error:", err);

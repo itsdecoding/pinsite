@@ -702,7 +702,7 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
       setActiveScreen("cockpit");
       setIsProfileSheetOpen(false);
     } else if (tabKey === "comms") {
-      router.push("/comms");
+      router.push("/studio/comms");
     } else if (tabKey === "today") {
       setActiveScreen("summary");
       setIsProfileSheetOpen(false);
@@ -754,7 +754,7 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
               </div>
               <button
                 type="button"
-                onClick={() => router.push("/manager/team")}
+                onClick={() => router.push("/studio/manager/team")}
                 className="px-2.5 py-0.5 bg-black/40 hover:bg-black/60 border border-amber-500/30 text-amber-300 rounded-lg text-[10px] font-bold shrink-0"
               >
                 Exit
@@ -1801,7 +1801,7 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
                     type="button"
                     onClick={async () => {
                       await supabase.auth.signOut();
-                      router.push("/login");
+                      router.push("/studio/login");
                     }}
                     className="w-full mt-2 py-3.5 bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 font-bold text-xs rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition"
                   >

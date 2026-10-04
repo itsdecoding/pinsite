@@ -598,14 +598,14 @@ export default function ManagerTeamPage() {
         {/* Manager Navigation Pills with Live Quarantine Badge */}
         <div className="flex items-center gap-1.5 p-1 bg-black/5 dark:bg-white/5 rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
           <Link
-            href="/manager/team"
+            href="/studio/manager/team"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#F95721] text-white shadow-sm transition-all"
           >
             <Users className="w-3.5 h-3.5" />
             <span>Team Roster</span>
           </Link>
           <Link
-            href="/manager/quarantine"
+            href="/studio/manager/quarantine"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] transition-all"
           >
             <Inbox className="w-3.5 h-3.5" />
@@ -617,13 +617,13 @@ export default function ManagerTeamPage() {
             )}
           </Link>
           <Link
-            href="/manager/invites"
+            href="/studio/manager/invites"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] transition-all"
           >
             <span>Invites</span>
           </Link>
           <Link
-            href="/manager/ingestion"
+            href="/studio/manager/ingestion"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] transition-all"
           >
             <span>CSV Ingestion</span>
@@ -1252,7 +1252,7 @@ export default function ManagerTeamPage() {
                 <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-[#ECE8E1] dark:border-[#2D2924]" onClick={(e) => e.stopPropagation()}>
                   {caller.role === "caller" ? (
                     <Link
-                      href={`/queue?impersonate=${caller.id}`}
+                      href={`/studio/queue?impersonate=${caller.id}`}
                       className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-[#F95721] hover:text-white text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all group/btn"
                       title={`Mirror view of ${caller.full_name}'s dial queue`}
                     >

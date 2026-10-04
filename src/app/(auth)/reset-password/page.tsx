@@ -28,6 +28,11 @@ function ResetPasswordForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isVerifyingSession, setIsVerifyingSession] = useState(true);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [activeEmail, setActiveEmail] = useState<string | null>(null);
+  const [recoveryToken, setRecoveryToken] = useState<string | null>(null);
+  const recoveryTokenRef = React.useRef<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [redirectPath, setRedirectPath] = useState<string | null>(null);
@@ -35,30 +40,136 @@ function ResetPasswordForm() {
   const supabase = createClient();
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      // Check for error parameters in URL hash fragment or query params (e.g. expired link)
-      const hash = window.location.hash.substring(1);
-      const hashParams = new URLSearchParams(hash);
-      const errorDesc =
-        hashParams.get("error_description") || searchParams.get("error_description");
-      if (errorDesc) {
-        setErrorMsg(decodeURIComponent(errorDesc.replace(/\+/g, " ")));
-      }
+    let isMounted = true;
 
-      // Listen for auth state change to confirm session recovery tokens are processed
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange((event) => {
-        if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
-          setErrorMsg(null);
+    async function initSession() {
+      if (typeof window === "undefined") return;
+
+      try {
+        // 1. Check for error parameters in URL hash fragment or query params (e.g. expired link)
+        const hash = window.location.hash.substring(1);
+        const hashParams = new URLSearchParams(hash);
+        const errorDesc =
+          hashParams.get("error_description") || searchParams.get("error_description");
+        if (errorDesc) {
+          if (isMounted) {
+            setErrorMsg(decodeURIComponent(errorDesc.replace(/\+/g, " ")));
+            setIsVerifyingSession(false);
+          }
+          return;
         }
-      });
 
-      return () => {
-        subscription.unsubscribe();
-      };
+        // 2. Consume implicit grant recovery tokens from URL hash fragment (#access_token=...&refresh_token=...)
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token");
+
+        if (accessToken) {
+          recoveryTokenRef.current = accessToken;
+          if (isMounted) {
+            setRecoveryToken(accessToken);
+            setSessionReady(true);
+            setErrorMsg(null);
+          }
+
+          if (refreshToken) {
+            const { data, error: sessionErr } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+
+            if (sessionErr) {
+              console.warn("Notice: setSession from recovery hash had warning/error:", sessionErr.message);
+              // Do NOT fail completely if we have accessToken: recoveryTokenRef still holds the valid JWT!
+            } else if (data?.user) {
+              if (isMounted) {
+                setActiveEmail(data.user.email || null);
+              }
+            }
+          }
+          if (isMounted) setIsVerifyingSession(false);
+          return;
+        }
+
+        // 3. Consume PKCE auth code from query params (?code=...)
+        const code = searchParams.get("code");
+        if (code) {
+          const { data, error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeErr) {
+            console.error("Failed to exchange code for session:", exchangeErr);
+            if (isMounted) setErrorMsg(exchangeErr.message || "Failed to exchange reset code.");
+          } else if (data?.user) {
+            if (isMounted) {
+              setActiveEmail(data.user.email || null);
+              setSessionReady(true);
+              setErrorMsg(null);
+            }
+          }
+          if (isMounted) setIsVerifyingSession(false);
+          return;
+        }
+
+        // 4. Check for existing active session (e.g. forced password change while logged in)
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          if (session.access_token) {
+            recoveryTokenRef.current = session.access_token;
+          }
+          if (isMounted) {
+            setActiveEmail(session.user.email || null);
+            setSessionReady(true);
+            setErrorMsg(null);
+          }
+        } else if (isForced) {
+          if (isMounted) setErrorMsg("Session expired. Please log in again to update your temporary password.");
+        } else {
+          // If no session or recovery token found yet, check hash once more before showing error
+          const currentHash = window.location.hash.substring(1);
+          const fallbackToken = new URLSearchParams(currentHash).get("access_token");
+          if (fallbackToken) {
+            recoveryTokenRef.current = fallbackToken;
+            if (isMounted) {
+              setRecoveryToken(fallbackToken);
+              setSessionReady(true);
+              setErrorMsg(null);
+            }
+          } else {
+            if (isMounted) {
+              setErrorMsg("No active reset session found. Please click the reset link sent to your email.");
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error("Reset password session init error:", err);
+        if (isMounted) setErrorMsg(err.message || "An unexpected error occurred while verifying your link.");
+      } finally {
+        if (isMounted) setIsVerifyingSession(false);
+      }
     }
-  }, [searchParams, supabase]);
+
+    initSession();
+
+    // Listen for auth state change as secondary confirmation
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if ((event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") && session?.user) {
+        if (session.access_token) {
+          recoveryTokenRef.current = session.access_token;
+        }
+        if (isMounted) {
+          setActiveEmail(session.user.email || null);
+          setSessionReady(true);
+          setErrorMsg(null);
+          setIsVerifyingSession(false);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [searchParams, supabase, isForced]);
 
   // Password requirement checklist calculation
   const requirements = useMemo(() => {
@@ -112,97 +223,122 @@ function ResetPasswordForm() {
 
   async function handleReset(e: React.FormEvent) {
     e.preventDefault();
-    if (!isFormValid || isLoading) return;
+    if (!isFormValid || isLoading || !sessionReady) return;
 
     setIsLoading(true);
     setErrorMsg(null);
 
     try {
       let role = "caller";
-      let apiHandled = false;
+      let userEmail = activeEmail;
 
-      // 1. Primary path: Attempt POST /api/auth/reset-password
+      // 1. Retrieve access token (from active session, ref, state, or direct hash parsing)
+      let token: string | null = null;
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (session?.access_token) {
-          headers["Authorization"] = `Bearer ${session.access_token}`;
+          token = session.access_token;
         }
+      } catch (sessErr) {
+        console.warn("Could not retrieve session token:", sessErr);
+      }
 
-        const res = await fetch("/api/auth/reset-password", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ password }),
-        });
+      if (!token && recoveryTokenRef.current) {
+        token = recoveryTokenRef.current;
+      }
 
-        if (res.ok) {
-          apiHandled = true;
-          const data = await res.json().catch(() => ({}));
-          if (data.role) role = data.role;
-        } else if (res.status !== 404 && res.status !== 401) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || "Failed to update password.");
-        }
-      } catch (apiErr: any) {
-        if (!apiErr.message?.includes("404") && !apiErr.message?.includes("401")) {
-          throw apiErr;
+      if (!token && recoveryToken) {
+        token = recoveryToken;
+      }
+
+      if (!token && typeof window !== "undefined") {
+        const currentHash = window.location.hash.substring(1);
+        const hashParams = new URLSearchParams(currentHash);
+        token = hashParams.get("access_token");
+      }
+
+      // 2. Update password: first via server-side Admin endpoint with Bearer auth, fallback to supabase.auth.updateUser
+      let updateSucceeded = false;
+
+      if (token) {
+        try {
+          const res = await fetch("/api/auth/reset-password", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ password }),
+          });
+
+          if (res.ok) {
+            const data = await res.json().catch(() => ({}));
+            if (data.role) role = data.role;
+            if (data.email) userEmail = data.email;
+            updateSucceeded = true;
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            console.warn("Server reset-password endpoint returned error:", errData.error);
+          }
+        } catch (fetchErr) {
+          console.warn("Could not call server reset-password endpoint:", fetchErr);
         }
       }
 
-      // 2. If endpoint not found or as primary auth mechanism, update via Supabase Client
-      if (!apiHandled) {
+      // If server endpoint didn't succeed or token wasn't present, try client-side supabase.auth.updateUser directly
+      if (!updateSucceeded) {
         const { data: updateData, error: sbError } = await supabase.auth.updateUser({
           password,
         });
 
         if (sbError) {
-          throw sbError;
+          throw new Error(sbError.message || "Failed to update password. Please request a new reset link.");
         }
 
-        // Clear require_password_change flag if user profile exists
         if (updateData?.user) {
+          userEmail = updateData.user.email || activeEmail;
+          updateSucceeded = true;
+          // Clear require_password_change if needed
           try {
             await supabase
               .from("profiles")
-              .update({
-                require_password_change: false,
-                updated_at: new Date().toISOString(),
-              })
+              .update({ require_password_change: false, updated_at: new Date().toISOString() })
               .eq("id", updateData.user.id);
           } catch (profileErr) {
-            console.warn("Could not update require_password_change:", profileErr);
+            console.warn("Could not update profile flag:", profileErr);
           }
         }
       }
 
-      // 3. Query role for redirection
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("role")
-            .eq("id", user.id)
-            .maybeSingle();
-
-          if (profile?.role) {
-            role = profile.role;
-          }
-        }
-      } catch (userErr) {
-        // Fallback default
+      if (!updateSucceeded) {
+        throw new Error("Unable to update password. Please click the reset link sent to your email again.");
       }
 
-      // Determine redirect destination according to user role:
-      // caller -> /queue
-      // developer -> /projects
-      // manager/admin -> /dashboard
+      // 3. Establish fresh authenticated session with new credentials
+      if (userEmail) {
+        try {
+          const { error: signInError } = await supabase.auth.signInWithPassword({
+            email: userEmail,
+            password,
+          });
+          if (signInError) {
+            console.warn("Auto-signin notice after reset:", signInError.message);
+          }
+        } catch (signInErr) {
+          console.warn("Could not auto-login with updated password:", signInErr);
+        }
+      }
+
+      // 4. Determine redirect destination according to user role:
+      // caller -> /studio/queue
+      // developer -> /studio/projects
+      // manager/admin -> /studio/dashboard
       const destination =
         role === "caller"
-          ? "/queue"
+          ? "/studio/queue"
           : role === "developer"
-          ? "/projects"
-          : "/dashboard";
+          ? "/studio/projects"
+          : "/studio/dashboard";
 
       setRedirectPath(destination);
       setIsSuccess(true);
@@ -250,14 +386,34 @@ function ResetPasswordForm() {
         </div>
       )}
 
+      {/* Session Verification State */}
+      {isVerifyingSession && (
+        <div className="p-3.5 mb-5 rounded-xl bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-xs flex items-center gap-2.5 text-[#6E6B66] dark:text-[#8A8680]">
+          <Loader2 className="w-4 h-4 animate-spin text-[#F95721] shrink-0" />
+          <span>Verifying secure recovery link...</span>
+        </div>
+      )}
+
       {/* Error Alert */}
       {errorMsg && (
         <div
           role="alert"
-          className="p-3 mb-5 rounded-xl bg-feedback-error/10 border border-feedback-error/25 text-feedback-error text-xs flex items-start gap-2.5"
+          className="p-3 mb-5 rounded-xl bg-feedback-error/10 border border-feedback-error/25 text-feedback-error text-xs flex flex-col gap-2"
         >
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span className="leading-relaxed">{errorMsg}</span>
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span className="leading-relaxed">{errorMsg}</span>
+          </div>
+          {!sessionReady && !isVerifyingSession && (
+            <div className="mt-1 pl-6">
+              <Link
+                href="/studio/forgot-password"
+                className="text-[#F95721] underline font-medium hover:text-[#E04612]"
+              >
+                Request a new password reset link →
+              </Link>
+            </div>
+          )}
         </div>
       )}
 
@@ -432,7 +588,7 @@ function ResetPasswordForm() {
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={!isFormValid || isLoading}
+            disabled={!isFormValid || isLoading || !sessionReady || isVerifyingSession}
             className="w-full py-2.5 px-4 bg-[#F95721] hover:bg-[#E04612] active:bg-[#C83B0D] text-white font-semibold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
             {isLoading ? (

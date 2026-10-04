@@ -572,7 +572,7 @@ export function DesktopQueue() {
 
   const handleExitMirrorMode = () => {
     setImpersonatedCaller(null);
-    router.push("/manager/team");
+    router.push("/studio/manager/team");
   };
 
   const handleReassignLead = async (leadId: string, newCallerId: string) => {

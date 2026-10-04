@@ -52,7 +52,7 @@ export function FloatingSidebar() {
       await supabase.auth.signOut();
     } catch (e) {}
     document.cookie = "agency_demo_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    router.push("/login");
+    router.push("/studio/login");
   }
 
   const role = profile?.role || "manager";
@@ -60,31 +60,31 @@ export function FloatingSidebar() {
   const navItems = [
     {
       label: "Dashboard",
-      href: "/dashboard",
+      href: "/studio/dashboard",
       icon: LayoutDashboard,
       roles: ["manager", "admin"],
     },
     {
       label: "Dial Queue",
-      href: "/queue",
+      href: "/studio/queue",
       icon: PhoneCall,
       roles: ["caller", "manager", "admin"],
     },
     {
       label: "Projects",
-      href: "/projects",
+      href: "/studio/projects",
       icon: FolderKanban,
       roles: ["developer", "manager", "admin"],
     },
     {
       label: "Comms & DMs",
-      href: "/comms",
+      href: "/studio/comms",
       icon: MessageSquare,
       roles: ["caller", "developer", "manager", "admin"],
     },
     {
       label: "Team Center",
-      href: "/manager/team",
+      href: "/studio/manager/team",
       icon: Users,
       roles: ["manager", "admin"],
     },

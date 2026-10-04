@@ -232,7 +232,7 @@ export default function ManagerDashboardPage() {
         </div>
 
         <Link
-          href="/queue"
+          href="/studio/queue"
           className="py-3 px-6 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs shadow-sm flex items-center gap-2 transition-all active:scale-[0.98] shrink-0"
         >
           <span>Start Calling</span>
@@ -253,7 +253,7 @@ export default function ManagerDashboardPage() {
                 </h3>
               </div>
               <Link
-                href="/queue"
+                href="/studio/queue"
                 className="text-xs font-semibold text-[#F95721] hover:underline flex items-center gap-1"
               >
                 <span>View all</span>

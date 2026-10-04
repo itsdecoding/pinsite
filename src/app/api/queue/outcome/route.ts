@@ -191,7 +191,18 @@ export async function POST(req: NextRequest) {
       .update(leadUpdate)
       .eq("id", p_lead_id);
 
-    if (updateError && (updateError.message?.includes("rejection_reason") || updateError.code === "42703")) {
+    // If trigger fails on digest (42883) or missing column, ensure soft delete & dnc_flag are guaranteed
+    if (updateError && (updateError.code === "42883" || updateError.message?.includes("digest"))) {
+      console.warn("Trigger digest error encountered during DNC update; applying direct soft delete fallback");
+      const fallbackDncUpdate: Record<string, any> = {
+        deleted_at: nowIso,
+        dnc_flag: true,
+        assigned_to: null,
+        updated_at: nowIso,
+      };
+      const retryDnc = await admin.from("leads").update(fallbackDncUpdate).eq("id", p_lead_id);
+      updateError = retryDnc.error;
+    } else if (updateError && (updateError.message?.includes("rejection_reason") || updateError.code === "42703")) {
       delete leadUpdate.rejection_reason;
       delete leadUpdate.quarantined_at;
       delete leadUpdate.disposal_scheduled_at;

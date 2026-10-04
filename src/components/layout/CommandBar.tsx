@@ -24,14 +24,14 @@ export function CommandBar() {
   }, []);
 
   const commands = [
-    { label: "Go to Operations Dashboard", href: "/dashboard" },
-    { label: "Open Outbound Dial Queue", href: "/queue" },
-    { label: "Open Team Command Center", href: "/manager/team" },
-    { label: "Open Quarantine Holding Bin", href: "/manager/quarantine" },
-    { label: "Open Web Projects Kanban", href: "/projects" },
-    { label: "Open Realtime Team Comms", href: "/comms" },
-    { label: "Upload Leads CSV", href: "/manager/ingestion" },
-    { label: "Manage Team Invites", href: "/manager/invites" },
+    { label: "Go to Operations Dashboard", href: "/studio/dashboard" },
+    { label: "Open Outbound Dial Queue", href: "/studio/queue" },
+    { label: "Open Team Command Center", href: "/studio/manager/team" },
+    { label: "Open Quarantine Holding Bin", href: "/studio/manager/quarantine" },
+    { label: "Open Web Projects Kanban", href: "/studio/projects" },
+    { label: "Open Realtime Team Comms", href: "/studio/comms" },
+    { label: "Upload Leads CSV", href: "/studio/manager/ingestion" },
+    { label: "Manage Team Invites", href: "/studio/manager/invites" },
   ];
 
   const filtered = commands.filter((c) =>

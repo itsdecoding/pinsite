@@ -113,11 +113,11 @@ function SignupForm() {
       // 3. Route according to assigned role
       const assignedRole = data.role || inviteData.role;
       if (assignedRole === "caller") {
-        router.push("/queue");
+        router.push("/studio/queue");
       } else if (assignedRole === "developer") {
-        router.push("/projects");
+        router.push("/studio/projects");
       } else {
-        router.push("/dashboard");
+        router.push("/studio/dashboard");
       }
     } catch (err: any) {
       setFormError(err.message || "An error occurred during account creation.");

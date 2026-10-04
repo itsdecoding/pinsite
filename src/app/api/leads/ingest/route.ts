@@ -216,6 +216,26 @@ export async function POST(req: NextRequest) {
       const niche = (lead.niche || "Dentist").trim();
       const hasWebsite = Boolean(lead.website && String(lead.website).trim().length > 0);
 
+      // Multidimensional lead opportunity scoring formula
+      let computedScore = 50;
+      if (rawPhone && rawPhone.trim().length >= 10) computedScore += 15;
+      if (normalizedPhone.startsWith("+91")) computedScore += 5;
+      const isMapsLink = !lead.website || lead.website.includes("google.com/maps") || lead.website.includes("maps.google");
+      if (isMapsLink) computedScore += 15; // Highest website pitch opportunity
+      else computedScore += 5;
+
+      const addrLower = (lead.address || area || "").toLowerCase();
+      if (addrLower.includes("kothrud") || addrLower.includes("baner") || addrLower.includes("aundh")) computedScore += 10;
+      else if (addrLower.includes("hadapsar") || addrLower.includes("shivaji nagar") || addrLower.includes("pune")) computedScore += 7;
+      else computedScore += 4;
+
+      const nameLower = (lead.name || "").toLowerCase();
+      if (nameLower.includes("dr.") || nameLower.includes("dr ")) computedScore += 5;
+
+      const finalScore = typeof lead.score === "number" && !isNaN(lead.score)
+        ? Math.min(100, Math.max(0, lead.score))
+        : Math.min(100, Math.max(0, computedScore));
+
       // NOTE: public.leads table does NOT have a 'source' column.
       rowsToInsert.push({
         name: formatLeadName(lead.name),
@@ -226,7 +246,7 @@ export async function POST(req: NextRequest) {
         address: lead.address || null,
         niche: niche,
         area: area,
-        score: typeof lead.score === "number" ? Math.min(100, Math.max(0, lead.score)) : 75,
+        score: finalScore,
         status: "unassigned",
       });
     }

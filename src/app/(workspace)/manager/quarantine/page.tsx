@@ -282,27 +282,27 @@ export default function ManagerQuarantinePage() {
         {/* Manager Navigation Pills */}
         <div className="flex items-center gap-1.5 p-1 bg-black/5 dark:bg-white/5 rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
           <Link
-            href="/manager/team"
+            href="/studio/manager/team"
             className="px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5 transition-all flex items-center gap-1.5 shrink-0"
           >
             <Users className="w-3.5 h-3.5" />
             <span>Team Roster</span>
           </Link>
           <Link
-            href="/manager/quarantine"
+            href="/studio/manager/quarantine"
             className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#F95721] text-white shadow-sm transition-all flex items-center gap-1.5 shrink-0"
           >
             <ShieldAlert className="w-3.5 h-3.5" />
             <span>Quarantine</span>
           </Link>
           <Link
-            href="/manager/invites"
+            href="/studio/manager/invites"
             className="px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5 transition-all shrink-0"
           >
             Invites
           </Link>
           <Link
-            href="/manager/ingestion"
+            href="/studio/manager/ingestion"
             className="px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5 transition-all shrink-0"
           >
             CSV Ingestion
