@@ -18,26 +18,19 @@ import {
   Check,
   X,
   Inbox,
-  UserCheck,
   Radio,
   Zap,
-  ArrowUpDown,
-  SlidersHorizontal,
-  ChevronRight,
   PhoneForwarded,
   FileText,
   Calendar,
   Shield,
   PhoneOff,
   UserX,
-  Hourglass,
-  Layers,
-  ArrowRight,
-  Sparkles,
   AlertTriangle,
   UserCog,
-  Crown,
+  Sparkles,
   ChevronDown,
+  Eye,
 } from "lucide-react";
 
 interface OutcomeBreakdown {
@@ -47,6 +40,15 @@ interface OutcomeBreakdown {
   gatekeeper: number;
   not_interested: number;
   dnc: number;
+}
+
+interface PipelineCounts {
+  dial_now: number;
+  callbacks: number;
+  overdue_callbacks: number;
+  waiting: number;
+  done: number;
+  total_assigned: number;
 }
 
 interface CallerStat {
@@ -66,7 +68,26 @@ interface CallerStat {
   callbacks_today: number;
   talk_time_seconds: number;
   active_leads_count: number;
+  pipeline: PipelineCounts;
   outcomes_breakdown: OutcomeBreakdown;
+}
+
+interface FleetPipeline {
+  dial_now: number;
+  callbacks: number;
+  overdue_callbacks: number;
+  waiting: number;
+  done_today: number;
+}
+
+interface NeedsAttentionItem {
+  id: string;
+  type: "overdue_callbacks" | "zero_dials" | "imbalance";
+  caller_id?: string;
+  caller_name?: string;
+  count?: number;
+  message: string;
+  action_label: string;
 }
 
 interface TeamSummary {
@@ -80,6 +101,8 @@ interface TeamSummary {
   active_callers: number;
   total_callers: number;
   connect_rate_percent: number | null;
+  fleet_pipeline?: FleetPipeline;
+  needs_attention?: NeedsAttentionItem[];
 }
 
 interface CallLedgerItem {
@@ -104,10 +127,14 @@ interface CallerActivityDetail {
   caller: CallerStat;
   summary: {
     total_dials: number;
+    all_time_dials?: number;
     connects: number;
     connect_rate: number | null;
     talk_time_seconds: number;
     active_queue_count: number;
+    range?: string;
+    range_label?: string;
+    pipeline?: PipelineCounts;
   };
   calls: CallLedgerItem[];
   active_leads: any[];
@@ -145,6 +172,19 @@ function formatPhoneDisplay(phone: string | null | undefined): string {
   return phone;
 }
 
+function formatCallbackDate(isoString: string | null | undefined): { label: string; isOverdue: boolean } {
+  if (!isoString) return { label: "No time set", isOverdue: false };
+  const d = new Date(isoString);
+  const now = new Date();
+  const isOverdue = d < now;
+  const dateStr = d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+  const timeStr = d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true });
+  return {
+    label: `${dateStr}, ${timeStr}`,
+    isOverdue,
+  };
+}
+
 function generateTemporaryPassword(): string {
   const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
   let randomPart = "";
@@ -168,13 +208,22 @@ export default function ManagerTeamPage() {
     active_callers: 0,
     total_callers: 0,
     connect_rate_percent: null,
+    fleet_pipeline: {
+      dial_now: 0,
+      callbacks: 0,
+      overdue_callbacks: 0,
+      waiting: 0,
+      done_today: 0,
+    },
+    needs_attention: [],
   });
   const [quarantineCount, setQuarantineCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
-  const [sortBy, setSortBy] = useState<"queue" | "dials" | "connects" | "name">("queue");
+  const [roleFilter, setRoleFilter] = useState<"all" | "caller" | "manager" | "developer" | "admin">("all");
+  const [sortBy, setSortBy] = useState<"urgency" | "dials" | "connects" | "queue" | "name">("urgency");
   const [timeRange, setTimeRange] = useState<"today" | "24h">("today");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(new Date());
@@ -192,21 +241,17 @@ export default function ManagerTeamPage() {
   const [detailCallerId, setDetailCallerId] = useState<string | null>(null);
   const [detailData, setDetailData] = useState<CallerActivityDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [detailTab, setDetailTab] = useState<"calls" | "queue">("calls");
+  const [detailTab, setDetailTab] = useState<"calls" | "callbacks" | "queue">("calls");
 
-  // Rebalance modal state
-  const [rebalanceModalOpen, setRebalanceModalOpen] = useState(false);
-  const [rebalanceSource, setRebalanceSource] = useState<string>("");
-  const [rebalanceTarget, setRebalanceTarget] = useState<string>("");
-  const [rebalanceCount, setRebalanceCount] = useState<number>(10);
-  const [rebalancing, setRebalancing] = useState(false);
-  const [rebalanceError, setRebalanceError] = useState<string | null>(null);
-  const [rebalanceSuccess, setRebalanceSuccess] = useState<string | null>(null);
-
-  // Lead distribution state
-  const [distributing, setDistributing] = useState(false);
-  const [distributeNotification, setDistributeNotification] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [distributeDropdownOpen, setDistributeDropdownOpen] = useState(false);
+  // Reassign modal state
+  const [reassignModalOpen, setReassignModalOpen] = useState(false);
+  const [reassignMode, setReassignMode] = useState<"between" | "unassigned">("between");
+  const [reassignSource, setReassignSource] = useState<string>("");
+  const [reassignTarget, setReassignTarget] = useState<string>("");
+  const [reassignCount, setReassignCount] = useState<number>(10);
+  const [reassigning, setReassigning] = useState(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
+  const [reassignSuccess, setReassignSuccess] = useState<string | null>(null);
 
   // Role change modal state
   const [roleModalCaller, setRoleModalCaller] = useState<CallerStat | null>(null);
@@ -214,7 +259,6 @@ export default function ManagerTeamPage() {
   const [isUpdatingRole, setIsUpdatingRole] = useState(false);
   const [roleUpdateError, setRoleUpdateError] = useState<string | null>(null);
   const [roleUpdateSuccess, setRoleUpdateSuccess] = useState<string | null>(null);
-  const [roleFilter, setRoleFilter] = useState<"all" | "caller" | "manager" | "developer" | "admin">("all");
 
   const fetchTeamStats = useCallback(
     async (isManual: boolean = false) => {
@@ -271,12 +315,12 @@ export default function ManagerTeamPage() {
   }, [autoRefresh, fetchTeamStats]);
 
   // Fetch Caller Activity Detail when drawer is opened
-  const openCallerDetail = async (callerId: string) => {
+  const openCallerDetail = async (callerId: string, initialTab: "calls" | "callbacks" | "queue" = "calls") => {
     setDetailCallerId(callerId);
     setDetailLoading(true);
-    setDetailTab("calls");
+    setDetailTab(initialTab);
     try {
-      const res = await fetch(`/api/manager/caller-activity?caller_id=${callerId}`);
+      const res = await fetch(`/api/manager/caller-activity?caller_id=${callerId}&range=${timeRange}`);
       if (res.ok) {
         const data = await res.json();
         setDetailData(data);
@@ -295,7 +339,7 @@ export default function ManagerTeamPage() {
     setDetailData(null);
   };
 
-  // Filtered & Sorted callers list
+  // Filtered & Sorted callers list (Default sort: Urgency / Needs attention first)
   const filteredCallers = useMemo(() => {
     const list = callers.filter((c) => {
       const matchesSearch =
@@ -313,9 +357,23 @@ export default function ManagerTeamPage() {
     });
 
     list.sort((a, b) => {
-      if (sortBy === "queue") return b.active_leads_count - a.active_leads_count;
+      if (sortBy === "urgency") {
+        // Priority 1: Overdue callbacks
+        const aOverdue = a.pipeline?.overdue_callbacks || 0;
+        const bOverdue = b.pipeline?.overdue_callbacks || 0;
+        if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+
+        // Priority 2: Zero dials today (for active callers)
+        const aZero = a.dials_today === 0 && a.active ? 1 : 0;
+        const bZero = b.dials_today === 0 && b.active ? 1 : 0;
+        if (aZero !== bZero) return bZero - aZero;
+
+        // Priority 3: Queue depth
+        return b.active_leads_count - a.active_leads_count;
+      }
       if (sortBy === "dials") return b.dials_today - a.dials_today;
       if (sortBy === "connects") return b.connects_today - a.connects_today;
+      if (sortBy === "queue") return b.active_leads_count - a.active_leads_count;
       if (sortBy === "name") return a.full_name.localeCompare(b.full_name);
       return 0;
     });
@@ -323,54 +381,84 @@ export default function ManagerTeamPage() {
     return list;
   }, [callers, searchQuery, statusFilter, roleFilter, sortBy]);
 
-  // Proactive Queue Imbalance Detection (> 1.5x team average over callers only)
-  const teamAverageLeads = useMemo(() => {
-    const onlyCallers = callers.filter((c) => c.role === "caller");
-    if (onlyCallers.length === 0) return 0;
-    const total = onlyCallers.reduce((acc, c) => acc + c.active_leads_count, 0);
-    return Math.round(total / onlyCallers.length);
-  }, [callers]);
+  // Reassign Modal Opener
+  function openReassignModal(sourceCallerId?: string, mode: "between" | "unassigned" = "between") {
+    setReassignError(null);
+    setReassignSuccess(null);
+    setReassignMode(mode);
 
-  const overloadedCaller = useMemo(() => {
     const onlyCallers = callers.filter((c) => c.role === "caller");
-    return onlyCallers.find(
-      (c) => c.active_leads_count > Math.max(10, Math.ceil(teamAverageLeads * 1.5))
-    );
-  }, [callers, teamAverageLeads]);
+    if (sourceCallerId) {
+      setReassignSource(sourceCallerId);
+      const other = onlyCallers.find((c) => c.id !== sourceCallerId);
+      if (other) setReassignTarget(other.id);
+    } else {
+      const sorted = [...onlyCallers].sort((a, b) => b.active_leads_count - a.active_leads_count);
+      if (sorted.length >= 2) {
+        setReassignSource(sorted[0].id);
+        setReassignTarget(sorted[sorted.length - 1].id);
+      }
+    }
+    setReassignCount(10);
+    setReassignModalOpen(true);
+  }
 
-  const lightestCaller = useMemo(() => {
-    const onlyCallers = callers.filter((c) => c.role === "caller");
-    if (onlyCallers.length === 0) return null;
-    return [...onlyCallers].sort((a, b) => a.active_leads_count - b.active_leads_count)[0];
-  }, [callers]);
+  // Handle Reassign Execution (Supports both between callers and unassigned pool)
+  async function handleExecuteReassign(e: React.FormEvent) {
+    e.preventDefault();
+    setReassigning(true);
+    setReassignError(null);
+    setReassignSuccess(null);
 
-  async function handleDistributeNow() {
-    setDistributing(true);
-    setDistributeNotification(null);
     try {
-      const res = await fetch("/api/manager/leads/distribute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target_cap: 30 }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to distribute leads");
-      setDistributeNotification({
-        type: "success",
-        text: data.message || `Distributed ${data.assigned_count} leads successfully!`,
-      });
+      if (reassignMode === "unassigned") {
+        const res = await fetch("/api/manager/leads/distribute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target_cap: 30 }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to reassign unassigned leads");
+        setReassignSuccess(data.message || `Reassigned ${data.assigned_count} leads successfully!`);
+      } else {
+        if (!reassignSource || !reassignTarget) {
+          throw new Error("Please select both source and target callers");
+        }
+        if (reassignSource === reassignTarget) {
+          throw new Error("Source and target callers cannot be the same");
+        }
+        if (reassignCount <= 0) {
+          throw new Error("Lead count must be at least 1");
+        }
+
+        const res = await fetch("/api/manager/leads/rebalance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source_caller_id: reassignSource,
+            target_caller_id: reassignTarget,
+            count: reassignCount,
+          }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Failed to reassign leads");
+        setReassignSuccess(`Successfully reassigned ${data.rebalanced_count} leads!`);
+      }
+
       await fetchTeamStats(true);
+      setTimeout(() => {
+        setReassignModalOpen(false);
+        setReassignSuccess(null);
+      }, 1500);
     } catch (err: any) {
-      setDistributeNotification({
-        type: "error",
-        text: err.message || "Failed to distribute leads",
-      });
+      setReassignError(err.message || "An unexpected error occurred during reassign");
     } finally {
-      setDistributing(false);
-      setTimeout(() => setDistributeNotification(null), 5000);
+      setReassigning(false);
     }
   }
 
+  // Password reset handlers
   function handleOpenResetModal(caller: CallerStat, e?: React.MouseEvent) {
     if (e) e.stopPropagation();
     setTargetCaller(caller);
@@ -412,16 +500,14 @@ export default function ManagerTeamPage() {
       });
 
       const data = await res.json().catch(() => ({}));
-
       if (!res.ok) {
         throw new Error(data.error || "Failed to update temporary password");
       }
 
       setResetSuccess(
-        `Temporary password for ${targetCaller.full_name} set successfully. The caller will be prompted to choose a permanent password upon their next login.`
+        `Temporary password for ${targetCaller.full_name} set successfully. The caller will be prompted to choose a permanent password upon login.`
       );
 
-      // Optimistically update caller state
       setCallers((prev) =>
         prev.map((c) =>
           c.id === targetCaller.id
@@ -443,6 +529,7 @@ export default function ManagerTeamPage() {
     setTimeout(() => setCopiedPassword(false), 2000);
   }
 
+  // Role change handlers
   function handleOpenRoleModal(caller: CallerStat, e?: React.MouseEvent) {
     if (e) e.stopPropagation();
     setRoleModalCaller(caller);
@@ -481,24 +568,15 @@ export default function ManagerTeamPage() {
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to update role");
-      }
+      if (!res.ok) throw new Error(data.error || "Failed to update role");
 
-      setRoleUpdateSuccess(
-        data.message || `Successfully updated ${roleModalCaller.full_name}'s role to ${selectedNewRole.toUpperCase()}.`
-      );
+      setRoleUpdateSuccess(`Updated ${roleModalCaller.full_name}'s role to ${selectedNewRole.toUpperCase()}.`);
 
-      // Optimistically update caller in local state
       setCallers((prev) =>
-        prev.map((c) =>
-          c.id === roleModalCaller.id ? { ...c, role: selectedNewRole } : c
-        )
+        prev.map((c) => (c.id === roleModalCaller.id ? { ...c, role: selectedNewRole } : c))
       );
 
-      setTimeout(() => {
-        handleCloseRoleModal();
-      }, 1400);
+      setTimeout(() => handleCloseRoleModal(), 1400);
     } catch (err: any) {
       setRoleUpdateError(err.message || "An unexpected error occurred while updating role");
     } finally {
@@ -506,97 +584,33 @@ export default function ManagerTeamPage() {
     }
   }
 
-  // Handle Rebalance Execution
-  async function handleExecuteRebalance(e: React.FormEvent) {
-    e.preventDefault();
-    if (!rebalanceSource || !rebalanceTarget) {
-      setRebalanceError("Please select both source and target callers");
-      return;
-    }
-    if (rebalanceSource === rebalanceTarget) {
-      setRebalanceError("Source and target callers cannot be the same");
-      return;
-    }
-    if (rebalanceCount <= 0) {
-      setRebalanceError("Lead count must be at least 1");
-      return;
-    }
-
-    setRebalancing(true);
-    setRebalanceError(null);
-    setRebalanceSuccess(null);
-
-    try {
-      const res = await fetch("/api/manager/leads/rebalance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          source_caller_id: rebalanceSource,
-          target_caller_id: rebalanceTarget,
-          count: rebalanceCount,
-        }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to rebalance leads");
-      }
-
-      setRebalanceSuccess(`Successfully transferred ${data.rebalanced_count} leads!`);
-      await fetchTeamStats(true);
-      setTimeout(() => {
-        setRebalanceModalOpen(false);
-        setRebalanceSuccess(null);
-      }, 1500);
-    } catch (err: any) {
-      setRebalanceError(err.message || "An unexpected error occurred during rebalance");
-    } finally {
-      setRebalancing(false);
-    }
-  }
-
-  function openRebalanceModalWithCaller(sourceCallerId?: string) {
-    setRebalanceError(null);
-    setRebalanceSuccess(null);
-    const onlyCallers = callers.filter((c) => c.role === "caller");
-    if (sourceCallerId) {
-      setRebalanceSource(sourceCallerId);
-      // Select first other caller as target
-      const other = onlyCallers.find((c) => c.id !== sourceCallerId);
-      if (other) setRebalanceTarget(other.id);
-    } else {
-      // Default: Highest queue caller to lowest queue caller
-      const sorted = [...onlyCallers].sort((a, b) => b.active_leads_count - a.active_leads_count);
-      if (sorted.length >= 2) {
-        setRebalanceSource(sorted[0].id);
-        setRebalanceTarget(sorted[sorted.length - 1].id);
-      }
-    }
-    setRebalanceCount(10);
-    setRebalanceModalOpen(true);
-  }
+  const activeCallersCount = callers.filter((c) => c.role === "caller").length;
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto pb-16">
-      {/* Header & Sub-Navigation */}
-      <div className="pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924] pt-2 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="space-y-6 max-w-6xl mx-auto pb-16">
+      {/* ========================================================================= */}
+      {/* 1. HEADER & SUB-NAVIGATION                                                */}
+      {/* ========================================================================= */}
+      <div className="pb-4 border-b border-[#ECE8E1] dark:border-[#262420] pt-2 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <span className="text-[11px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
-            TEAM COMMAND CENTER
-          </span>
-          <h1 className="text-3xl sm:text-4xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-1">
-            Caller roster & telemetry
-          </h1>
-          <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1.5 flex items-center gap-2">
-            <span>Monitor daily caller output, live talk time, queue depth, and rebalance leads.</span>
-            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono tracking-widest uppercase text-[#F95721] font-bold">
+              TEAM COMMAND CENTER
+            </span>
+            <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] text-[#8A8680]">
               IST (UTC+5:30)
             </span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-1">
+            Team Roster & Telemetry
+          </h1>
+          <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1">
+            Who&apos;s working, who&apos;s stuck, and where to intervene.
           </p>
         </div>
 
-        {/* Manager Navigation Pills with Live Quarantine Badge */}
-        <div className="flex items-center gap-1.5 p-1 bg-black/5 dark:bg-white/5 rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
+        {/* Sub-nav tabs */}
+        <div className="flex items-center gap-1.5 p-1 bg-black/5 dark:bg-white/5 rounded-2xl border border-[#ECE8E1] dark:border-[#262420] shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
           <Link
             href="/studio/manager/team"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#F95721] text-white shadow-sm transition-all"
@@ -634,17 +648,15 @@ export default function ManagerTeamPage() {
       {/* Telemetry Status Bar & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-mono">
-            <Radio className="w-4 h-4 animate-pulse" />
+          <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-mono text-[11px]">
+            <Radio className="w-3.5 h-3.5 animate-pulse" />
             <span>Live telemetry</span>
           </div>
-          <span className="text-[#6E6B66] dark:text-[#8A8680]">&bull;</span>
-          <span className="text-[#6E6B66] dark:text-[#8A8680] font-mono">
-            {formatTimeAgo(lastRefreshedAt)}
-          </span>
+          <span className="text-[#8A8680]">&bull;</span>
+          <span className="text-[#8A8680] font-mono text-[11px]">{formatTimeAgo(lastRefreshedAt)}</span>
 
           {/* Time Range Selector */}
-          <div className="flex items-center p-0.5 bg-black/5 dark:bg-white/5 rounded-xl border border-[#ECE8E1] dark:border-[#2D2924] ml-2">
+          <div className="flex items-center p-0.5 bg-black/5 dark:bg-white/5 rounded-xl border border-[#ECE8E1] dark:border-[#262420] ml-2">
             <button
               type="button"
               onClick={() => setTimeRange("today")}
@@ -671,57 +683,15 @@ export default function ManagerTeamPage() {
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-auto">
-          {/* Merged Lead Operations Dropdown: [ ⚖️ Distribute ▾ ] */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setDistributeDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#F95721] hover:bg-[#E04612] text-white font-semibold text-xs transition-all shadow-sm active:scale-95"
-            >
-              <span>⚖️ Distribute</span>
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${distributeDropdownOpen ? "rotate-180" : ""}`} />
-            </button>
-
-            {distributeDropdownOpen && (
-              <div
-                className="absolute right-0 top-full mt-1.5 w-64 rounded-2xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-2xl p-1.5 z-[150] animate-in fade-in zoom-in-95 duration-100"
-                onClick={() => setDistributeDropdownOpen(false)}
-              >
-                <button
-                  type="button"
-                  onClick={handleDistributeNow}
-                  disabled={distributing}
-                  className="w-full p-2.5 rounded-xl hover:bg-emerald-500/10 text-left flex items-start gap-2.5 transition-colors group"
-                >
-                  <Sparkles className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF] group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
-                      {distributing ? "Distributing..." : "Distribute Unassigned"}
-                    </p>
-                    <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] leading-tight mt-0.5">
-                      Assign unassigned leads to callers (depth-capped at 30)
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => openRebalanceModalWithCaller()}
-                  className="w-full p-2.5 rounded-xl hover:bg-[#F95721]/10 text-left flex items-start gap-2.5 transition-colors group mt-1"
-                >
-                  <PhoneForwarded className="w-4 h-4 text-[#F95721] shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF] group-hover:text-[#F95721]">
-                      Rebalance Overloaded
-                    </p>
-                    <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] leading-tight mt-0.5">
-                      Shift excess leads from heavy callers to lightest callers
-                    </p>
-                  </div>
-                </button>
-              </div>
-            )}
-          </div>
+          {/* Unified Action Button: Reassign */}
+          <button
+            type="button"
+            onClick={() => openReassignModal()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#F95721] hover:bg-[#E04612] text-white font-semibold text-xs transition-all shadow-sm active:scale-95"
+          >
+            <PhoneForwarded className="w-3.5 h-3.5" />
+            <span>Reassign Leads</span>
+          </button>
 
           <button
             type="button"
@@ -740,7 +710,7 @@ export default function ManagerTeamPage() {
             type="button"
             onClick={() => fetchTeamStats(true)}
             disabled={refreshing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721] text-[#111110] dark:text-[#F5F3EF] shadow-sm transition-all disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#262420] hover:border-[#F95721] text-[#111110] dark:text-[#F5F3EF] shadow-sm transition-all disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-[#F95721]" : ""}`} />
             <span>Refresh</span>
@@ -748,328 +718,229 @@ export default function ManagerTeamPage() {
         </div>
       </div>
 
-      {/* Distribution Notification Toast */}
-      {distributeNotification && (
-        <div
-          className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center justify-between border shadow-sm animate-in fade-in ${
-            distributeNotification.type === "success"
-              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
-              : "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {distributeNotification.type === "success" ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-            )}
-            <span>{distributeNotification.text}</span>
+      {/* ========================================================================= */}
+      {/* 2. FLEET PIPELINE — ONE HERO SECTION, 4 NUMBERS (Dial Now / Callbacks / Waiting / Done) */}
+      {/* ========================================================================= */}
+      <div className="p-5 sm:p-6 rounded-3xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-[#ECE8E1]/80 dark:border-[#262420] gap-2">
+          <div>
+            <span className="text-[10px] font-mono tracking-widest uppercase text-[#F95721] font-bold">
+              FLEET PIPELINE
+            </span>
+            <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
+              Workload distribution across callers
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setDistributeNotification(null)}
-            className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-stone-400"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="text-xs text-[#6E6B66] dark:text-[#8A8680] font-mono">
+            <span>{summary.active_callers} active callers &bull; {summary.total_connects_today} connects &bull; {formatDuration(summary.total_talk_time_seconds)} talk</span>
+          </div>
         </div>
-      )}
 
-      {/* Proactive Queue Imbalance Alert Banner (Triggered when any caller > 1.5x team average) */}
-      {overloadedCaller && lightestCaller && overloadedCaller.id !== lightestCaller.id && (
-        <div className="p-4 sm:p-5 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm animate-in fade-in">
-          <div className="flex items-start sm:items-center gap-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                  QUEUE IMBALANCE DETECTED
-                </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold border border-amber-500/30">
-                  &gt; 1.5x TEAM AVERAGE
-                </span>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 pt-5">
+          {/* 1. Dial Now */}
+          <div className="p-4 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/60 dark:border-[#262420] flex flex-col justify-between">
+            <span className="text-[11px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
+              Dial Now
+            </span>
+            <div className="mt-2">
+              <div className="text-3xl sm:text-4xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
+                {summary.fleet_pipeline?.dial_now ?? 0}
               </div>
-              <p className="text-xs text-[#111110] dark:text-[#F5F3EF] mt-0.5">
-                <strong className="text-amber-600 dark:text-amber-400">{overloadedCaller.full_name}</strong> currently holds{" "}
-                <strong>{overloadedCaller.active_leads_count} leads</strong> while the team average is{" "}
-                <strong>{teamAverageLeads} leads</strong>. {lightestCaller.full_name} has only{" "}
-                <strong>{lightestCaller.active_leads_count} leads</strong>.
+              <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
+                Ready to call immediately
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              const excess = Math.max(5, overloadedCaller.active_leads_count - teamAverageLeads);
-              setRebalanceSource(overloadedCaller.id);
-              setRebalanceTarget(lightestCaller.id);
-              setRebalanceCount(excess);
-              setRebalanceModalOpen(true);
-            }}
-            className="px-4 py-2.5 rounded-2xl bg-[#F95721] hover:bg-[#e04816] text-white text-xs font-bold transition-all shadow-sm flex items-center gap-2 shrink-0 active:scale-95 self-start md:self-auto"
-          >
-            <PhoneForwarded className="w-4 h-4" />
-            <span>Proactive Rebalance ({Math.max(5, overloadedCaller.active_leads_count - teamAverageLeads)} Leads) &rarr;</span>
-          </button>
-        </div>
-      )}
-
-      {/* KPI Metric Cards — Real Numbers, Team-Level Totals */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {/* Card 1: Total Dials Today */}
-        <div className="p-4 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
-              Total Dials
-            </span>
-            <div className="w-7 h-7 rounded-2xl bg-orange-500/10 flex items-center justify-center text-orange-500">
-              <PhoneCall className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
-              {summary.total_dials_today}
-            </h3>
-            <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
-              Outbound attempts across team
-            </p>
-          </div>
-        </div>
-
-        {/* Card 2: Total Connects (Kill % until >= 20 dials) */}
-        <div className="p-4 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
-              Total Connects
-            </span>
-            <div className="w-7 h-7 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-              <Zap className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="flex items-baseline gap-2">
-              <h3 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
-                {summary.total_connects_today}
-              </h3>
-              {summary.connect_rate_percent !== null && (
-                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                  {summary.connect_rate_percent}%
+          {/* 2. Callbacks */}
+          <div className="p-4 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/60 dark:border-[#262420] flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
+                Callbacks
+              </span>
+              {(summary.fleet_pipeline?.overdue_callbacks ?? 0) > 0 && (
+                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                  {summary.fleet_pipeline?.overdue_callbacks} overdue
                 </span>
               )}
             </div>
-            <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
-              Live human conversations
-            </p>
+            <div className="mt-2">
+              <div className="text-3xl sm:text-4xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
+                {summary.fleet_pipeline?.callbacks ?? 0}
+              </div>
+              <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
+                Scheduled warm follow-ups
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Card 3: Total Talk Time */}
-        <div className="p-4 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
-              Total Talk Time
+          {/* 3. Waiting */}
+          <div className="p-4 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/60 dark:border-[#262420] flex flex-col justify-between">
+            <span className="text-[11px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
+              Waiting
             </span>
-            <div className="w-7 h-7 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500">
-              <Clock className="w-3.5 h-3.5" />
+            <div className="mt-2">
+              <div className="text-3xl sm:text-4xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
+                {summary.fleet_pipeline?.waiting ?? 0}
+              </div>
+              <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
+                In cadence cooldown
+              </p>
             </div>
           </div>
-          <div className="mt-3">
-            <h3 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
-              {formatDuration(summary.total_talk_time_seconds)}
-            </h3>
-            <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
-              Cumulative team call duration
-            </p>
-          </div>
-        </div>
 
-        {/* Card 4: Hot Escalations */}
-        <div className="p-4 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
-              Hot Escalations
+          {/* 4. Done Today */}
+          <div className="p-4 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/60 dark:border-[#262420] flex flex-col justify-between">
+            <span className="text-[11px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
+              Done Today
             </span>
-            <div className="w-7 h-7 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500">
-              <Flame className="w-3.5 h-3.5" />
+            <div className="mt-2">
+              <div className="text-3xl sm:text-4xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
+                {summary.fleet_pipeline?.done_today ?? summary.total_dials_today}
+              </div>
+              <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
+                Outbound attempts logged
+              </p>
             </div>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
-              {summary.total_pipeline_escalations}
-            </h3>
-            <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
-              Qualified deals marked interested
-            </p>
-          </div>
-        </div>
-
-        {/* Card 5: Active Callers */}
-        <div className="p-4 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
-              Active Callers
-            </span>
-            <div className="w-7 h-7 rounded-2xl bg-purple-500/10 flex items-center justify-center text-purple-500">
-              <UserCheck className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="flex items-baseline gap-2">
-              <h3 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
-                {summary.active_callers}
-              </h3>
-              <span className="text-xs text-[#8A8680] font-mono">
-                / {summary.total_callers || callers.filter((c) => c.role === "caller").length} callers
-              </span>
-            </div>
-            <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
-              Available & logged in now
-            </p>
           </div>
         </div>
       </div>
 
-      {/* Filter, Search & Sort Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-1 max-w-md">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8A8680]" />
+      {/* ========================================================================= */}
+      {/* 3. NEEDS ATTENTION STRIP (Quiet when fine, alert when action needed)       */}
+      {/* ========================================================================= */}
+      {summary.needs_attention && summary.needs_attention.length > 0 && (
+        <div className="p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 text-xs shadow-sm space-y-2.5 animate-in fade-in">
+          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-bold tracking-wider font-mono text-[11px] uppercase">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>NEEDS ATTENTION ({summary.needs_attention.length})</span>
+          </div>
+          <div className="divide-y divide-amber-500/15">
+            {summary.needs_attention.map((item) => (
+              <div key={item.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                  <span className="text-[#111110] dark:text-[#F5F3EF] font-medium">{item.message}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (item.type === "imbalance") {
+                      openReassignModal(item.caller_id);
+                    } else if (item.caller_id) {
+                      openCallerDetail(item.caller_id, item.type === "overdue_callbacks" ? "callbacks" : "calls");
+                    }
+                  }}
+                  className="text-[11px] font-bold text-[#F95721] hover:underline shrink-0"
+                >
+                  {item.action_label}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 4. CALLERS ROSTER CONTROLS (Search, Default Sort: Urgency, Filters)        */}
+      {/* ========================================================================= */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[#111110] dark:text-[#F5F3EF] font-mono">
+            CALLERS
+          </h2>
+          <span className="text-xs text-[#8A8680] font-mono">({activeCallersCount} active)</span>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-1 max-w-xl md:justify-end">
+          {/* Search Box */}
+          <div className="relative flex-1 sm:max-w-xs">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8680]" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search callers by name or email..."
-              className="w-full pl-10 pr-4 py-2 bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-xs text-[#111110] dark:text-[#F5F3EF] outline-none shadow-sm transition-all"
+              placeholder="Search callers..."
+              className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] focus:border-[#F95721] rounded-xl text-xs text-[#111110] dark:text-[#F5F3EF] outline-none shadow-sm transition-all"
             />
           </div>
 
-          {/* Sort Dropdown */}
-          <div className="relative">
-            <select
-              value={sortBy}
-              onChange={(e: any) => setSortBy(e.target.value)}
-              className="px-3 py-2 bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl text-xs text-[#111110] dark:text-[#F5F3EF] outline-none shadow-sm cursor-pointer font-medium"
-            >
-              <option value="queue">Sort: Queue Depth</option>
-              <option value="dials">Sort: Most Dials</option>
-              <option value="connects">Sort: Connects</option>
-              <option value="name">Sort: Name (A-Z)</option>
-            </select>
-          </div>
-        </div>
+          {/* Sort Dropdown — Default is Urgency / Needs Attention */}
+          <select
+            value={sortBy}
+            onChange={(e: any) => setSortBy(e.target.value)}
+            className="px-3 py-1.5 bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] rounded-xl text-xs text-[#111110] dark:text-[#F5F3EF] outline-none shadow-sm cursor-pointer font-medium"
+          >
+            <option value="urgency">Sort: Needs Attention First</option>
+            <option value="dials">Sort: Most Dials</option>
+            <option value="connects">Sort: Connects</option>
+            <option value="queue">Sort: Queue Depth</option>
+            <option value="name">Sort: Name (A-Z)</option>
+          </select>
 
-        <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
-          {/* Role Filter Tabs */}
-          <div className="flex items-center gap-1 p-1 bg-white dark:bg-[#1C1A17] rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm text-xs">
-            <button
-              type="button"
-              onClick={() => setRoleFilter("all")}
-              className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
-                roleFilter === "all"
-                  ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110]"
-                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-              }`}
-            >
-              All Roles ({callers.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setRoleFilter("caller")}
-              className={`px-2.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1 ${
-                roleFilter === "caller"
-                  ? "bg-[#F95721] text-white"
-                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-              }`}
-            >
-              <span>Callers</span>
-              <span className="text-[10px] font-mono opacity-80">({callers.filter((c) => c.role === "caller").length})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setRoleFilter("manager")}
-              className={`px-2.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1 ${
-                roleFilter === "manager"
-                  ? "bg-purple-600 text-white"
-                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-              }`}
-            >
-              <span>Managers</span>
-              <span className="text-[10px] font-mono opacity-80">({callers.filter((c) => c.role === "manager").length})</span>
-            </button>
-          </div>
-
-          {/* Status Filter Tabs */}
-          <div className="flex items-center gap-1.5 p-1 bg-white dark:bg-[#1C1A17] rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm text-xs">
+          {/* Status Filter */}
+          <div className="flex items-center p-0.5 bg-white dark:bg-[#181715] rounded-xl border border-[#ECE8E1] dark:border-[#262420] shadow-sm text-xs">
             <button
               type="button"
               onClick={() => setStatusFilter("all")}
-              className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
+              className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${
                 statusFilter === "all"
                   ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110]"
-                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                  : "text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
               }`}
             >
-              All Status
+              All
             </button>
             <button
               type="button"
               onClick={() => setStatusFilter("online")}
-              className={`px-2.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 ${
+              className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1 ${
                 statusFilter === "online"
                   ? "bg-emerald-600 text-white"
-                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                  : "text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
               <span>Online</span>
-              <span className="text-[10px] font-mono opacity-80">({callers.filter((c) => c.is_online).length})</span>
             </button>
             <button
               type="button"
               onClick={() => setStatusFilter("offline")}
-              className={`px-2.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 ${
+              className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${
                 statusFilter === "offline"
                   ? "bg-stone-700 text-white"
-                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                  : "text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-stone-400" />
-              <span>Offline</span>
-              <span className="text-[10px] font-mono opacity-80">({callers.filter((c) => !c.is_online).length})</span>
+              Offline
             </button>
           </div>
         </div>
       </div>
 
-      {/* Caller Cards Grid */}
+      {/* ========================================================================= */}
+      {/* 5. CALLER CARDS GRID — QUIET HIERARCHY, 4-STATE BREAKDOWN, NO EMOJIS      */}
+      {/* ========================================================================= */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3, 4, 5].map((i) => (
+          {[1, 2, 3, 4].map((i) => (
             <div
               key={i}
-              className="p-6 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] animate-pulse space-y-4"
+              className="p-5 rounded-3xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] animate-pulse space-y-4"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-black/5 dark:bg-white/5" />
-                <div className="space-y-2 flex-1">
-                  <div className="h-4 bg-black/5 dark:bg-white/5 rounded w-1/2" />
-                  <div className="h-3 bg-black/5 dark:bg-white/5 rounded w-3/4" />
-                </div>
-              </div>
+              <div className="h-10 bg-black/5 dark:bg-white/5 rounded-2xl w-3/4" />
               <div className="h-16 bg-black/5 dark:bg-white/5 rounded-2xl" />
+              <div className="h-8 bg-black/5 dark:bg-white/5 rounded-xl" />
             </div>
           ))}
         </div>
       ) : filteredCallers.length === 0 ? (
-        <div className="text-center py-16 px-4 bg-white dark:bg-[#1C1A17] rounded-3xl border border-[#ECE8E1] dark:border-[#2D2924] space-y-3">
+        <div className="text-center py-16 px-4 bg-white dark:bg-[#181715] rounded-3xl border border-[#ECE8E1] dark:border-[#262420] space-y-3">
           <Users className="w-10 h-10 text-[#8A8680] mx-auto opacity-50" />
-          <h3 className="text-base font-bold text-[#111110] dark:text-[#F5F3EF]">
+          <h3 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
             No callers match current filters
           </h3>
-          <p className="text-xs text-[#6E6B66] dark:text-[#8A8680]">
+          <p className="text-xs text-[#8A8680]">
             Try adjusting your search query or status filter.
           </p>
         </div>
@@ -1083,222 +954,188 @@ export default function ManagerTeamPage() {
               .toUpperCase()
               .slice(0, 2);
 
+            const hasOverdue = (caller.pipeline?.overdue_callbacks || 0) > 0;
+            const hasZeroDials = caller.dials_today === 0 && caller.active && caller.role === "caller";
+
             return (
               <div
                 key={caller.id}
                 onClick={() => openCallerDetail(caller.id)}
-                className="p-5 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm hover:border-[#F95721]/50 hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group"
+                className={`p-5 rounded-3xl bg-white dark:bg-[#181715] border transition-all flex flex-col justify-between cursor-pointer group hover:shadow-md ${
+                  hasOverdue
+                    ? "border-amber-500/40 hover:border-amber-500"
+                    : "border-[#ECE8E1] dark:border-[#262420] hover:border-[#F95721]/50"
+                }`}
               >
                 <div>
-                  {/* Top: Avatar, Name, Email, Real Status */}
+                  {/* Card Header: Avatar, Name, Quiet Dot, Role */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="relative shrink-0">
-                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#F95721] to-[#FF8A65] p-0.5 shadow-sm">
-                          <div className="w-full h-full rounded-[14px] bg-white dark:bg-[#1C1A17] flex items-center justify-center font-bold text-xs text-[#F95721]">
-                            {initials}
-                          </div>
-                        </div>
-                        {/* Live Status Dot Indicator */}
-                        <span
-                          className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-[#1C1A17] ${
-                            caller.is_online
-                              ? "bg-emerald-500 shadow-sm"
-                              : "bg-stone-400"
-                          }`}
-                          title={caller.is_online ? "🟢 Idle & Available" : "⚫ Offline"}
-                        />
+                      <div className="w-10 h-10 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] flex items-center justify-center font-bold text-xs text-[#F95721] shrink-0">
+                        {initials}
                       </div>
 
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF] truncate group-hover:text-[#F95721] transition-colors">
+                        <div className="flex items-center gap-1.5">
+                          {/* Small status dot (Quiet, no bulky green badge!) */}
+                          <span
+                            className={`w-2 h-2 rounded-full shrink-0 ${
+                              caller.is_online ? "bg-emerald-500" : "bg-zinc-600"
+                            }`}
+                            title={caller.is_online ? "Online" : "Offline"}
+                          />
+                          <h3 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF] truncate group-hover:text-[#F95721] transition-colors">
                             {caller.full_name}
-                          </h4>
-                          {caller.require_password_change && (
-                            <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                              Temp Pass
-                            </span>
-                          )}
+                          </h3>
                         </div>
-                        <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] truncate font-medium">
+                        <p className="text-[11px] text-[#8A8680] truncate mt-0.5">
                           {caller.email}
                         </p>
-                        <div className="flex items-center gap-1.5 mt-1.5">
-                          <button
-                            type="button"
-                            onClick={(e) => handleOpenRoleModal(caller, e)}
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase transition-all hover:scale-105 active:scale-95 ${
-                              caller.role === "manager"
-                                ? "bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30"
-                                : caller.role === "developer"
-                                ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30"
-                                : caller.role === "admin"
-                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
-                                : "bg-[#F95721]/15 text-[#F95721] border border-[#F95721]/30"
-                            }`}
-                            title="Click to change teammate role"
-                          >
-                            <Shield className="w-2.5 h-2.5" />
-                            <span>{caller.role}</span>
-                            <span className="text-[9px] opacity-60">✏️</span>
-                          </button>
-                        </div>
                       </div>
                     </div>
 
-                    <span
-                      className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold uppercase ${
-                        caller.is_online
-                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                          : "bg-black/5 dark:bg-white/5 text-[#8A8680] border border-transparent"
-                      }`}
-                    >
-                      {caller.is_online ? "Active" : "Offline"}
-                    </span>
-                  </div>
-
-                  {/* Daily Output Metrics Grid */}
-                  <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-[#ECE8E1]/80 dark:border-[#2D2924]/80 text-center">
-                    <div className="p-2 rounded-xl bg-black/[0.02] dark:bg-white/[0.02]">
-                      <span className="text-[10px] font-mono uppercase text-[#8A8680] block">Dials</span>
-                      <span className="text-base font-extrabold text-[#111110] dark:text-[#F5F3EF]">
-                        {caller.dials_today}
-                      </span>
-                    </div>
-
-                    <div className="p-2 rounded-xl bg-black/[0.02] dark:bg-white/[0.02]">
-                      <span className="text-[10px] font-mono uppercase text-[#8A8680] block">Connects</span>
-                      <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">
-                        {caller.connects_today}
-                      </span>
-                    </div>
-
-                    <div className="p-2 rounded-xl bg-black/[0.02] dark:bg-white/[0.02]">
-                      <span className="text-[10px] font-mono uppercase text-[#8A8680] block">Talk Time</span>
-                      <span className="text-base font-extrabold text-[#111110] dark:text-[#F5F3EF]">
-                        {formatDuration(caller.talk_time_seconds)}
+                    {/* Role badge (Quiet mono) */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {caller.require_password_change && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                          Temp
+                        </span>
+                      )}
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-mono uppercase bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] text-[#8A8680]">
+                        {caller.role}
                       </span>
                     </div>
                   </div>
 
-                  {/* Outcome Breakdown (Missing 6 — The Coaching Signal) */}
-                  <div className="mt-3 p-2 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/60 dark:border-[#2D2924]/60">
-                    <div className="text-[9px] font-mono uppercase tracking-wider text-[#8A8680] mb-1.5 flex items-center justify-between">
-                      <span>Today&apos;s Outcomes</span>
-                      <span>Total: {caller.dials_today}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-medium">
-                      <span
-                        className="px-2 py-0.5 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20"
-                        title="Interested deals"
-                      >
-                        🔥 {caller.outcomes_breakdown?.interested || 0}
-                      </span>
-                      <span
-                        className="px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
-                        title="Callbacks scheduled"
-                      >
-                        📞 {caller.outcomes_breakdown?.callback || 0}
-                      </span>
-                      <span
-                        className="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                        title="No Answer (Cadence)"
-                      >
-                        ⏳ {caller.outcomes_breakdown?.no_answer || 0}
-                      </span>
-                      <span
-                        className="px-2 py-0.5 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
-                        title="Gatekeeper"
-                      >
-                        🛡️ {caller.outcomes_breakdown?.gatekeeper || 0}
-                      </span>
-                      <span
-                        className="px-2 py-0.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
-                        title="Rejected / Quarantine"
-                      >
-                        ❌ {caller.outcomes_breakdown?.not_interested || 0}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Queue Depth & Rebalance Shortcut */}
-                  <div className="mt-3 flex items-center justify-between text-xs px-1 text-[#6E6B66] dark:text-[#8A8680]">
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-[#F95721]" />
-                      <span>Queue Active:</span>
-                      <strong className="text-[#111110] dark:text-[#F5F3EF]">
-                        {caller.active_leads_count} leads
+                  {/* 4-State Pipeline Breakdown (Dial Now / Callbacks / Waiting / Done) */}
+                  <div className="grid grid-cols-4 gap-1 p-2 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/80 dark:border-[#262420] text-center mt-3.5">
+                    <div>
+                      <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Dial Now</span>
+                      <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                        {caller.pipeline?.dial_now ?? 0}
                       </strong>
-                    </span>
+                    </div>
 
-                    {caller.role === "caller" && caller.active_leads_count > 0 && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openRebalanceModalWithCaller(caller.id);
-                        }}
-                        className="text-[11px] font-semibold text-[#F95721] hover:underline flex items-center gap-1"
-                      >
-                        <PhoneForwarded className="w-3 h-3" />
-                        <span>Shift</span>
-                      </button>
+                    <div>
+                      <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Callbacks</span>
+                      <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                        {caller.pipeline?.callbacks ?? 0}
+                        {hasOverdue && (
+                          <span className="ml-0.5 text-[9px] text-amber-500 font-bold">
+                            ({caller.pipeline.overdue_callbacks} od)
+                          </span>
+                        )}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Waiting</span>
+                      <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                        {caller.pipeline?.waiting ?? 0}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Done</span>
+                      <strong className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                        {caller.dials_today}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Shift Output Row: Dials · Connects · Talk Time */}
+                  <div className="mt-3 flex items-center justify-between text-xs text-[#8A8680] font-mono">
+                    <span className="text-[#111110] dark:text-[#F5F3EF] font-semibold">
+                      {caller.dials_today} dials &bull; {caller.connects_today} connects &bull; {formatDuration(caller.talk_time_seconds)} talk
+                    </span>
+                    {hasZeroDials && (
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                        0 dials today
+                      </span>
                     )}
                   </div>
+
+                  {/* Outcome Breakdown (Using Clean Lucide Icons — No Emojis!) */}
+                  <div className="mt-2.5 flex items-center gap-2 flex-wrap text-xs text-[#8A8680] pt-2 border-t border-[#ECE8E1]/60 dark:border-[#262420]/60">
+                    <span className="inline-flex items-center gap-1" title="Interested">
+                      <Flame className="w-3.5 h-3.5 text-orange-500" />
+                      <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.interested || 0}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1" title="Callbacks">
+                      <Calendar className="w-3.5 h-3.5 text-blue-400" />
+                      <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.callback || 0}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1" title="No Answer">
+                      <PhoneOff className="w-3.5 h-3.5 text-zinc-400" />
+                      <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.no_answer || 0}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1" title="Gatekeeper">
+                      <Shield className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.gatekeeper || 0}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1" title="Rejected / Bad Fit">
+                      <UserX className="w-3.5 h-3.5 text-rose-400" />
+                      <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.not_interested || 0}</span>
+                    </span>
+                  </div>
                 </div>
 
-                {/* Card Actions: Mirror View, Activity Ledger, De-emphasized Reset Pass */}
-                <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-[#ECE8E1] dark:border-[#2D2924]" onClick={(e) => e.stopPropagation()}>
-                  {caller.role === "caller" ? (
-                    <Link
-                      href={`/studio/queue?impersonate=${caller.id}`}
-                      className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-[#F95721] hover:text-white text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all group/btn"
-                      title={`Mirror view of ${caller.full_name}'s dial queue`}
+                {/* Card Action Buttons: [Mirror] [Activity] [Reassign] */}
+                <div className="mt-4 pt-3 border-t border-[#ECE8E1] dark:border-[#262420]" onClick={(e) => e.stopPropagation()}>
+                  <div className="grid grid-cols-3 gap-2">
+                    {caller.role === "caller" ? (
+                      <Link
+                        href={`/studio/queue?impersonate=${caller.id}`}
+                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-[#F95721] hover:text-white text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all"
+                        title={`Mirror view of ${caller.full_name}'s cockpit`}
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Mirror</span>
+                      </Link>
+                    ) : (
+                      <div className="flex items-center justify-center px-2.5 py-1.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] text-[#8A8680] text-xs font-medium border border-dashed border-[#ECE8E1] dark:border-[#262420]">
+                        <span>Manager</span>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => openCallerDetail(caller.id)}
+                      className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all"
                     >
-                      <ExternalLink className="w-3.5 h-3.5 group-hover/btn:scale-110 transition-transform" />
-                      <span>Mirror View</span>
-                    </Link>
-                  ) : (
-                    <div
-                      className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] text-[#8A8680] text-xs font-medium border border-dashed border-[#ECE8E1] dark:border-[#2D2924]"
-                      title="Teammate is in management and does not hold a dial queue"
+                      <FileText className="w-3 h-3 text-[#F95721]" />
+                      <span>Activity</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openReassignModal(caller.id)}
+                      className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all"
                     >
-                      <Shield className="w-3.5 h-3.5 text-purple-500" />
-                      <span className="capitalize">{caller.role}</span>
-                    </div>
-                  )}
+                      <PhoneForwarded className="w-3 h-3 text-[#8A8680]" />
+                      <span>Reassign</span>
+                    </button>
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => openCallerDetail(caller.id)}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-[#F95721]" />
-                    <span>Activity</span>
-                  </button>
-                </div>
-
-                {/* Secondary De-emphasized Actions: Change Role & Reset Password */}
-                <div className="mt-2.5 pt-2 border-t border-[#ECE8E1]/60 dark:border-[#2D2924]/60 flex items-center justify-between px-1" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    type="button"
-                    onClick={(e) => handleOpenRoleModal(caller, e)}
-                    className="text-[10px] text-[#8A8680] hover:text-[#F95721] font-mono flex items-center gap-1 transition-colors"
-                    title="Change workspace role"
-                  >
-                    <UserCog className="w-3 h-3 text-[#F95721]" />
-                    <span>Change Role</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={(e) => handleOpenResetModal(caller, e)}
-                    className="text-[10px] text-[#8A8680] hover:text-amber-500 font-mono flex items-center gap-1 transition-colors"
-                  >
-                    <KeyRound className="w-3 h-3" />
-                    <span>Reset Credentials</span>
-                  </button>
+                  {/* Quiet Secondary Links: Change Role & Reset Credentials */}
+                  <div className="mt-2.5 flex items-center justify-between text-[10px] text-[#8A8680] px-1 font-mono">
+                    <button
+                      type="button"
+                      onClick={(e) => handleOpenRoleModal(caller, e)}
+                      className="hover:text-[#F95721] flex items-center gap-1 transition-colors"
+                    >
+                      <UserCog className="w-3 h-3" />
+                      <span>Change Role</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => handleOpenResetModal(caller, e)}
+                      className="hover:text-amber-500 flex items-center gap-1 transition-colors"
+                    >
+                      <KeyRound className="w-3 h-3" />
+                      <span>Reset Password</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -1307,49 +1144,33 @@ export default function ManagerTeamPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* CALLER ACTIVITY LEDGER DRAWER / SLIDE-OVER (Missing 7 — The Tracking Fix) */}
+      {/* 6. CALLER ACTIVITY LEDGER DRAWER / SLIDE-OVER                              */}
       {/* ========================================================================= */}
       {detailCallerId && (
         <div className="fixed inset-0 z-[400] bg-black/50 backdrop-blur-sm flex justify-end">
           <div
-            className="w-full max-w-xl h-full bg-white dark:bg-[#1C1A17] border-l border-[#ECE8E1] dark:border-[#2D2924] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-200"
+            className="w-full max-w-xl h-full bg-white dark:bg-[#181715] border-l border-[#ECE8E1] dark:border-[#262420] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Drawer Header */}
-            <div className="p-5 border-b border-[#ECE8E1] dark:border-[#2D2924] flex items-start justify-between gap-4 bg-black/[0.01] dark:bg-white/[0.01]">
+            <div className="p-5 border-b border-[#ECE8E1] dark:border-[#262420] flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#F95721] to-[#FF8A65] p-0.5">
-                  <div className="w-full h-full rounded-[14px] bg-white dark:bg-[#1C1A17] flex items-center justify-center font-bold text-sm text-[#F95721]">
-                    {detailData?.caller.full_name?.slice(0, 2).toUpperCase() || "CL"}
-                  </div>
+                <div className="w-11 h-11 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] flex items-center justify-center font-bold text-sm text-[#F95721]">
+                  {detailData?.caller.full_name?.slice(0, 2).toUpperCase() || "CL"}
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-[#111110] dark:text-[#F5F3EF]">
                     {detailData?.caller.full_name || "Caller Activity"}
                   </h3>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <p className="text-xs text-[#6E6B66] dark:text-[#8A8680]">
-                      {detailData?.caller.email}
-                    </p>
-                    {detailData?.caller && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenRoleModal(detailData.caller)}
-                        className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-[#F95721]/15 text-[#F95721] hover:bg-[#F95721]/25 transition-colors flex items-center gap-1"
-                        title="Change role"
-                      >
-                        <Shield className="w-2.5 h-2.5" />
-                        <span>{detailData.caller.role}</span>
-                        <span className="text-[9px] opacity-70">✏️</span>
-                      </button>
-                    )}
-                  </div>
+                  <p className="text-xs text-[#8A8680] mt-0.5">
+                    {detailData?.caller.email} &bull; <span className="uppercase font-mono">{detailData?.caller.role}</span>
+                  </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
                 <Link
-                  href={`/queue?impersonate=${detailCallerId}`}
+                  href={`/studio/queue?impersonate=${detailCallerId}`}
                   className="px-3 py-1.5 rounded-xl bg-[#F95721] text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm hover:opacity-90"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -1365,14 +1186,19 @@ export default function ManagerTeamPage() {
               </div>
             </div>
 
-            {/* Quick Summary Pill Bar */}
+            {/* Metrics Bar — Matches the Card Exactly! */}
             {detailData && (
-              <div className="grid grid-cols-4 gap-2 p-4 bg-black/[0.02] dark:bg-white/[0.02] border-b border-[#ECE8E1] dark:border-[#2D2924] text-center text-xs">
+              <div className="grid grid-cols-4 gap-2 p-4 bg-black/[0.02] dark:bg-white/[0.02] border-b border-[#ECE8E1] dark:border-[#262420] text-center text-xs">
                 <div>
-                  <span className="text-[10px] font-mono text-[#8A8680] block">Dials</span>
+                  <span className="text-[10px] font-mono text-[#8A8680] block">Dials ({detailData.summary.range_label || "Today"})</span>
                   <strong className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
                     {detailData.summary.total_dials}
                   </strong>
+                  {detailData.summary.all_time_dials !== undefined && (
+                    <span className="text-[10px] text-[#8A8680] block font-mono">
+                      ({detailData.summary.all_time_dials} all-time)
+                    </span>
+                  )}
                 </div>
                 <div>
                   <span className="text-[10px] font-mono text-[#8A8680] block">Connects</span>
@@ -1395,18 +1221,29 @@ export default function ManagerTeamPage() {
               </div>
             )}
 
-            {/* Drawer Tabs */}
-            <div className="flex border-b border-[#ECE8E1] dark:border-[#2D2924] text-xs">
+            {/* 3 Tabs: Calls, Callbacks (Fixing Bug 2!), Queue */}
+            <div className="flex border-b border-[#ECE8E1] dark:border-[#262420] text-xs">
               <button
                 type="button"
                 onClick={() => setDetailTab("calls")}
                 className={`flex-1 py-3 font-semibold text-center border-b-2 transition-all ${
                   detailTab === "calls"
                     ? "border-[#F95721] text-[#F95721]"
-                    : "border-transparent text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                    : "border-transparent text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
                 }`}
               >
-                Call Activity Ledger ({detailData?.calls?.length || 0})
+                Calls ({detailData?.calls?.length || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetailTab("callbacks")}
+                className={`flex-1 py-3 font-semibold text-center border-b-2 transition-all ${
+                  detailTab === "callbacks"
+                    ? "border-[#F95721] text-[#F95721]"
+                    : "border-transparent text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                }`}
+              >
+                Callbacks ({detailData?.summary.pipeline?.callbacks || 0})
               </button>
               <button
                 type="button"
@@ -1414,15 +1251,15 @@ export default function ManagerTeamPage() {
                 className={`flex-1 py-3 font-semibold text-center border-b-2 transition-all ${
                   detailTab === "queue"
                     ? "border-[#F95721] text-[#F95721]"
-                    : "border-transparent text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                    : "border-transparent text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
                 }`}
               >
-                Assigned Queue ({detailData?.active_leads?.length || 0})
+                Queue ({detailData?.active_leads?.length || 0})
               </button>
             </div>
 
-            {/* Drawer Content */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+            {/* Drawer Body Content */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
               {detailLoading ? (
                 <div className="py-16 text-center text-[#8A8680]">
                   <RefreshCw className="w-6 h-6 animate-spin mx-auto text-[#F95721] mb-2" />
@@ -1432,27 +1269,27 @@ export default function ManagerTeamPage() {
                 detailData?.calls?.length === 0 ? (
                   <div className="py-16 text-center text-[#8A8680] space-y-2">
                     <PhoneOff className="w-8 h-8 mx-auto opacity-40" />
-                    <p className="text-xs">No calls logged yet for this period.</p>
+                    <p className="text-xs">No calls logged yet in this time range.</p>
                   </div>
                 ) : (
                   detailData?.calls?.map((call) => (
                     <div
                       key={call.id}
-                      className="p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] space-y-2"
+                      className="p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#262420] space-y-2"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <h4 className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
                             {call.lead?.name || "Unknown Lead"}
                           </h4>
-                          <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] font-mono">
-                            {formatPhoneDisplay(call.lead?.phone)} &bull; {call.lead?.niche || "Sales"}
+                          <p className="text-[11px] text-[#8A8680] font-mono mt-0.5">
+                            {formatPhoneDisplay(call.lead?.phone)} &bull; {call.lead?.niche || "Dental"} &bull; {call.lead?.area || "Mumbai"}
                           </p>
                         </div>
 
                         <div className="text-right shrink-0">
                           <span
-                            className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
+                            className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase ${
                               call.outcome === "interested"
                                 ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
                                 : call.outcome === "callback"
@@ -1473,49 +1310,93 @@ export default function ManagerTeamPage() {
                       </div>
 
                       {call.notes && (
-                        <p className="text-xs bg-white dark:bg-[#1C1A17] p-2 rounded-xl border border-[#ECE8E1] dark:border-[#2D2924] text-[#111110] dark:text-[#F5F3EF] italic">
+                        <p className="text-xs bg-white dark:bg-[#181715] p-2.5 rounded-xl border border-[#ECE8E1] dark:border-[#262420] text-[#111110] dark:text-[#F5F3EF] italic">
                           &ldquo;{call.notes}&rdquo;
                         </p>
                       )}
-
-                      <div className="text-[10px] font-mono text-[#8A8680] flex items-center justify-between pt-1">
-                        <span>{new Date(call.called_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" })} IST</span>
-                        {call.callback_at && (
-                          <span className="text-blue-500 font-semibold">
-                            Callback: {new Date(call.callback_at).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
                     </div>
                   ))
                 )
+              ) : detailTab === "callbacks" ? (
+                // Dedicated Callbacks Tab (Fixing Bug 2!)
+                (() => {
+                  const callbacksList = (detailData?.active_leads || []).filter(
+                    (l) => l.status === "callback" || Boolean(l.next_callback_at)
+                  );
+
+                  if (callbacksList.length === 0) {
+                    return (
+                      <div className="py-16 text-center text-[#8A8680] space-y-2">
+                        <Calendar className="w-8 h-8 mx-auto opacity-40 text-blue-400" />
+                        <p className="text-xs">No pending callbacks scheduled for this caller.</p>
+                      </div>
+                    );
+                  }
+
+                  return callbacksList.map((lead) => {
+                    const cbInfo = formatCallbackDate(lead.next_callback_at);
+                    return (
+                      <div
+                        key={lead.id}
+                        className={`p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border space-y-2 ${
+                          cbInfo.isOverdue
+                            ? "border-amber-500/50 bg-amber-500/[0.02]"
+                            : "border-[#ECE8E1] dark:border-[#262420]"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                                {lead.name}
+                              </h4>
+                              {cbInfo.isOverdue && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                                  OVERDUE
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-[#8A8680] font-mono mt-0.5">
+                              {formatPhoneDisplay(lead.phone)} &bull; {lead.area}
+                            </p>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span className={`text-[11px] font-mono font-bold block ${
+                              cbInfo.isOverdue ? "text-amber-600 dark:text-amber-400" : "text-blue-500"
+                            }`}>
+                              {cbInfo.label}
+                            </span>
+                            <span className="text-[10px] text-[#8A8680] block font-mono">
+                              Attempt #{lead.attempts_count || 1}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()
               ) : (
-                /* Assigned Queue Tab */
+                // Queue Tab
                 detailData?.active_leads?.length === 0 ? (
-                  <div className="py-16 text-center text-[#8A8680] space-y-2">
-                    <Inbox className="w-8 h-8 mx-auto opacity-40" />
-                    <p className="text-xs">No active leads assigned in this caller&apos;s queue.</p>
+                  <div className="py-16 text-center text-[#8A8680]">
+                    <p className="text-xs">Queue is empty. No leads currently assigned.</p>
                   </div>
                 ) : (
                   detailData?.active_leads?.map((lead) => (
                     <div
                       key={lead.id}
-                      className="p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between gap-3 text-xs"
+                      className="p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#262420] flex items-center justify-between text-xs"
                     >
-                      <div className="min-w-0">
-                        <h4 className="font-bold text-[#111110] dark:text-[#F5F3EF] truncate">
-                          {lead.name}
-                        </h4>
-                        <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] font-mono truncate">
-                          {formatPhoneDisplay(lead.phone)} &bull; {lead.area || "Pune"}
+                      <div>
+                        <h4 className="font-bold text-[#111110] dark:text-[#F5F3EF]">{lead.name}</h4>
+                        <p className="text-[11px] text-[#8A8680] font-mono mt-0.5">
+                          {formatPhoneDisplay(lead.phone)} &bull; {lead.niche} &bull; {lead.area}
                         </p>
                       </div>
-                      <div className="text-right shrink-0">
-                        <span className="px-2 py-0.5 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 font-mono text-[10px] font-bold">
-                          Score: {lead.score}
-                        </span>
-                        <span className="block text-[10px] font-mono text-[#8A8680] mt-0.5">
-                          Attempts: {lead.attempts_count || 0}/5
+                      <div className="text-right">
+                        <span className="px-2 py-0.5 rounded-md font-mono text-[10px] uppercase bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] text-[#8A8680]">
+                          {lead.status}
                         </span>
                       </div>
                     </div>
@@ -1528,141 +1409,172 @@ export default function ManagerTeamPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* REBALANCE LEADS MODAL (Missing 8 — Shift leads between callers)           */}
+      {/* 7. REASSIGN LEADS MODAL (Unified Terminology: Reassign)                   */}
       {/* ========================================================================= */}
-      {rebalanceModalOpen && (
+      {reassignModalOpen && (
         <div className="fixed inset-0 z-[400] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div
-            className="w-full max-w-md rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-2xl p-6 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] shadow-2xl p-6 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#2D2924]">
+            <div className="flex items-start justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#262420]">
               <div>
                 <span className="text-[10px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
-                  LEAD DISTRIBUTION
+                  LEAD OPERATIONS
                 </span>
                 <h3 className="text-lg font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-0.5">
-                  Rebalance Caller Decks
+                  Reassign Leads
                 </h3>
               </div>
               <button
                 type="button"
-                onClick={() => setRebalanceModalOpen(false)}
+                onClick={() => setReassignModalOpen(false)}
                 className="p-1 rounded-xl text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleExecuteRebalance} className="space-y-4 mt-4 text-xs">
-              <p className="text-[#6E6B66] dark:text-[#8A8680]">
-                Transfer uncalled leads from a caller with a heavy queue to another caller with available capacity.
-              </p>
+            {/* Mode Toggle */}
+            <div className="flex p-1 bg-black/5 dark:bg-white/5 rounded-2xl border border-[#ECE8E1] dark:border-[#262420] mt-4 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setReassignMode("between")}
+                className={`flex-1 py-1.5 rounded-xl transition-all ${
+                  reassignMode === "between"
+                    ? "bg-white dark:bg-[#1C1A17] text-[#111110] dark:text-[#F5F3EF] shadow-sm"
+                    : "text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                }`}
+              >
+                Between Callers
+              </button>
+              <button
+                type="button"
+                onClick={() => setReassignMode("unassigned")}
+                className={`flex-1 py-1.5 rounded-xl transition-all ${
+                  reassignMode === "unassigned"
+                    ? "bg-white dark:bg-[#1C1A17] text-[#111110] dark:text-[#F5F3EF] shadow-sm"
+                    : "text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                }`}
+              >
+                From Unassigned Pool
+              </button>
+            </div>
 
-              {rebalanceError && (
+            <form onSubmit={handleExecuteReassign} className="space-y-4 mt-4 text-xs">
+              {reassignError && (
                 <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 font-medium">
-                  {rebalanceError}
+                  {reassignError}
                 </div>
               )}
 
-              {rebalanceSuccess && (
+              {reassignSuccess && (
                 <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-medium">
-                  {rebalanceSuccess}
+                  {reassignSuccess}
                 </div>
               )}
 
-              {/* Source Caller */}
-              <div>
-                <label className="block text-[11px] font-mono uppercase text-[#8A8680] font-semibold mb-1">
-                  From Source Caller
-                </label>
-                <select
-                  value={rebalanceSource}
-                  onChange={(e) => setRebalanceSource(e.target.value)}
-                  className="w-full p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] font-medium text-xs text-[#111110] dark:text-[#F5F3EF] outline-none"
-                >
-                  <option value="">Select source caller...</option>
-                  {callers.filter((c) => c.role === "caller").map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.full_name} ({c.active_leads_count} active leads)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Target Caller */}
-              <div>
-                <label className="block text-[11px] font-mono uppercase text-[#8A8680] font-semibold mb-1">
-                  To Receiving Caller
-                </label>
-                <select
-                  value={rebalanceTarget}
-                  onChange={(e) => setRebalanceTarget(e.target.value)}
-                  className="w-full p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] font-medium text-xs text-[#111110] dark:text-[#F5F3EF] outline-none"
-                >
-                  <option value="">Select target caller...</option>
-                  {callers.filter((c) => c.role === "caller").map((c) => (
-                    <option key={c.id} value={c.id} disabled={c.id === rebalanceSource}>
-                      {c.full_name} ({c.active_leads_count} active leads)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Lead Count & Presets */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-mono uppercase text-[#8A8680] font-semibold">
-                    Number of Leads to Transfer
-                  </label>
-                  <div className="flex gap-1">
-                    {[5, 10, 15, 25].map((preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => setRebalanceCount(preset)}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition-all ${
-                          rebalanceCount === preset
-                            ? "bg-[#F95721] text-white"
-                            : "bg-black/5 dark:bg-white/5 text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-                        }`}
-                      >
-                        +{preset}
-                      </button>
-                    ))}
+              {reassignMode === "between" ? (
+                <>
+                  <div>
+                    <label className="block text-[11px] font-mono uppercase text-[#8A8680] font-semibold mb-1">
+                      From Source Caller
+                    </label>
+                    <select
+                      value={reassignSource}
+                      onChange={(e) => setReassignSource(e.target.value)}
+                      className="w-full p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] font-medium text-xs text-[#111110] dark:text-[#F5F3EF] outline-none"
+                    >
+                      <option value="">Select source caller...</option>
+                      {callers.filter((c) => c.role === "caller").map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.full_name} ({c.active_leads_count} active leads)
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                </div>
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={rebalanceCount}
-                  onChange={(e) => setRebalanceCount(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-full p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] font-bold text-sm text-[#111110] dark:text-[#F5F3EF] outline-none"
-                />
-              </div>
 
-              {/* Form Buttons */}
+                  <div>
+                    <label className="block text-[11px] font-mono uppercase text-[#8A8680] font-semibold mb-1">
+                      To Receiving Caller
+                    </label>
+                    <select
+                      value={reassignTarget}
+                      onChange={(e) => setReassignTarget(e.target.value)}
+                      className="w-full p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] font-medium text-xs text-[#111110] dark:text-[#F5F3EF] outline-none"
+                    >
+                      <option value="">Select target caller...</option>
+                      {callers.filter((c) => c.role === "caller").map((c) => (
+                        <option key={c.id} value={c.id} disabled={c.id === reassignSource}>
+                          {c.full_name} ({c.active_leads_count} active leads)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-mono uppercase text-[#8A8680] font-semibold">
+                        Number of Leads to Reassign
+                      </label>
+                      <div className="flex gap-1">
+                        {[5, 10, 15, 20].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setReassignCount(preset)}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                              reassignCount === preset
+                                ? "bg-[#F95721] text-white"
+                                : "bg-black/5 dark:bg-white/5 text-[#8A8680]"
+                            }`}
+                          >
+                            +{preset}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={reassignCount}
+                      onChange={(e) => setReassignCount(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-full p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] font-bold text-sm text-[#111110] dark:text-[#F5F3EF] outline-none"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#262420] space-y-2">
+                  <p className="text-xs text-[#111110] dark:text-[#F5F3EF] font-medium">
+                    Automatically distribute available unassigned leads across active callers with capacity (capped at 30 leads per caller).
+                  </p>
+                  <p className="text-[11px] text-[#8A8680]">
+                    Only callers who are currently active will receive leads.
+                  </p>
+                </div>
+              )}
+
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setRebalanceModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                  onClick={() => setReassignModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-2xl border border-[#ECE8E1] dark:border-[#262420] font-medium text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={rebalancing || !rebalanceSource || !rebalanceTarget}
+                  disabled={reassigning || (reassignMode === "between" && (!reassignSource || !reassignTarget))}
                   className="flex-1 py-2.5 rounded-2xl bg-[#F95721] hover:bg-[#e04816] text-white font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
-                  {rebalancing ? (
+                  {reassigning ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Transferring...</span>
+                      <span>Reassigning...</span>
                     </>
                   ) : (
-                    <span>Execute Rebalance</span>
+                    <span>Execute Reassign</span>
                   )}
                 </button>
               </div>
@@ -1672,16 +1584,15 @@ export default function ManagerTeamPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* 2-STEP CONFIRMED PASSWORD RESET MODAL (Bug 4 — Safe credential recovery)  */}
+      {/* 8. PASSWORD RESET MODAL                                                   */}
       {/* ========================================================================= */}
       {targetCaller && (
         <div className="fixed inset-0 z-[400] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div
-            className="w-full max-w-md rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-2xl p-6 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            className="w-full max-w-md rounded-3xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] shadow-2xl p-6 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
-            <div className="flex items-start justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#2D2924]">
+            <div className="flex items-start justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#262420]">
               <div>
                 <span className="text-[10px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
                   SECURITY OVERRIDE
@@ -1705,11 +1616,8 @@ export default function ManagerTeamPage() {
                   <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                   <span>Password Reset for {targetCaller.full_name}</span>
                 </p>
-                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                <p className="text-[11px] text-[#8A8680]">
                   Target Account: <strong>{targetCaller.email}</strong>
-                </p>
-                <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680]">
-                  This issues a one-time temporary password. The user will be required to choose a new password immediately upon logging in.
                 </p>
               </div>
 
@@ -1739,7 +1647,7 @@ export default function ManagerTeamPage() {
                     value={tempPassword}
                     onChange={(e) => setTempPassword(e.target.value)}
                     required
-                    className="w-full pl-3 pr-10 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl font-mono text-xs text-[#111110] dark:text-[#F5F3EF] outline-none"
+                    className="w-full pl-3 pr-10 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] rounded-2xl font-mono text-xs text-[#111110] dark:text-[#F5F3EF] outline-none"
                   />
                   <button
                     type="button"
@@ -1760,7 +1668,7 @@ export default function ManagerTeamPage() {
                 <button
                   type="button"
                   onClick={handleCloseResetModal}
-                  className="flex-1 py-2.5 rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                  className="flex-1 py-2.5 rounded-2xl border border-[#ECE8E1] dark:border-[#262420] text-xs font-medium text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
                 >
                   {resetSuccess ? "Close" : "Cancel"}
                 </button>
@@ -1787,16 +1695,15 @@ export default function ManagerTeamPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* ROLE CHANGE MODAL (Interactive Role Management)                           */}
+      {/* 9. ROLE CHANGE MODAL                                                      */}
       {/* ========================================================================= */}
       {roleModalCaller && (
         <div className="fixed inset-0 z-[400] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div
-            className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-2xl p-6 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] shadow-2xl p-6 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
-            <div className="flex items-start justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#2D2924]">
+            <div className="flex items-start justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#262420]">
               <div>
                 <span className="text-[10px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
                   PERMISSION MANAGEMENT
@@ -1815,7 +1722,7 @@ export default function ManagerTeamPage() {
             </div>
 
             <form onSubmit={handleExecuteRoleChange} className="space-y-4 mt-4">
-              <div className="p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between text-xs">
+              <div className="p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#262420] flex items-center justify-between text-xs">
                 <div>
                   <span className="text-[#8A8680] block text-[10px] font-mono uppercase">Teammate Account</span>
                   <span className="font-bold text-[#111110] dark:text-[#F5F3EF]">{roleModalCaller.email}</span>
@@ -1844,26 +1751,21 @@ export default function ManagerTeamPage() {
                 </div>
               )}
 
-              {/* Role Selection Radio Cards */}
               <div className="space-y-2">
                 <label className="block text-[11px] font-mono uppercase text-[#8A8680] font-semibold">
                   Select New Role
                 </label>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {/* Caller */}
                   <label
                     className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
                       selectedNewRole === "caller"
                         ? "bg-[#F95721]/10 border-[#F95721] ring-2 ring-[#F95721]/30"
-                        : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50"
+                        : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#262420]"
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-base">📞</span>
-                        <span className="font-bold text-xs text-[#111110] dark:text-[#F5F3EF]">Caller</span>
-                      </div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-xs text-[#111110] dark:text-[#F5F3EF]">Caller</span>
                       <input
                         type="radio"
                         name="newRole"
@@ -1873,24 +1775,20 @@ export default function ManagerTeamPage() {
                         className="accent-[#F95721]"
                       />
                     </div>
-                    <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] leading-snug">
-                      Outbound dial queue access, receives distributed leads, logs call outcomes.
+                    <p className="text-[10px] text-[#8A8680]">
+                      Outbound dial queue access, logs outcomes.
                     </p>
                   </label>
 
-                  {/* Manager */}
                   <label
                     className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
                       selectedNewRole === "manager"
                         ? "bg-purple-500/10 border-purple-500 ring-2 ring-purple-500/30"
-                        : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#2D2924] hover:border-purple-500/50"
+                        : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#262420]"
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-base">🛡️</span>
-                        <span className="font-bold text-xs text-[#111110] dark:text-[#F5F3EF]">Manager</span>
-                      </div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-xs text-[#111110] dark:text-[#F5F3EF]">Manager</span>
                       <input
                         type="radio"
                         name="newRole"
@@ -1900,24 +1798,20 @@ export default function ManagerTeamPage() {
                         className="accent-purple-600"
                       />
                     </div>
-                    <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] leading-snug">
-                      Team Command Center, Mirror Mode, Lead Rebalancer, Quarantine Holding Bin.
+                    <p className="text-[10px] text-[#8A8680]">
+                      Team Command Center, Mirror Mode, Reassign leads.
                     </p>
                   </label>
 
-                  {/* Developer */}
                   <label
                     className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
                       selectedNewRole === "developer"
                         ? "bg-cyan-500/10 border-cyan-500 ring-2 ring-cyan-500/30"
-                        : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#2D2924] hover:border-cyan-500/50"
+                        : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#262420]"
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-base">💻</span>
-                        <span className="font-bold text-xs text-[#111110] dark:text-[#F5F3EF]">Developer</span>
-                      </div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-xs text-[#111110] dark:text-[#F5F3EF]">Developer</span>
                       <input
                         type="radio"
                         name="newRole"
@@ -1927,24 +1821,20 @@ export default function ManagerTeamPage() {
                         className="accent-cyan-600"
                       />
                     </div>
-                    <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] leading-snug">
-                      Agency Projects, sprint development kanban boards, and Developer Studio.
+                    <p className="text-[10px] text-[#8A8680]">
+                      Projects, sprint kanban, developer studio.
                     </p>
                   </label>
 
-                  {/* Admin */}
                   <label
                     className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
                       selectedNewRole === "admin"
                         ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/30"
-                        : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#2D2924] hover:border-amber-500/50"
+                        : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#262420]"
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-base">👑</span>
-                        <span className="font-bold text-xs text-[#111110] dark:text-[#F5F3EF]">Admin</span>
-                      </div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-xs text-[#111110] dark:text-[#F5F3EF]">Admin</span>
                       <input
                         type="radio"
                         name="newRole"
@@ -1954,8 +1844,8 @@ export default function ManagerTeamPage() {
                         className="accent-amber-600"
                       />
                     </div>
-                    <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] leading-snug">
-                      Full administrative authority across all modules, settings, and team rosters.
+                    <p className="text-[10px] text-[#8A8680]">
+                      Full administrative authority across all modules.
                     </p>
                   </label>
                 </div>
@@ -1965,7 +1855,7 @@ export default function ManagerTeamPage() {
                 <button
                   type="button"
                   onClick={handleCloseRoleModal}
-                  className="flex-1 py-2.5 rounded-2xl border border-[#ECE8E1] dark:border-[#2D2924] text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                  className="flex-1 py-2.5 rounded-2xl border border-[#ECE8E1] dark:border-[#262420] text-xs font-medium text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
                 >
                   {roleUpdateSuccess ? "Done" : "Cancel"}
                 </button>

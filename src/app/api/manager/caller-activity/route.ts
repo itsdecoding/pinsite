@@ -95,17 +95,52 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 3. Fetch all calls made by this caller today (or rolling 24h)
-    const { data: calls, error: callsErr } = await admin
+    const rangeParam = searchParams.get("range") || "today"; // "today" | "24h" | "all"
+
+    // 3. Compute time boundaries (IST: Asia/Kolkata, UTC+5:30) identically to team-stats
+    const now = new Date();
+    let filterStartIso: string | null = null;
+    let rangeLabel = "Today (IST)";
+
+    if (rangeParam === "24h") {
+      const past24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      filterStartIso = past24h.toISOString();
+      rangeLabel = "Last 24 Hours";
+    } else if (rangeParam === "all") {
+      filterStartIso = null;
+      rangeLabel = "All Time";
+    } else {
+      const istOffsetMs = 5.5 * 60 * 60 * 1000;
+      const istNow = new Date(now.getTime() + istOffsetMs);
+      const istDateStr = istNow.toISOString().split("T")[0]; // YYYY-MM-DD
+      const istStartUtc = new Date(new Date(`${istDateStr}T00:00:00.000Z`).getTime() - istOffsetMs);
+      filterStartIso = istStartUtc.toISOString();
+      rangeLabel = "Today (IST)";
+    }
+
+    // 4. Fetch calls for this caller
+    let callsQuery = admin
       .from("calls")
       .select("id, lead_id, outcome, duration_seconds, notes, called_at, callback_at")
-      .eq("caller_id", callerId)
+      .eq("caller_id", callerId);
+
+    if (filterStartIso) {
+      callsQuery = callsQuery.gte("called_at", filterStartIso);
+    }
+
+    const { data: calls, error: callsErr } = await callsQuery
       .order("called_at", { ascending: false })
       .limit(100);
 
     if (callsErr) {
       throw callsErr;
     }
+
+    // Also get all-time calls count for context
+    const { count: allTimeDialsCount } = await admin
+      .from("calls")
+      .select("id", { count: "exact", head: true })
+      .eq("caller_id", callerId);
 
     // Map lead details for each call
     const leadIds = Array.from(new Set((calls || []).map((c) => c.lead_id).filter(Boolean)));
@@ -147,10 +182,10 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // 4. Fetch active leads currently assigned to caller
+    // 5. Fetch active leads currently assigned to caller
     const { data: activeLeads, error: activeLeadsErr } = await admin
       .from("leads")
-      .select("id, name, phone, niche, area, score, attempts_count, next_callback_at, last_called_at, status")
+      .select("id, name, phone, niche, area, score, attempts_count, next_callback_at, last_called_at, status, cooldown_until")
       .eq("assigned_to", callerId)
       .is("deleted_at", null)
       .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")')
@@ -161,7 +196,30 @@ export async function GET(req: NextRequest) {
       throw activeLeadsErr;
     }
 
-    // 5. Aggregate summary
+    // 6. Partition active leads into 4-state pipeline
+    const leadsList = activeLeads || [];
+    let dialNowCount = 0;
+    let callbacksCount = 0;
+    let overdueCallbacksCount = 0;
+    let waitingCount = 0;
+
+    leadsList.forEach((lead) => {
+      const isCallback = lead.status === "callback" || Boolean(lead.next_callback_at);
+      const isCooldown = lead.cooldown_until && new Date(lead.cooldown_until) > now;
+
+      if (isCallback) {
+        callbacksCount += 1;
+        if (lead.next_callback_at && new Date(lead.next_callback_at) < now) {
+          overdueCallbacksCount += 1;
+        }
+      } else if (isCooldown) {
+        waitingCount += 1;
+      } else {
+        dialNowCount += 1;
+      }
+    });
+
+    // 7. Aggregate summary
     const totalDials = callLogs.length;
     const connects = callLogs.filter((c) =>
       ["interested", "callback", "gatekeeper", "dm_reached", "closed_won"].includes(c.outcome)
@@ -176,13 +234,24 @@ export async function GET(req: NextRequest) {
       },
       summary: {
         total_dials: totalDials,
+        all_time_dials: allTimeDialsCount || totalDials,
         connects,
         connect_rate: totalDials >= 10 ? Math.round((connects / totalDials) * 100) : null,
         talk_time_seconds: totalTalkTime,
-        active_queue_count: (activeLeads || []).length,
+        active_queue_count: leadsList.length,
+        range: rangeParam,
+        range_label: rangeLabel,
+        pipeline: {
+          dial_now: dialNowCount,
+          callbacks: callbacksCount,
+          overdue_callbacks: overdueCallbacksCount,
+          waiting: waitingCount,
+          done: totalDials,
+          total_assigned: leadsList.length,
+        },
       },
       calls: callLogs,
-      active_leads: activeLeads || [],
+      active_leads: leadsList,
     });
   } catch (err: any) {
     console.error("Caller activity error:", err);

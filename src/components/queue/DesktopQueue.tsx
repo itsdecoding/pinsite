@@ -814,7 +814,7 @@ export function DesktopQueue() {
               >
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
                 <span>
-                  MIRRORING • {impersonatedCaller.full_name} • {impersonatedCaller.dials_today} dials • {leads.length} leads
+                  MIRRORING • {impersonatedCaller.full_name} • {impersonatedCaller.dials_today} dials • {leads.length} ready to dial
                 </span>
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isMirrorDetailsOpen ? "rotate-180" : ""}`} />
               </button>
@@ -853,7 +853,7 @@ export function DesktopQueue() {
                         <span className="font-bold text-[#111110] dark:text-[#F5F3EF]">{impersonatedCaller.dials_today} dials</span>
                       </div>
                       <div className="flex items-center justify-between font-mono text-[11px]">
-                        <span className="text-[#8A8680]">Active Queue:</span>
+                        <span className="text-[#8A8680]">Ready to Dial:</span>
                         <span className="font-bold text-[#F95721]">{leads.length} leads</span>
                       </div>
                     </div>
