@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { DesktopQueue } from "@/components/queue/DesktopQueue";
+import { DesktopMirrorQueue } from "@/components/queue/DesktopMirrorQueue";
 import { CallerCockpit, CallerCockpitSkeleton } from "@/components/queue/CallerCockpit";
 
 function QueueEntry() {
@@ -59,6 +60,10 @@ function QueueEntry() {
 
   if (isMirroring && isMobile) {
     return <CallerCockpit readOnly />;
+  }
+
+  if (isMirroring && impersonateParam) {
+    return <DesktopMirrorQueue callerId={impersonateParam} />;
   }
 
   return <DesktopQueue />;

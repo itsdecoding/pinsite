@@ -1,11 +1,14 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { Search, Command } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
-export function CommandBar() {
+function CommandBarContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isMirroring = Boolean(searchParams.get("impersonate"));
+
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -22,6 +25,8 @@ export function CommandBar() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  if (isMirroring) return null;
 
   const commands = [
     { label: "Go to Operations Dashboard", href: "/studio/dashboard" },
@@ -105,5 +110,13 @@ export function CommandBar() {
         </div>
       )}
     </div>
+  );
+}
+
+export function CommandBar() {
+  return (
+    <Suspense fallback={null}>
+      <CommandBarContent />
+    </Suspense>
   );
 }
