@@ -46,7 +46,17 @@ function ResetPasswordForm() {
       if (typeof window === "undefined") return;
 
       try {
-        // 1. Check for error parameters in URL hash fragment or query params (e.g. expired link)
+        // 1. Check for query param error passed by /auth/confirm or Supabase
+        const queryError = searchParams.get("error");
+        if (queryError) {
+          if (isMounted) {
+            setErrorMsg(queryError);
+            setIsVerifyingSession(false);
+          }
+          return;
+        }
+
+        // 2. Check for error parameters in URL hash fragment
         const hash = window.location.hash.substring(1);
         const hashParams = new URLSearchParams(hash);
         const errorDesc =
@@ -59,7 +69,24 @@ function ResetPasswordForm() {
           return;
         }
 
-        // 2. Consume implicit grant recovery tokens from URL hash fragment (#access_token=...&refresh_token=...)
+        // 3. Check for existing active session (hydrated via /auth/confirm SSR cookies or active login)
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData?.user) {
+          const { data: sessData } = await supabase.auth.getSession();
+          if (sessData?.session?.access_token) {
+            recoveryTokenRef.current = sessData.session.access_token;
+            setRecoveryToken(sessData.session.access_token);
+          }
+          if (isMounted) {
+            setActiveEmail(userData.user.email || null);
+            setSessionReady(true);
+            setErrorMsg(null);
+            setIsVerifyingSession(false);
+          }
+          return;
+        }
+
+        // 4. Consume implicit grant recovery tokens from URL hash fragment (#access_token=...&refresh_token=...)
         const accessToken = hashParams.get("access_token");
         const refreshToken = hashParams.get("refresh_token");
 
@@ -78,8 +105,7 @@ function ResetPasswordForm() {
             });
 
             if (sessionErr) {
-              console.warn("Notice: setSession from recovery hash had warning/error:", sessionErr.message);
-              // Do NOT fail completely if we have accessToken: recoveryTokenRef still holds the valid JWT!
+              console.warn("Notice: setSession from recovery hash had warning:", sessionErr.message);
             } else if (data?.user) {
               if (isMounted) {
                 setActiveEmail(data.user.email || null);
@@ -90,7 +116,7 @@ function ResetPasswordForm() {
           return;
         }
 
-        // 3. Consume PKCE auth code from query params (?code=...)
+        // 5. Consume PKCE auth code from query params (?code=...)
         const code = searchParams.get("code");
         if (code) {
           const { data, error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
@@ -108,23 +134,12 @@ function ResetPasswordForm() {
           return;
         }
 
-        // 4. Check for existing active session (e.g. forced password change while logged in)
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          if (session.access_token) {
-            recoveryTokenRef.current = session.access_token;
-          }
-          if (isMounted) {
-            setActiveEmail(session.user.email || null);
-            setSessionReady(true);
-            setErrorMsg(null);
-          }
-        } else if (isForced) {
+        // 6. If no active session found
+        if (isForced) {
           if (isMounted) setErrorMsg("Session expired. Please log in again to update your temporary password.");
         } else {
-          // If no session or recovery token found yet, check hash once more before showing error
-          const currentHash = window.location.hash.substring(1);
-          const fallbackToken = new URLSearchParams(currentHash).get("access_token");
+          // Check fallback in hash once more before rendering error
+          const fallbackToken = new URLSearchParams(window.location.hash.substring(1)).get("access_token");
           if (fallbackToken) {
             recoveryTokenRef.current = fallbackToken;
             if (isMounted) {
@@ -169,7 +184,7 @@ function ResetPasswordForm() {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [searchParams, supabase, isForced]);
+  }, [searchParams, isForced]);
 
   // Password requirement checklist calculation
   const requirements = useMemo(() => {
@@ -257,62 +272,29 @@ function ResetPasswordForm() {
         token = hashParams.get("access_token");
       }
 
-      // 2. Update password: first via server-side Admin endpoint with Bearer auth, fallback to supabase.auth.updateUser
-      let updateSucceeded = false;
-
+      // 2. Update password via server-side endpoint (supports both cookie auth & Bearer JWT)
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
       if (token) {
-        try {
-          const res = await fetch("/api/auth/reset-password", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ password }),
-          });
-
-          if (res.ok) {
-            const data = await res.json().catch(() => ({}));
-            if (data.role) role = data.role;
-            if (data.email) userEmail = data.email;
-            updateSucceeded = true;
-          } else {
-            const errData = await res.json().catch(() => ({}));
-            console.warn("Server reset-password endpoint returned error:", errData.error);
-          }
-        } catch (fetchErr) {
-          console.warn("Could not call server reset-password endpoint:", fetchErr);
-        }
+        headers["Authorization"] = `Bearer ${token}`;
       }
 
-      // If server endpoint didn't succeed or token wasn't present, try client-side supabase.auth.updateUser directly
-      if (!updateSucceeded) {
-        const { data: updateData, error: sbError } = await supabase.auth.updateUser({
-          password,
-        });
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: JSON.stringify({ password }),
+      });
 
-        if (sbError) {
-          throw new Error(sbError.message || "Failed to update password. Please request a new reset link.");
-        }
+      const data = await res.json().catch(() => ({}));
 
-        if (updateData?.user) {
-          userEmail = updateData.user.email || activeEmail;
-          updateSucceeded = true;
-          // Clear require_password_change if needed
-          try {
-            await supabase
-              .from("profiles")
-              .update({ require_password_change: false, updated_at: new Date().toISOString() })
-              .eq("id", updateData.user.id);
-          } catch (profileErr) {
-            console.warn("Could not update profile flag:", profileErr);
-          }
-        }
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update password. Please request a new reset link.");
       }
 
-      if (!updateSucceeded) {
-        throw new Error("Unable to update password. Please click the reset link sent to your email again.");
-      }
+      if (data.role) role = data.role;
+      if (data.email) userEmail = data.email;
 
       // 3. Establish fresh authenticated session with new credentials
       if (userEmail) {

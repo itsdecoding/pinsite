@@ -56,17 +56,6 @@ export async function POST(req: NextRequest) {
 
     const admin = getAdminClient();
 
-    // Security Rule: Protect Super Admin account from accidental password resets
-    if (
-      activeUser.email?.toLowerCase() === "muzammilpathan6047@gmail.com" ||
-      activeUser.id === "a87c7c79-6c4c-4787-8132-8cff8f7a1e74"
-    ) {
-      return NextResponse.json(
-        { error: "Forbidden: The Workspace Super Admin account password is protected and cannot be modified." },
-        { status: 403 }
-      );
-    }
-
     // 2. Invalidate all previous active sessions globally across all devices
     if (userToken) {
       try {

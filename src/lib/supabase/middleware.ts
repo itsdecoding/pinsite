@@ -81,6 +81,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/studio/forgot-password") ||
     pathname.startsWith("/studio/reset-password") ||
     pathname.startsWith("/studio/unauthorized") ||
+    pathname.startsWith("/auth") ||
+    pathname.startsWith("/studio/auth") ||
     pathname.startsWith("/api") ||
     pathname === "/" ||
     pathname === "/studio";

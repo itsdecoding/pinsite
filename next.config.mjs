@@ -44,6 +44,10 @@ const nextConfig = {
         source: '/studio/manager/:path*',
         destination: '/manager/:path*',
       },
+      {
+        source: '/studio/auth/:path*',
+        destination: '/auth/:path*',
+      },
     ];
   },
   async redirects() {

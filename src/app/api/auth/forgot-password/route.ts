@@ -55,14 +55,11 @@ export async function POST(req: NextRequest) {
       }
 
       if (shouldSend) {
-        let actionLink = linkData.properties.action_link;
-        // Bulletproof guard: Ensure redirect_to parameter explicitly points to https://pinsite.pro/studio/reset-password (no www)
-        if (actionLink) {
-          actionLink = actionLink.replace(
-            /redirect_to=[^&]*/,
-            `redirect_to=${encodeURIComponent("https://pinsite.pro/studio/reset-password")}`
-          );
-        }
+        const hashedToken = linkData.properties.hashed_token;
+        const appDomain = "https://www.pinsite.pro";
+        let actionLink = hashedToken
+          ? `${appDomain}/auth/confirm?token_hash=${hashedToken}&type=recovery&next=/studio/reset-password`
+          : linkData.properties.action_link;
 
         const resendKey = process.env.RESEND_API_KEY;
 
