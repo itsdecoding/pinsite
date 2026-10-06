@@ -51,6 +51,16 @@ export interface Lead {
   } | null;
 }
 
+export type DoneLead = Lead & {
+  callId?: string;
+  callOutcome?: string;
+  callCalledAt?: string;
+  callNotes?: string | null;
+  callDuration?: number | null;
+};
+
+export type PipelineTab = "dial_now" | "callbacks" | "waiting" | "done";
+
 export interface HistoricalCallLog {
   id: string;
   notes: string | null;
@@ -119,7 +129,7 @@ function formatRelativeTime(dateString: string | null | undefined): string {
 }
 
 function getOutcomeBadge(outcome: string) {
-  const norm = outcome.toLowerCase();
+  const norm = (outcome || "").toLowerCase();
   switch (norm) {
     case "interested":
       return {
@@ -155,7 +165,7 @@ function getOutcomeBadge(outcome: string) {
     default:
       return {
         icon: PhoneCall,
-        label: norm.replace("_", " "),
+        label: norm.replace("_", " ") || "Call",
         color: "text-zinc-400 bg-zinc-800 border-zinc-700",
       };
   }
@@ -166,7 +176,14 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
   const supabase = useMemo(() => createClient(), []);
 
   const [caller, setCaller] = useState<CallerProfile | null>(null);
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [activeTab, setActiveTab] = useState<PipelineTab>("dial_now");
+
+  // Partitioned buckets
+  const [readyLeads, setReadyLeads] = useState<Lead[]>([]);
+  const [callbackLeads, setCallbackLeads] = useState<Lead[]>([]);
+  const [waitingLeads, setWaitingLeads] = useState<Lead[]>([]);
+  const [doneLeads, setDoneLeads] = useState<DoneLead[]>([]);
+
   const [activeLeadIndex, setActiveLeadIndex] = useState(0);
   const [pipeline, setPipeline] = useState<PipelineCounts>({
     dialNow: 0,
@@ -178,7 +195,7 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
   const [loading, setLoading] = useState(true);
   const [copiedPhone, setCopiedPhone] = useState(false);
 
-  // Latest call log for current lead
+  // Latest call log for current lead (for dial_now / callbacks / waiting)
   const [latestCall, setLatestCall] = useState<{
     outcome: string;
     called_at: string;
@@ -192,7 +209,23 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
   const [dossierLogs, setDossierLogs] = useState<HistoricalCallLog[]>([]);
   const [loadingDossier, setLoadingDossier] = useState(false);
 
-  const currentLead = leads[activeLeadIndex] || null;
+  // Active bucket derived from the currently selected pipeline tab
+  const currentBucket = useMemo(() => {
+    switch (activeTab) {
+      case "dial_now":
+        return readyLeads;
+      case "callbacks":
+        return callbackLeads;
+      case "waiting":
+        return waitingLeads;
+      case "done":
+        return doneLeads;
+      default:
+        return readyLeads;
+    }
+  }, [activeTab, readyLeads, callbackLeads, waitingLeads, doneLeads]);
+
+  const currentLead = currentBucket[activeLeadIndex] || null;
 
   // 1. Fetch Caller Profile, Leads, and Pipeline Partition
   const loadMirrorData = useCallback(async () => {
@@ -210,7 +243,6 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
       }
 
       // Fetch all assigned active leads for this caller
-      // Same ordering as caller's mobile cockpit: priority callbacks -> ready to dial -> cooldown
       const { data: leadsData, error: leadsErr } = await supabase
         .from("leads")
         .select("*, profiles:assigned_to(full_name)")
@@ -224,14 +256,9 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
 
       const rawLeads: Lead[] = leadsData || [];
 
-      // Partition into the 4-state pipeline
+      // Partition into the 3 active pipeline buckets
       const now = new Date();
-      let dialNowCount = 0;
-      let callbackCount = 0;
       let overdueCallbackCount = 0;
-      let waitingCount = 0;
-
-      const sortedLeads: Lead[] = [];
       const readyBucket: Lead[] = [];
       const callbackBucket: Lead[] = [];
       const cooldownBucket: Lead[] = [];
@@ -241,26 +268,18 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
         const isCooldown = lead.cooldown_until && new Date(lead.cooldown_until) > now;
 
         if (isCallback) {
-          callbackCount++;
           if (lead.next_callback_at && new Date(lead.next_callback_at) <= now) {
             overdueCallbackCount++;
           }
           callbackBucket.push(lead);
         } else if (isCooldown) {
-          waitingCount++;
           cooldownBucket.push(lead);
         } else {
-          dialNowCount++;
           readyBucket.push(lead);
         }
       });
 
-      // Unified sequence identical to caller's mobile queue view:
-      // Ready to Dial -> Callbacks -> Cooldown
-      sortedLeads.push(...readyBucket, ...callbackBucket, ...cooldownBucket);
-      setLeads(sortedLeads);
-
-      // Fetch calls completed today by this caller (IST Day Start: UTC+5:30)
+      // 2. Fetch calls completed today by this caller (IST Day Start: UTC+5:30)
       const istOffsetMs = 5.5 * 60 * 60 * 1000;
       const istNow = new Date(Date.now() + istOffsetMs);
       const istDateStr = istNow.toISOString().split("T")[0];
@@ -268,18 +287,64 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
         new Date(`${istDateStr}T00:00:00.000Z`).getTime() - istOffsetMs
       ).toISOString();
 
-      const { count: doneCount } = await supabase
+      const { data: todayCallsData } = await supabase
         .from("calls")
-        .select("*", { count: "exact", head: true })
+        .select("id, lead_id, outcome, duration_seconds, notes, called_at, callback_at")
         .eq("caller_id", callerId)
-        .gte("called_at", istStartUtc);
+        .gte("called_at", istStartUtc)
+        .order("called_at", { ascending: false });
+
+      const todayCalls = todayCallsData || [];
+      const doneLeadIds = Array.from(
+        new Set(todayCalls.map((c) => c.lead_id).filter(Boolean))
+      ) as string[];
+
+      // Resolve any leads that are in today's calls but not in rawLeads (e.g. closed/quarantined today)
+      const missingLeadIds = doneLeadIds.filter(
+        (id) => !rawLeads.some((l) => l.id === id)
+      );
+
+      let fetchedMissing: Lead[] = [];
+      if (missingLeadIds.length > 0) {
+        const { data: missingData } = await supabase
+          .from("leads")
+          .select("*, profiles:assigned_to(full_name)")
+          .in("id", missingLeadIds);
+        if (missingData) {
+          fetchedMissing = missingData;
+        }
+      }
+
+      const allLeadsMap = new Map<string, Lead>();
+      rawLeads.forEach((l) => allLeadsMap.set(l.id, l));
+      fetchedMissing.forEach((l) => allLeadsMap.set(l.id, l));
+
+      const doneBucket: DoneLead[] = [];
+      todayCalls.forEach((call) => {
+        const baseLead = call.lead_id ? allLeadsMap.get(call.lead_id) : null;
+        if (baseLead) {
+          doneBucket.push({
+            ...baseLead,
+            callId: call.id,
+            callOutcome: call.outcome,
+            callCalledAt: call.called_at,
+            callNotes: call.notes,
+            callDuration: call.duration_seconds,
+          });
+        }
+      });
+
+      setReadyLeads(readyBucket);
+      setCallbackLeads(callbackBucket);
+      setWaitingLeads(cooldownBucket);
+      setDoneLeads(doneBucket);
 
       setPipeline({
-        dialNow: dialNowCount,
-        callbacks: callbackCount,
+        dialNow: readyBucket.length,
+        callbacks: callbackBucket.length,
         overdueCallbacks: overdueCallbackCount,
-        waiting: waitingCount,
-        done: doneCount || 0,
+        waiting: cooldownBucket.length,
+        done: doneBucket.length,
       });
     } catch (err) {
       console.error("Failed to load desktop mirror data:", err);
@@ -291,6 +356,12 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
   useEffect(() => {
     loadMirrorData();
   }, [loadMirrorData]);
+
+  // Handle Tab Change: switches filtered queue deck and resets lead selection to first item
+  const handleTabChange = (tab: PipelineTab) => {
+    setActiveTab(tab);
+    setActiveLeadIndex(0);
+  };
 
   // 2. Fetch Latest Call Log for Current Lead
   useEffect(() => {
@@ -340,7 +411,7 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
     };
   }, [currentLead?.id, caller?.full_name, supabase]);
 
-  // 3. Fetch Historical Call Logs for Dossier
+  // 3. Fetch Historical Call Logs for Dossier Modal
   const openDossier = useCallback(async () => {
     if (!currentLead) return;
     setIsDossierOpen(true);
@@ -358,7 +429,7 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
         outcome: l.outcome,
         duration_seconds: l.duration_seconds,
         called_at: l.called_at,
-        caller_name: l.caller?.full_name || "Caller",
+        caller_name: l.caller?.full_name || caller?.full_name || "Caller",
       }));
 
       setDossierLogs(logs);
@@ -367,13 +438,15 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
     } finally {
       setLoadingDossier(false);
     }
-  }, [currentLead, supabase]);
+  }, [currentLead?.id, caller?.full_name, supabase]);
 
-  function handleExitMirror() {
+  // Exit Mirror Mode: route back to Team Command Center
+  const handleExitMirror = () => {
     router.push("/studio/manager/team");
-  }
+  };
 
-  function handleCopyPhone(phone: string) {
+  // Copy phone helper
+  function copyPhoneNumber(phone: string) {
     if (!phone) return;
     navigator.clipboard.writeText(phone);
     setCopiedPhone(true);
@@ -406,49 +479,101 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
         </button>
       </div>
 
-      {/* 2. TODAY'S PIPELINE STRIP (Below banner, 4-number format matching Team Center) */}
-      <div className="w-full bg-white dark:bg-[#181614] border-b border-[#ECE8E1] dark:border-[#2D2924] px-4 sm:px-8 py-2.5 flex items-center justify-between overflow-x-auto text-xs">
-        <div className="flex items-center gap-4 sm:gap-6 font-mono shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-[#6E6B66] dark:text-[#8A8680]">Dial Now</span>
-            <span className="font-bold text-[#F95721] px-2 py-0.5 bg-[#F95721]/10 rounded border border-[#F95721]/20">
+      {/* 2. TODAY'S PIPELINE TABS STRIP (Clickable tabs, quiet, active orange underline, no boxes around numbers) */}
+      <div className="w-full bg-white dark:bg-[#181614] border-b border-[#ECE8E1] dark:border-[#2D2924] px-4 sm:px-8 flex items-center justify-between overflow-x-auto text-xs">
+        <div className="flex items-center gap-6 sm:gap-8 font-mono shrink-0">
+          {/* Tab 1: Dial Now */}
+          <button
+            type="button"
+            onClick={() => handleTabChange("dial_now")}
+            className={`py-3 flex items-center gap-2 border-b-2 text-xs font-semibold transition-all relative ${
+              activeTab === "dial_now"
+                ? "border-[#F95721] text-[#111110] dark:text-[#F5F3EF]"
+                : "border-transparent text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+            }`}
+          >
+            <span>Dial Now</span>
+            <span
+              className={
+                activeTab === "dial_now"
+                  ? "text-[#F95721] font-bold"
+                  : "text-[#6E6B66] dark:text-[#8A8680]"
+              }
+            >
               {pipeline.dialNow}
             </span>
-          </div>
+          </button>
 
-          <span className="text-[#ECE8E1] dark:text-[#2D2924]">·</span>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[#6E6B66] dark:text-[#8A8680]">Callbacks</span>
+          {/* Tab 2: Callbacks */}
+          <button
+            type="button"
+            onClick={() => handleTabChange("callbacks")}
+            className={`py-3 flex items-center gap-2 border-b-2 text-xs font-semibold transition-all relative ${
+              activeTab === "callbacks"
+                ? "border-[#F95721] text-[#111110] dark:text-[#F5F3EF]"
+                : "border-transparent text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+            }`}
+          >
+            <span>Callbacks</span>
             <span
-              className={`font-bold px-2 py-0.5 rounded border ${
-                pipeline.overdueCallbacks > 0
-                  ? "text-rose-400 bg-rose-500/10 border-rose-500/20"
-                  : "text-amber-400 bg-amber-500/10 border-amber-500/20"
-              }`}
+              className={
+                activeTab === "callbacks"
+                  ? "text-[#F95721] font-bold"
+                  : "text-[#6E6B66] dark:text-[#8A8680]"
+              }
             >
               {pipeline.callbacks}
-              {pipeline.overdueCallbacks > 0 && ` (${pipeline.overdueCallbacks} overdue)`}
+              {pipeline.overdueCallbacks > 0 && (
+                <span className="text-rose-500 font-semibold ml-1">
+                  ({pipeline.overdueCallbacks} overdue)
+                </span>
+              )}
             </span>
-          </div>
+          </button>
 
-          <span className="text-[#ECE8E1] dark:text-[#2D2924]">·</span>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[#6E6B66] dark:text-[#8A8680]">Waiting</span>
-            <span className="font-bold text-zinc-400 px-2 py-0.5 bg-black/5 dark:bg-white/5 rounded border border-black/10 dark:border-white/10">
+          {/* Tab 3: Waiting */}
+          <button
+            type="button"
+            onClick={() => handleTabChange("waiting")}
+            className={`py-3 flex items-center gap-2 border-b-2 text-xs font-semibold transition-all relative ${
+              activeTab === "waiting"
+                ? "border-[#F95721] text-[#111110] dark:text-[#F5F3EF]"
+                : "border-transparent text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+            }`}
+          >
+            <span>Waiting</span>
+            <span
+              className={
+                activeTab === "waiting"
+                  ? "text-[#F95721] font-bold"
+                  : "text-[#6E6B66] dark:text-[#8A8680]"
+              }
+            >
               {pipeline.waiting}
             </span>
-          </div>
+          </button>
 
-          <span className="text-[#ECE8E1] dark:text-[#2D2924]">·</span>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[#6E6B66] dark:text-[#8A8680]">Done</span>
-            <span className="font-bold text-emerald-400 px-2 py-0.5 bg-emerald-500/10 rounded border border-emerald-500/20">
+          {/* Tab 4: Done */}
+          <button
+            type="button"
+            onClick={() => handleTabChange("done")}
+            className={`py-3 flex items-center gap-2 border-b-2 text-xs font-semibold transition-all relative ${
+              activeTab === "done"
+                ? "border-[#F95721] text-[#111110] dark:text-[#F5F3EF]"
+                : "border-transparent text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+            }`}
+          >
+            <span>Done</span>
+            <span
+              className={
+                activeTab === "done"
+                  ? "text-[#F95721] font-bold"
+                  : "text-[#6E6B66] dark:text-[#8A8680]"
+              }
+            >
               {pipeline.done}
             </span>
-          </div>
+          </button>
         </div>
 
         <div className="hidden lg:flex items-center gap-2 text-[11px] text-[#6E6B66] dark:text-[#8A8680]">
@@ -466,208 +591,266 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
               Loading {callerDisplayName}&apos;s queue stream...
             </p>
           </div>
-        ) : leads.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-3 bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl p-8 text-center">
-            <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-            <h2 className="text-base font-bold">Queue is Clean</h2>
-            <p className="text-xs text-[#8A8680] max-w-md">
-              {callerDisplayName} has no active leads assigned or pending dial in their queue right now.
-            </p>
-            <button
-              type="button"
-              onClick={handleExitMirror}
-              className="mt-4 px-4 py-2 bg-[#F95721] hover:bg-[#E04612] text-white text-xs font-semibold rounded-xl transition"
-            >
-              Return to Team Command Center
-            </button>
-          </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* LEFT COLUMN (60%): CURRENT LEAD CARD */}
-            <div className="lg:col-span-7 bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl p-6 sm:p-8 shadow-sm flex flex-col justify-between space-y-6">
-              {/* Lead Sequence & Target Decision Maker Header */}
-              <div>
-                <div className="flex items-center justify-between text-xs font-mono text-[#8A8680] mb-2">
-                  <span>
-                    LEAD {activeLeadIndex + 1} OF {leads.length}
-                  </span>
-                  <span className="flex items-center gap-1.5 text-zinc-400">
-                    <User className="w-3.5 h-3.5" />
-                    Assigned: {callerDisplayName}
-                  </span>
-                </div>
-
-                {/* Business Name (Large) */}
-                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#111110] dark:text-[#F5F3EF] leading-tight">
-                  {formatLeadName(currentLead?.name)}
-                </h1>
-
-                {/* Niche · Area · Attempt X/5 Badges */}
-                <div className="flex flex-wrap items-center gap-2 mt-3">
-                  <span className="px-2.5 py-1 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-xs font-medium rounded-lg text-[#111110] dark:text-[#F5F3EF]">
-                    {currentLead?.niche || "Dental"}
-                  </span>
-                  <span className="px-2.5 py-1 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-xs font-medium rounded-lg text-[#6E6B66] dark:text-[#8A8680]">
-                    {currentLead?.area || "Pune"}
-                  </span>
-                  <span className="px-2.5 py-1 bg-[#F95721]/10 border border-[#F95721]/20 text-[#F95721] text-xs font-mono font-semibold rounded-lg">
-                    Attempt {currentLead?.attempts_count || 1}/5
-                  </span>
-                  {currentLead?.status === "callback" && (
-                    <span className="px-2.5 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium rounded-lg">
-                      Callback Scheduled
-                    </span>
-                  )}
-                </div>
+            {/* LEFT COLUMN (60%): CURRENT LEAD CARD OR STATE EMPTY VIEW */}
+            {currentBucket.length === 0 ? (
+              <div className="lg:col-span-7 bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl p-8 sm:p-12 shadow-sm flex flex-col items-center justify-center text-center space-y-3 min-h-[420px]">
+                {activeTab === "dial_now" ? (
+                  <>
+                    <CheckCircle2 className="w-10 h-10 text-emerald-500" />
+                    <h3 className="text-base font-bold text-[#111110] dark:text-[#F5F3EF]">
+                      No Ready Leads to Dial
+                    </h3>
+                    <p className="text-xs text-[#8A8680] max-w-sm">
+                      {callerDisplayName} has zero fresh leads in their ready dial deck right now.
+                    </p>
+                    {callbackLeads.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange("callbacks")}
+                        className="mt-3 px-3.5 py-1.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 text-xs font-semibold hover:bg-amber-500/20 transition"
+                      >
+                        View Scheduled Callbacks ({callbackLeads.length})
+                      </button>
+                    )}
+                  </>
+                ) : activeTab === "callbacks" ? (
+                  <>
+                    <CalendarClock className="w-10 h-10 text-amber-400" />
+                    <h3 className="text-base font-bold text-[#111110] dark:text-[#F5F3EF]">
+                      No Scheduled Callbacks
+                    </h3>
+                    <p className="text-xs text-[#8A8680] max-w-sm">
+                      {callerDisplayName} has no pending or upcoming scheduled callbacks.
+                    </p>
+                  </>
+                ) : activeTab === "waiting" ? (
+                  <>
+                    <Clock className="w-10 h-10 text-zinc-400" />
+                    <h3 className="text-base font-bold text-[#111110] dark:text-[#F5F3EF]">
+                      No Leads in Cooldown
+                    </h3>
+                    <p className="text-xs text-[#8A8680] max-w-sm">
+                      No leads are currently cooling down for {callerDisplayName}.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <PhoneCall className="w-10 h-10 text-emerald-500" />
+                    <h3 className="text-base font-bold text-[#111110] dark:text-[#F5F3EF]">
+                      No Calls Completed Today
+                    </h3>
+                    <p className="text-xs text-[#8A8680] max-w-sm">
+                      {callerDisplayName} has not logged any calls yet during today&apos;s shift.
+                    </p>
+                  </>
+                )}
               </div>
-
-              {/* Ask for: Decision Maker */}
-              <div className="p-3.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] flex items-center gap-2.5 text-xs">
-                <div className="w-7 h-7 rounded-lg bg-[#F95721]/10 flex items-center justify-center text-[#F95721] shrink-0">
-                  <User className="w-4 h-4" />
-                </div>
+            ) : currentLead ? (
+              <div className="lg:col-span-7 bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl p-6 sm:p-8 shadow-sm flex flex-col justify-between space-y-6">
+                {/* Lead Sequence & Target Decision Maker Header */}
                 <div>
-                  <span className="text-[10px] uppercase font-mono tracking-wider text-[#8A8680] block">
-                    Decision Maker
-                  </span>
-                  <span className="font-semibold text-[#111110] dark:text-[#F5F3EF]">
-                    Ask for: {resolveDecisionMaker(currentLead)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Last Contact Strip (Prior Outcome + Caller + Date) */}
-              <div className="p-3.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
-                    <Clock className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-mono tracking-wider text-[#8A8680] block">
-                      Prior Contact Status
+                  <div className="flex items-center justify-between text-xs font-mono text-[#8A8680] mb-2">
+                    <span>
+                      {activeTab === "done" ? "CALL" : "LEAD"} {activeLeadIndex + 1} OF{" "}
+                      {currentBucket.length}
                     </span>
-                    {loadingCall ? (
-                      <span className="text-zinc-400">Loading prior contact...</span>
-                    ) : latestCall ? (
-                      <span className="font-medium text-[#111110] dark:text-[#F5F3EF]">
-                        Last contact:{" "}
-                        <span className="text-amber-400 font-semibold capitalize">
-                          {latestCall.outcome.replace("_", " ")}
-                        </span>{" "}
-                        · {latestCall.caller_name} · {formatRelativeTime(latestCall.called_at)}
-                      </span>
-                    ) : (
-                      <span className="font-medium text-emerald-500 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" />
-                        Fresh Lead · No prior dial attempts
+                    <span className="flex items-center gap-1.5 text-zinc-400">
+                      <User className="w-3.5 h-3.5" />
+                      Assigned: {callerDisplayName}
+                    </span>
+                  </div>
+
+                  {/* Business Name (Large) */}
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-[#111110] dark:text-[#F5F3EF] tracking-tight leading-tight">
+                    {formatLeadName(currentLead.name)}
+                  </h1>
+
+                  {/* Badges: Niche · Area · Attempt X/5 */}
+                  <div className="flex flex-wrap items-center gap-2 pt-3">
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[#111110] dark:text-[#F5F3EF]">
+                      {currentLead.niche}
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[#8A8680]">
+                      {currentLead.area}
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-semibold bg-[#F95721]/10 text-[#F95721] border border-[#F95721]/20">
+                      Attempt {currentLead.attempts_count || 1}/5
+                    </span>
+                    {currentLead.score && (
+                      <span className="px-2.5 py-1 rounded-lg text-xs font-mono text-zinc-400 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
+                        Score: {currentLead.score}
                       </span>
                     )}
                   </div>
                 </div>
 
-                {latestCall?.notes && (
-                  <span
-                    className="text-[11px] text-[#8A8680] max-w-[200px] truncate italic hidden sm:inline"
-                    title={latestCall.notes}
-                  >
-                    &ldquo;{latestCall.notes}&rdquo;
-                  </span>
-                )}
-              </div>
-
-              {/* Target Phone Number */}
-              <div className="p-4 rounded-xl bg-black/[0.03] dark:bg-white/[0.03] border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] uppercase font-mono tracking-wider text-[#8A8680] block mb-0.5">
-                    Target Primary Line
-                  </span>
-                  <span className="font-mono text-xl sm:text-2xl font-extrabold tracking-tight text-[#111110] dark:text-[#F5F3EF]">
-                    {formatPhoneDisplay(currentLead?.phone)}
-                  </span>
+                {/* Decision Maker Card */}
+                <div className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#F95721]/10 flex items-center justify-center text-[#F95721] shrink-0">
+                    <User className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-mono tracking-wider text-[#8A8680] block">
+                      Decision Maker
+                    </span>
+                    <span className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                      {resolveDecisionMaker(currentLead)}
+                    </span>
+                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleCopyPhone(currentLead?.phone)}
-                  className="px-3 py-2 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-xl text-xs font-medium flex items-center gap-1.5 transition text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-                  title="Copy phone number"
-                >
-                  {copiedPhone ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                      <span className="text-emerald-500">Copied</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Copy</span>
-                    </>
-                  )}
-                </button>
-              </div>
+                {/* Last Contact Strip (Prior Outcome + Caller + Date) */}
+                <div className="p-3.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-mono tracking-wider text-[#8A8680] block">
+                        {activeTab === "done" ? "Call Outcome Today" : "Prior Contact Status"}
+                      </span>
+                      {activeTab === "done" && (currentLead as DoneLead).callOutcome ? (
+                        <span className="font-medium text-[#111110] dark:text-[#F5F3EF]">
+                          Logged today:{" "}
+                          <span className="text-amber-400 font-semibold capitalize">
+                            {(currentLead as DoneLead).callOutcome?.replace("_", " ")}
+                          </span>{" "}
+                          · {callerDisplayName} ·{" "}
+                          {formatRelativeTime((currentLead as DoneLead).callCalledAt)}
+                        </span>
+                      ) : loadingCall ? (
+                        <span className="text-zinc-400">Loading prior contact...</span>
+                      ) : latestCall ? (
+                        <span className="font-medium text-[#111110] dark:text-[#F5F3EF]">
+                          Last contact:{" "}
+                          <span className="text-amber-400 font-semibold capitalize">
+                            {latestCall.outcome.replace("_", " ")}
+                          </span>{" "}
+                          · {latestCall.caller_name} · {formatRelativeTime(latestCall.called_at)}
+                        </span>
+                      ) : (
+                        <span className="font-medium text-emerald-500 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3" />
+                          Fresh Lead · No prior dial attempts
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-              {/* Physical Location & Website (Secondary Info) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                {/* Physical Address */}
-                <div className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] space-y-1">
-                  <span className="text-[10px] uppercase font-mono text-[#8A8680] block flex items-center gap-1">
-                    <MapPin className="w-3 h-3" />
-                    Physical Address
-                  </span>
-                  <p className="text-[#6E6B66] dark:text-[#8A8680] line-clamp-2 leading-relaxed">
-                    {currentLead?.address || `${currentLead?.area}, Pune`}
-                  </p>
-                </div>
-
-                {/* Website */}
-                <div className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] space-y-1">
-                  <span className="text-[10px] uppercase font-mono text-[#8A8680] block flex items-center gap-1">
-                    <Globe className="w-3 h-3" />
-                    Digital Footprint
-                  </span>
-                  {currentLead?.website ? (
-                    <a
-                      href={
-                        currentLead.website.startsWith("http")
-                          ? currentLead.website
-                          : `https://${currentLead.website}`
+                  {((activeTab === "done"
+                    ? (currentLead as DoneLead).callNotes
+                    : latestCall?.notes)) && (
+                    <span
+                      className="text-[11px] text-[#8A8680] max-w-[200px] truncate italic hidden sm:inline"
+                      title={
+                        ((activeTab === "done"
+                          ? (currentLead as DoneLead).callNotes
+                          : latestCall?.notes)) || ""
                       }
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[#F95721] hover:underline font-medium inline-flex items-center gap-1 truncate max-w-full"
                     >
-                      <span className="truncate">{currentLead.website}</span>
-                      <ExternalLink className="w-3 h-3 shrink-0" />
-                    </a>
-                  ) : (
-                    <span className="text-amber-500/90 font-medium">
-                      No official website (Pitch Needed)
+                      &ldquo;
+                      {activeTab === "done"
+                        ? (currentLead as DoneLead).callNotes
+                        : latestCall?.notes}
+                      &rdquo;
                     </span>
                   )}
                 </div>
-              </div>
 
-              {/* Call-to-Actions (Disabled Dial + Enabled Dossier) */}
-              <div className="space-y-3 pt-2">
-                {/* 🔒 DIAL DISABLED (READ-ONLY) */}
-                <div className="w-full py-3.5 px-4 rounded-xl bg-zinc-800/60 dark:bg-zinc-900 border border-zinc-700/50 text-zinc-400 font-mono text-xs uppercase tracking-wider font-bold flex items-center justify-center gap-2 cursor-not-allowed select-none shadow-sm">
-                  <Lock className="w-4 h-4 text-zinc-500" />
-                  <span>🔒 DIAL DISABLED (READ-ONLY)</span>
+                {/* Target Primary Phone Line (Large typography) */}
+                <div className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-mono tracking-wider text-[#8A8680] block">
+                      Target Primary Line
+                    </span>
+                    <span className="text-xl sm:text-2xl font-mono font-bold tracking-tight text-[#111110] dark:text-[#F5F3EF]">
+                      {formatPhoneDisplay(currentLead.phone)}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => copyPhoneNumber(currentLead.phone)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] transition active:scale-95 border border-[#ECE8E1] dark:border-[#2D2924]"
+                    title="Copy phone number"
+                  >
+                    {copiedPhone ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-500" />
+                        <span className="text-emerald-500">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy</span>
+                      </>
+                    )}
+                  </button>
                 </div>
 
-                {/* View Dossier › Link (ENABLED) */}
-                <button
-                  type="button"
-                  onClick={openDossier}
-                  className="w-full py-2.5 px-4 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[#111110] dark:text-[#F5F3EF] hover:text-[#F95721] text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95"
-                >
-                  <FileText className="w-4 h-4 text-[#F95721]" />
-                  <span>View Dossier & Historical Audit ›</span>
-                </button>
-              </div>
-            </div>
+                {/* Physical Location & Website */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] space-y-1">
+                    <span className="text-[10px] uppercase font-mono text-[#8A8680] block flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      Physical Address
+                    </span>
+                    <p className="text-[#6E6B66] dark:text-[#8A8680] line-clamp-2 leading-relaxed">
+                      {currentLead?.address || `${currentLead?.area}, Pune`}
+                    </p>
+                  </div>
 
-            {/* RIGHT COLUMN (40%): DECK QUEUE SIDEBAR */}
+                  <div className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#2D2924] space-y-1">
+                    <span className="text-[10px] uppercase font-mono text-[#8A8680] block flex items-center gap-1">
+                      <Globe className="w-3 h-3" />
+                      Digital Footprint
+                    </span>
+                    {currentLead?.website ? (
+                      <a
+                        href={
+                          currentLead.website.startsWith("http")
+                            ? currentLead.website
+                            : `https://${currentLead.website}`
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#F95721] hover:underline font-medium inline-flex items-center gap-1 truncate max-w-full"
+                      >
+                        <span className="truncate">{currentLead.website}</span>
+                        <ExternalLink className="w-3 h-3 shrink-0" />
+                      </a>
+                    ) : (
+                      <span className="text-amber-500/90 font-medium">
+                        No official website (Pitch Needed)
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Call-to-Actions (Disabled Dial + Enabled Dossier) */}
+                <div className="space-y-3 pt-2">
+                  {/* 🔒 DIAL DISABLED (READ-ONLY) */}
+                  <div className="w-full py-3.5 px-4 rounded-xl bg-zinc-800/60 dark:bg-zinc-900 border border-zinc-700/50 text-zinc-400 font-mono text-xs uppercase tracking-wider font-bold flex items-center justify-center gap-2 cursor-not-allowed select-none shadow-sm">
+                    <Lock className="w-4 h-4 text-zinc-500" />
+                    <span>🔒 DIAL DISABLED (READ-ONLY)</span>
+                  </div>
+
+                  {/* View Dossier › Link (ENABLED) */}
+                  <button
+                    type="button"
+                    onClick={openDossier}
+                    className="w-full py-2.5 px-4 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[#111110] dark:text-[#F5F3EF] hover:text-[#F95721] text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95"
+                  >
+                    <FileText className="w-4 h-4 text-[#F95721]" />
+                    <span>View Dossier & Historical Audit ›</span>
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {/* RIGHT COLUMN (40%): DECK QUEUE SIDEBAR (Filtered to active state) */}
             <div className="lg:col-span-5 bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl p-5 shadow-sm flex flex-col h-[calc(100vh-180px)] sticky top-24">
               {/* Header */}
               <div className="flex items-center justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#2D2924] shrink-0">
@@ -676,80 +859,145 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
                     DECK QUEUE
                   </h2>
                   <p className="text-[11px] text-[#8A8680] mt-0.5">
-                    Sequence seen by {callerDisplayName}
+                    {activeTab === "dial_now"
+                      ? `Ready to dial (${readyLeads.length})`
+                      : activeTab === "callbacks"
+                      ? `Scheduled callbacks (${callbackLeads.length})`
+                      : activeTab === "waiting"
+                      ? `In cooldown (${waitingLeads.length})`
+                      : `Completed today (${doneLeads.length})`}
                   </p>
                 </div>
                 <span className="px-2 py-0.5 rounded-lg text-xs font-mono font-bold bg-[#F95721]/10 text-[#F95721] border border-[#F95721]/20">
-                  {leads.length} leads
+                  {currentBucket.length} {activeTab === "done" ? "calls" : "leads"}
                 </span>
               </div>
 
               {/* Scrollable List */}
               <div className="flex-1 overflow-y-auto space-y-2 pt-3 pr-1">
-                {leads.map((lead, idx) => {
-                  const isActive = idx === activeLeadIndex;
-                  const isCallback = lead.status === "callback" || Boolean(lead.next_callback_at);
-                  const isCooldown = lead.cooldown_until && new Date(lead.cooldown_until) > new Date();
+                {currentBucket.length === 0 ? (
+                  <div className="py-12 text-center text-[#8A8680] space-y-1">
+                    <p className="text-xs font-medium">No {activeTab.replace("_", " ")} items</p>
+                    <p className="text-[11px] text-[#8A8680]/70">
+                      The queue has zero leads in this state.
+                    </p>
+                  </div>
+                ) : (
+                  currentBucket.map((lead: any, idx) => {
+                    const isActive = idx === activeLeadIndex;
+                    const isDoneTab = activeTab === "done";
+                    const outcomeBadge = isDoneTab
+                      ? getOutcomeBadge(lead.callOutcome || lead.status)
+                      : null;
+                    const OutcomeIcon = outcomeBadge ? outcomeBadge.icon : null;
+                    const isCallback =
+                      !isDoneTab &&
+                      (lead.status === "callback" || Boolean(lead.next_callback_at));
+                    const isOverdue =
+                      isCallback &&
+                      lead.next_callback_at &&
+                      new Date(lead.next_callback_at) <= new Date();
+                    const isCooldown =
+                      !isDoneTab &&
+                      lead.cooldown_until &&
+                      new Date(lead.cooldown_until) > new Date();
 
-                  return (
-                    <button
-                      key={lead.id}
-                      type="button"
-                      onClick={() => setActiveLeadIndex(idx)}
-                      className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-start justify-between gap-3 ${
-                        isActive
-                          ? "bg-[#F95721]/10 border-[#F95721]/50 shadow-sm"
-                          : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#2D2924] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span
-                            className={`text-xs font-mono font-bold ${
-                              isActive ? "text-[#F95721]" : "text-[#8A8680]"
-                            }`}
-                          >
-                            #{idx + 1}
-                          </span>
-                          <h3
-                            className={`text-xs font-bold truncate ${
-                              isActive
-                                ? "text-[#F95721]"
-                                : "text-[#111110] dark:text-[#F5F3EF]"
-                            }`}
-                          >
-                            {formatLeadName(lead.name)}
-                          </h3>
+                    return (
+                      <button
+                        key={isDoneTab ? `${lead.id}-${lead.callId || idx}` : lead.id}
+                        type="button"
+                        onClick={() => setActiveLeadIndex(idx)}
+                        className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-start justify-between gap-3 ${
+                          isActive
+                            ? "bg-[#F95721]/10 border-[#F95721]/50 shadow-sm"
+                            : "bg-black/[0.02] dark:bg-white/[0.02] border-[#ECE8E1] dark:border-[#2D2924] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span
+                              className={`text-xs font-mono font-bold ${
+                                isActive ? "text-[#F95721]" : "text-[#8A8680]"
+                              }`}
+                            >
+                              #{idx + 1}
+                            </span>
+                            <h3
+                              className={`text-xs font-bold truncate ${
+                                isActive
+                                  ? "text-[#F95721]"
+                                  : "text-[#111110] dark:text-[#F5F3EF]"
+                              }`}
+                            >
+                              {formatLeadName(lead.name)}
+                            </h3>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 text-[11px] text-[#8A8680] truncate">
+                            <span>{lead.niche}</span>
+                            <span>·</span>
+                            <span className="truncate">{lead.area}</span>
+                          </div>
+
+                          {isDoneTab && lead.callCalledAt && (
+                            <div className="text-[10px] text-[#8A8680] font-mono mt-1">
+                              {formatRelativeTime(lead.callCalledAt)}
+                              {lead.callDuration
+                                ? ` · ${Math.floor(lead.callDuration / 60)}m ${
+                                    lead.callDuration % 60
+                                  }s`
+                                : ""}
+                            </div>
+                          )}
+
+                          {isCallback && lead.next_callback_at && (
+                            <div className="text-[10px] text-amber-400 font-mono mt-1 flex items-center gap-1">
+                              <CalendarClock className="w-3 h-3 shrink-0" />
+                              <span>
+                                {new Date(lead.next_callback_at).toLocaleDateString("en-IN", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                          )}
                         </div>
 
-                        <div className="flex items-center gap-1.5 text-[11px] text-[#8A8680] truncate">
-                          <span>{lead.niche}</span>
-                          <span>·</span>
-                          <span className="truncate">{lead.area}</span>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-[#8A8680]">
+                            Att. {lead.attempts_count || 1}/5
+                          </span>
+                          {isDoneTab && outcomeBadge && OutcomeIcon ? (
+                            <span
+                              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border inline-flex items-center gap-1 ${outcomeBadge.color}`}
+                            >
+                              <OutcomeIcon className="w-2.5 h-2.5" />
+                              {outcomeBadge.label}
+                            </span>
+                          ) : isCallback ? (
+                            <span
+                              className={`text-[10px] font-semibold ${
+                                isOverdue ? "text-rose-400" : "text-amber-400"
+                              }`}
+                            >
+                              {isOverdue ? "Overdue" : "Callback"}
+                            </span>
+                          ) : isCooldown ? (
+                            <span className="text-[10px] font-semibold text-zinc-500">
+                              Waiting
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-semibold text-emerald-500">
+                              Ready
+                            </span>
+                          )}
                         </div>
-                      </div>
-
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-[#8A8680]">
-                          Att. {lead.attempts_count || 1}/5
-                        </span>
-                        {isCallback ? (
-                          <span className="text-[10px] font-semibold text-amber-400">
-                            Callback
-                          </span>
-                        ) : isCooldown ? (
-                          <span className="text-[10px] font-semibold text-zinc-500">
-                            Waiting
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-semibold text-emerald-500">
-                            Ready
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
+                      </button>
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>
