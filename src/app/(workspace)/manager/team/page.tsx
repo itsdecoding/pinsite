@@ -31,6 +31,10 @@ import {
   Sparkles,
   ChevronDown,
   Eye,
+  Code2,
+  Kanban,
+  ShieldCheck,
+  MessageSquare,
 } from "lucide-react";
 
 interface OutcomeBreakdown {
@@ -358,18 +362,22 @@ export default function ManagerTeamPage() {
 
     list.sort((a, b) => {
       if (sortBy === "urgency") {
-        // Priority 1: Overdue callbacks
-        const aOverdue = a.pipeline?.overdue_callbacks || 0;
-        const bOverdue = b.pipeline?.overdue_callbacks || 0;
+        // Priority 1: Overdue callbacks (callers only)
+        const aOverdue = a.role === "caller" ? (a.pipeline?.overdue_callbacks || 0) : 0;
+        const bOverdue = b.role === "caller" ? (b.pipeline?.overdue_callbacks || 0) : 0;
         if (aOverdue !== bOverdue) return bOverdue - aOverdue;
 
-        // Priority 2: Zero dials today (for active callers)
-        const aZero = a.dials_today === 0 && a.active ? 1 : 0;
-        const bZero = b.dials_today === 0 && b.active ? 1 : 0;
+        // Priority 2: Zero dials today (for active callers only)
+        const aZero = a.role === "caller" && a.dials_today === 0 && a.active ? 1 : 0;
+        const bZero = b.role === "caller" && b.dials_today === 0 && b.active ? 1 : 0;
         if (aZero !== bZero) return bZero - aZero;
 
-        // Priority 3: Queue depth
-        return b.active_leads_count - a.active_leads_count;
+        // Priority 3: Queue depth (callers only)
+        const aQueue = a.role === "caller" ? a.active_leads_count : 0;
+        const bQueue = b.role === "caller" ? b.active_leads_count : 0;
+        if (aQueue !== bQueue) return bQueue - aQueue;
+
+        return a.full_name.localeCompare(b.full_name);
       }
       if (sortBy === "dials") return b.dials_today - a.dials_today;
       if (sortBy === "connects") return b.connects_today - a.connects_today;
@@ -570,13 +578,14 @@ export default function ManagerTeamPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to update role");
 
-      setRoleUpdateSuccess(`Updated ${roleModalCaller.full_name}'s role to ${selectedNewRole.toUpperCase()}.`);
+      const successMsg =
+        data.message || `Updated ${roleModalCaller.full_name}'s role to ${selectedNewRole.toUpperCase()}.`;
+      setRoleUpdateSuccess(successMsg);
 
-      setCallers((prev) =>
-        prev.map((c) => (c.id === roleModalCaller.id ? { ...c, role: selectedNewRole } : c))
-      );
+      // Refresh team stats immediately to update fleet pipeline and roster counts
+      await fetchTeamStats(true);
 
-      setTimeout(() => handleCloseRoleModal(), 1400);
+      setTimeout(() => handleCloseRoleModal(), 1600);
     } catch (err: any) {
       setRoleUpdateError(err.message || "An unexpected error occurred while updating role");
     } finally {
@@ -954,24 +963,41 @@ export default function ManagerTeamPage() {
               .toUpperCase()
               .slice(0, 2);
 
-            const hasOverdue = (caller.pipeline?.overdue_callbacks || 0) > 0;
-            const hasZeroDials = caller.dials_today === 0 && caller.active && caller.role === "caller";
+            const isCaller = caller.role === "caller";
+            const isDeveloper = caller.role === "developer";
+            const isManagerOrAdmin = caller.role === "manager" || caller.role === "admin";
+            const hasOverdue = isCaller && (caller.pipeline?.overdue_callbacks || 0) > 0;
+            const hasZeroDials = isCaller && caller.dials_today === 0 && caller.active;
 
             return (
               <div
                 key={caller.id}
-                onClick={() => openCallerDetail(caller.id)}
-                className={`p-5 rounded-3xl bg-white dark:bg-[#181715] border transition-all flex flex-col justify-between cursor-pointer group hover:shadow-md ${
+                onClick={() => {
+                  if (isCaller) openCallerDetail(caller.id);
+                }}
+                className={`p-5 rounded-3xl bg-white dark:bg-[#181715] border transition-all flex flex-col justify-between group ${
+                  isCaller ? "cursor-pointer hover:shadow-md" : "cursor-default"
+                } ${
                   hasOverdue
                     ? "border-amber-500/40 hover:border-amber-500"
-                    : "border-[#ECE8E1] dark:border-[#262420] hover:border-[#F95721]/50"
+                    : isCaller
+                    ? "border-[#ECE8E1] dark:border-[#262420] hover:border-[#F95721]/50"
+                    : "border-[#ECE8E1] dark:border-[#262420]"
                 }`}
               >
                 <div>
                   {/* Card Header: Avatar, Name, Quiet Dot, Role */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] flex items-center justify-center font-bold text-xs text-[#F95721] shrink-0">
+                      <div
+                        className={`w-10 h-10 rounded-2xl border flex items-center justify-center font-bold text-xs shrink-0 ${
+                          isDeveloper
+                            ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20"
+                            : isManagerOrAdmin
+                            ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
+                            : "bg-black/5 dark:bg-white/5 border-[#ECE8E1] dark:border-[#262420] text-[#F95721]"
+                        }`}
+                      >
                         {initials}
                       </div>
 
@@ -984,7 +1010,11 @@ export default function ManagerTeamPage() {
                             }`}
                             title={caller.is_online ? "Online" : "Offline"}
                           />
-                          <h3 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF] truncate group-hover:text-[#F95721] transition-colors">
+                          <h3
+                            className={`text-sm font-bold text-[#111110] dark:text-[#F5F3EF] truncate transition-colors ${
+                              isCaller ? "group-hover:text-[#F95721]" : ""
+                            }`}
+                          >
                             {caller.full_name}
                           </h3>
                         </div>
@@ -994,130 +1024,222 @@ export default function ManagerTeamPage() {
                       </div>
                     </div>
 
-                    {/* Role badge (Quiet mono) */}
+                    {/* Role badge */}
                     <div className="flex items-center gap-1 shrink-0">
                       {caller.require_password_change && (
                         <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
                           Temp
                         </span>
                       )}
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-mono uppercase bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] text-[#8A8680]">
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono uppercase border ${
+                          isDeveloper
+                            ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20 font-bold"
+                            : isManagerOrAdmin
+                            ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 font-bold"
+                            : "bg-black/5 dark:bg-white/5 border-[#ECE8E1] dark:border-[#262420] text-[#8A8680]"
+                        }`}
+                      >
                         {caller.role}
                       </span>
                     </div>
                   </div>
 
-                  {/* 4-State Pipeline Breakdown (Dial Now / Callbacks / Waiting / Done) */}
-                  <div className="grid grid-cols-4 gap-1 p-2 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/80 dark:border-[#262420] text-center mt-3.5">
-                    <div>
-                      <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Dial Now</span>
-                      <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
-                        {caller.pipeline?.dial_now ?? 0}
-                      </strong>
-                    </div>
+                  {/* Body: Distinct per role type */}
+                  {isCaller ? (
+                    <>
+                      {/* 4-State Pipeline Breakdown (Dial Now / Callbacks / Waiting / Done) */}
+                      <div className="grid grid-cols-4 gap-1 p-2 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/80 dark:border-[#262420] text-center mt-3.5">
+                        <div>
+                          <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Dial Now</span>
+                          <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                            {caller.pipeline?.dial_now ?? 0}
+                          </strong>
+                        </div>
 
-                    <div>
-                      <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Callbacks</span>
-                      <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
-                        {caller.pipeline?.callbacks ?? 0}
-                        {hasOverdue && (
-                          <span className="ml-0.5 text-[9px] text-amber-500 font-bold">
-                            ({caller.pipeline.overdue_callbacks} od)
+                        <div>
+                          <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Callbacks</span>
+                          <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                            {caller.pipeline?.callbacks ?? 0}
+                            {hasOverdue && (
+                              <span className="ml-0.5 text-[9px] text-amber-500 font-bold">
+                                ({caller.pipeline.overdue_callbacks} od)
+                              </span>
+                            )}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Waiting</span>
+                          <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                            {caller.pipeline?.waiting ?? 0}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Done</span>
+                          <strong className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                            {caller.dials_today}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {/* Shift Output Row: Dials · Connects · Talk Time */}
+                      <div className="mt-3 flex items-center justify-between text-xs text-[#8A8680] font-mono">
+                        <span className="text-[#111110] dark:text-[#F5F3EF] font-semibold">
+                          {caller.dials_today} dials &bull; {caller.connects_today} connects &bull; {formatDuration(caller.talk_time_seconds)} talk
+                        </span>
+                        {hasZeroDials && (
+                          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                            0 dials today
                           </span>
                         )}
-                      </strong>
+                      </div>
+
+                      {/* Outcome Breakdown (Using Clean Lucide Icons — No Emojis!) */}
+                      <div className="mt-2.5 flex items-center gap-2 flex-wrap text-xs text-[#8A8680] pt-2 border-t border-[#ECE8E1]/60 dark:border-[#262420]/60">
+                        <span className="inline-flex items-center gap-1" title="Interested">
+                          <Flame className="w-3.5 h-3.5 text-orange-500" />
+                          <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.interested || 0}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1" title="Callbacks">
+                          <Calendar className="w-3.5 h-3.5 text-blue-400" />
+                          <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.callback || 0}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1" title="No Answer">
+                          <PhoneOff className="w-3.5 h-3.5 text-zinc-400" />
+                          <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.no_answer || 0}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1" title="Gatekeeper">
+                          <Shield className="w-3.5 h-3.5 text-amber-400" />
+                          <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.gatekeeper || 0}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1" title="Rejected / Bad Fit">
+                          <UserX className="w-3.5 h-3.5 text-rose-400" />
+                          <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.not_interested || 0}</span>
+                        </span>
+                      </div>
+                    </>
+                  ) : isDeveloper ? (
+                    /* Developer Card Overview (No cold-calling telemetry!) */
+                    <div className="mt-3.5 p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/80 dark:border-[#262420] space-y-2.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-[10px] font-mono uppercase text-[#8A8680] flex items-center gap-1.5 font-semibold">
+                          <Code2 className="w-3.5 h-3.5 text-cyan-500" />
+                          <span>Engineering Studio</span>
+                        </span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-medium">
+                          Full Stack Dev
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#8A8680] leading-snug">
+                        Dedicated to application code, sprint deliverables, and platform infrastructure.
+                      </p>
+                      <div className="pt-2 border-t border-[#ECE8E1]/60 dark:border-[#262420]/60 flex items-center justify-between text-[11px] font-mono">
+                        <span className="text-[#8A8680]">Studio Status:</span>
+                        <span className={caller.is_online ? "text-emerald-500 font-semibold" : "text-zinc-500"}>
+                          {caller.is_online ? "Active / In Studio" : "Offline"}
+                        </span>
+                      </div>
                     </div>
-
-                    <div>
-                      <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Waiting</span>
-                      <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
-                        {caller.pipeline?.waiting ?? 0}
-                      </strong>
+                  ) : (
+                    /* Manager / Admin Card Overview (No cold-calling telemetry!) */
+                    <div className="mt-3.5 p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/80 dark:border-[#262420] space-y-2.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-[10px] font-mono uppercase text-[#8A8680] flex items-center gap-1.5 font-semibold">
+                          <ShieldCheck className="w-3.5 h-3.5 text-purple-500" />
+                          <span>Team Leadership</span>
+                        </span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 font-medium uppercase">
+                          {caller.role}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#8A8680] leading-snug">
+                        Full oversight of cold calling pipeline, lead distribution, and team operations.
+                      </p>
+                      <div className="pt-2 border-t border-[#ECE8E1]/60 dark:border-[#262420]/60 flex items-center justify-between text-[11px] font-mono">
+                        <span className="text-[#8A8680]">Workspace Status:</span>
+                        <span className={caller.is_online ? "text-emerald-500 font-semibold" : "text-zinc-500"}>
+                          {caller.is_online ? "Active / Supervising" : "Offline"}
+                        </span>
+                      </div>
                     </div>
-
-                    <div>
-                      <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Done</span>
-                      <strong className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                        {caller.dials_today}
-                      </strong>
-                    </div>
-                  </div>
-
-                  {/* Shift Output Row: Dials · Connects · Talk Time */}
-                  <div className="mt-3 flex items-center justify-between text-xs text-[#8A8680] font-mono">
-                    <span className="text-[#111110] dark:text-[#F5F3EF] font-semibold">
-                      {caller.dials_today} dials &bull; {caller.connects_today} connects &bull; {formatDuration(caller.talk_time_seconds)} talk
-                    </span>
-                    {hasZeroDials && (
-                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
-                        0 dials today
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Outcome Breakdown (Using Clean Lucide Icons — No Emojis!) */}
-                  <div className="mt-2.5 flex items-center gap-2 flex-wrap text-xs text-[#8A8680] pt-2 border-t border-[#ECE8E1]/60 dark:border-[#262420]/60">
-                    <span className="inline-flex items-center gap-1" title="Interested">
-                      <Flame className="w-3.5 h-3.5 text-orange-500" />
-                      <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.interested || 0}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1" title="Callbacks">
-                      <Calendar className="w-3.5 h-3.5 text-blue-400" />
-                      <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.callback || 0}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1" title="No Answer">
-                      <PhoneOff className="w-3.5 h-3.5 text-zinc-400" />
-                      <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.no_answer || 0}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1" title="Gatekeeper">
-                      <Shield className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.gatekeeper || 0}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1" title="Rejected / Bad Fit">
-                      <UserX className="w-3.5 h-3.5 text-rose-400" />
-                      <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.not_interested || 0}</span>
-                    </span>
-                  </div>
+                  )}
                 </div>
 
-                {/* Card Action Buttons: [Mirror] [Activity] [Reassign] */}
+                {/* Card Action Buttons */}
                 <div className="mt-4 pt-3 border-t border-[#ECE8E1] dark:border-[#262420]" onClick={(e) => e.stopPropagation()}>
-                  <div className="grid grid-cols-3 gap-2">
-                    {caller.role === "caller" ? (
+                  {isCaller ? (
+                    /* Caller Actions: [Mirror] [Activity] [Reassign] */
+                    <div className="grid grid-cols-3 gap-2">
                       <Link
-                        href={`/studio/queue?impersonate=${caller.id}`}
+                        href={`/queue?impersonate=${caller.id}`}
                         className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-[#F95721] hover:text-white text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all"
                         title={`Mirror view of ${caller.full_name}'s cockpit`}
                       >
                         <ExternalLink className="w-3 h-3" />
                         <span>Mirror</span>
                       </Link>
-                    ) : (
-                      <div className="flex items-center justify-center px-2.5 py-1.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] text-[#8A8680] text-xs font-medium border border-dashed border-[#ECE8E1] dark:border-[#262420]">
-                        <span>Manager</span>
-                      </div>
-                    )}
 
-                    <button
-                      type="button"
-                      onClick={() => openCallerDetail(caller.id)}
-                      className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all"
-                    >
-                      <FileText className="w-3 h-3 text-[#F95721]" />
-                      <span>Activity</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => openCallerDetail(caller.id)}
+                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all"
+                      >
+                        <FileText className="w-3 h-3 text-[#F95721]" />
+                        <span>Activity</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => openReassignModal(caller.id)}
-                      className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all"
-                    >
-                      <PhoneForwarded className="w-3 h-3 text-[#8A8680]" />
-                      <span>Reassign</span>
-                    </button>
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => openReassignModal(caller.id)}
+                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all"
+                      >
+                        <PhoneForwarded className="w-3 h-3 text-[#8A8680]" />
+                        <span>Reassign</span>
+                      </button>
+                    </div>
+                  ) : isDeveloper ? (
+                    /* Developer Actions: [View Projects] [Message] */
+                    <div className="grid grid-cols-2 gap-2">
+                      <Link
+                        href="/projects"
+                        className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 text-xs font-semibold transition-all border border-cyan-500/20"
+                      >
+                        <Kanban className="w-3.5 h-3.5" />
+                        <span>View Projects</span>
+                      </Link>
 
-                  {/* Quiet Secondary Links: Change Role & Reset Credentials */}
+                      <Link
+                        href="/comms"
+                        className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-[#262420]"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 text-[#8A8680]" />
+                        <span>Message</span>
+                      </Link>
+                    </div>
+                  ) : (
+                    /* Manager / Admin Actions: [Team Invites] [Message] */
+                    <div className="grid grid-cols-2 gap-2">
+                      <Link
+                        href="/manager/invites"
+                        className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 text-xs font-semibold transition-all border border-purple-500/20"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>Team Invites</span>
+                      </Link>
+
+                      <Link
+                        href="/comms"
+                        className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-[#262420]"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 text-[#8A8680]" />
+                        <span>Message</span>
+                      </Link>
+                    </div>
+                  )}
+
+                  {/* Secondary Links: Change Role & Reset Password */}
                   <div className="mt-2.5 flex items-center justify-between text-[10px] text-[#8A8680] px-1 font-mono">
                     <button
                       type="button"
@@ -1170,7 +1292,7 @@ export default function ManagerTeamPage() {
 
               <div className="flex items-center gap-2">
                 <Link
-                  href={`/studio/queue?impersonate=${detailCallerId}`}
+                  href={`/queue?impersonate=${detailCallerId}`}
                   className="px-3 py-1.5 rounded-xl bg-[#F95721] text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm hover:opacity-90"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -1751,6 +1873,20 @@ export default function ManagerTeamPage() {
                 </div>
               )}
 
+              {/* Automatic lead pool unassignment warning when converting caller -> non-caller */}
+              {roleModalCaller.role === "caller" && selectedNewRole !== "caller" && (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-300 space-y-1.5 animate-in fade-in">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span>Automatic Lead Pool Reassignment</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-amber-900/90 dark:text-amber-200/90">
+                    Converting <strong>{roleModalCaller.full_name}</strong> from a <strong>Caller</strong> to a <strong>{selectedNewRole}</strong> will automatically return their{" "}
+                    <strong>{roleModalCaller.active_leads_count} assigned lead{roleModalCaller.active_leads_count === 1 ? "" : "s"}</strong> back to the unassigned pool so they remain actionable.
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="block text-[11px] font-mono uppercase text-[#8A8680] font-semibold">
                   Select New Role
@@ -1871,7 +2007,13 @@ export default function ManagerTeamPage() {
                         <span>Updating Role...</span>
                       </>
                     ) : (
-                      <span>Apply Role Change</span>
+                      <span>
+                        {roleModalCaller.role === "caller" &&
+                        selectedNewRole !== "caller" &&
+                        roleModalCaller.active_leads_count > 0
+                          ? `Apply & Return ${roleModalCaller.active_leads_count} Leads`
+                          : "Apply Role Change"}
+                      </span>
                     )}
                   </button>
                 )}

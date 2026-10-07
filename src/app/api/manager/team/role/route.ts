@@ -131,6 +131,55 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
+    // 4b. Permanent Fix: When changing from caller -> non-caller, auto-reassign active leads to unassigned pool
+    let reassignedCount = 0;
+    if (targetProfile.role === "caller" && newRole !== "caller") {
+      try {
+        const { data: assignedLeads, error: leadsErr } = await admin
+          .from("leads")
+          .select("id")
+          .eq("assigned_to", userId)
+          .is("deleted_at", null)
+          .not("status", "in", '("closed_won","closed_lost","dnc")');
+
+        if (!leadsErr && assignedLeads && assignedLeads.length > 0) {
+          const leadIds = assignedLeads.map((l) => l.id);
+          const { error: unassignErr } = await admin
+            .from("leads")
+            .update({
+              status: "unassigned",
+              assigned_to: null,
+              assigned_date: null,
+              cooldown_until: null,
+              next_callback_at: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("assigned_to", userId)
+            .is("deleted_at", null)
+            .not("status", "in", '("closed_won","closed_lost","dnc")');
+
+          if (unassignErr) {
+            console.error("Failed to unassign leads on role change:", unassignErr);
+          } else {
+            reassignedCount = leadIds.length;
+            // Record in assignment history for audit
+            const historyRows = leadIds.map((lid) => ({
+              lead_id: lid,
+              from_caller_id: userId,
+              to_caller_id: null,
+              assigned_by: actingUser.id,
+              reason: `role_changed_to_${newRole}`,
+              acted_by: actingUser.id,
+              on_behalf_of: userId,
+            }));
+            await admin.from("assignment_history").insert(historyRows);
+          }
+        }
+      } catch (leadReassignErr) {
+        console.error("Error auto-reassigning leads during role change:", leadReassignErr);
+      }
+    }
+
     // 5. Sync metadata in auth.users
     try {
       await admin.auth.admin.updateUserById(userId, {
@@ -162,7 +211,10 @@ export async function POST(req: NextRequest) {
       userId,
       oldRole: targetProfile.role,
       newRole,
-      message: `Successfully changed ${targetProfile.full_name}'s role to ${newRole.toUpperCase()}.`,
+      reassignedCount,
+      message: `Successfully changed ${targetProfile.full_name}'s role to ${newRole.toUpperCase()}.${
+        reassignedCount > 0 ? ` Returned ${reassignedCount} leads to unassigned pool.` : ""
+      }`,
     });
   } catch (err: any) {
     console.error("Error in role update endpoint:", err);
