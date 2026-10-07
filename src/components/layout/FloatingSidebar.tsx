@@ -91,15 +91,13 @@ export function FloatingSidebar() {
   ];
 
   return (
-    <aside className="hidden lg:flex fixed top-4 left-4 bottom-4 w-60 z-50 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-island dark:shadow-islandDark flex-col justify-between p-4 transition-colors">
+    <aside className="hidden lg:flex fixed top-4 left-4 bottom-4 w-60 z-50 rounded-3xl bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-[#42403C] shadow-island dark:shadow-islandDark flex-col justify-between p-4 transition-colors">
       {/* Top Section */}
       <div className="space-y-4">
         {/* Workspace Brand Pill */}
-        <div className="flex items-center gap-3 px-1 py-1">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#F95721] to-[#FF8A65] p-0.5 shadow-sm">
-            <div className="w-full h-full rounded-full bg-white dark:bg-[#1C1A17] flex items-center justify-center font-bold text-xs text-[#F95721]">
-              {profile?.full_name ? profile.full_name[0].toUpperCase() : "M"}
-            </div>
+        <div className="flex items-center gap-2.5 px-1 py-1">
+          <div className="w-6 h-6 flex items-center justify-center font-bold text-xs text-[#9F5639] shrink-0 font-mono">
+            {profile?.full_name ? profile.full_name[0].toUpperCase() : "M"}
           </div>
           <div className="min-w-0">
             <h2 className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF] truncate tracking-tight uppercase font-mono">
@@ -114,7 +112,7 @@ export function FloatingSidebar() {
         {/* Primary Action Button (Matches Simpliscale reference) */}
         <Link
           href={role === "caller" ? "/queue" : role === "developer" ? "/projects" : "/manager/ingestion"}
-          className="w-full py-2.5 px-3 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+          className="w-full py-2.5 px-3 bg-[#7F3922] hover:bg-[#6D301C] border border-[#A6543A]/40 text-white rounded-full font-semibold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
           <span>{role === "caller" ? "Start Dialing" : role === "developer" ? "New Task" : "Import Leads"}</span>
@@ -137,7 +135,7 @@ export function FloatingSidebar() {
                   href={item.href}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs transition-all ${
                     isActive
-                      ? "bg-[#F95721] text-white font-semibold shadow-sm"
+                      ? "bg-[#7F3922] border border-[#A6543A] text-white font-semibold shadow-sm ring-1 ring-[#A6543A]/40"
                       : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5 font-medium"
                   }`}
                 >
@@ -154,7 +152,7 @@ export function FloatingSidebar() {
       </div>
 
       {/* Bottom Controls */}
-      <div className="pt-4 border-t border-[#ECE8E1] dark:border-[#2D2924] space-y-2">
+      <div className="pt-4 border-t border-[#ECE8E1] dark:border-white/15 space-y-2">
         <div className="flex items-center justify-between px-1">
           <ThemeToggle />
           <NotificationBell />

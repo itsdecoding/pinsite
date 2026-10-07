@@ -13,21 +13,21 @@ const config: Config = {
         // Dual-mode canvas and card tokens
         canvas: {
           light: "#F7F5F0",
-          dark: "#141210",
+          dark: "#0E0E0E",
         },
         surface: {
           light: "#FFFFFF",
-          dark: "#1C1A17",
-          darkElevated: "#23201C",
+          dark: "#131414",
+          darkElevated: "#181818",
         },
         border: {
           light: "#ECE8E1",
-          dark: "#2D2924",
+          dark: "#222222",
         },
         ink: {
           primary: {
             light: "#111110",
-            dark: "#F5F3EF",
+            dark: "#D4D2D0",
           },
           secondary: {
             light: "#6E6B66",
@@ -56,6 +56,16 @@ const config: Config = {
           warning: "#F59E0B",
           error: "#EF4444",
           info: "#3B82F6",
+        },
+        background: {
+          base: "var(--canvas-bg)",
+          card: "var(--surface-bg)",
+          input: "var(--surface-bg)",
+        },
+        accent: {
+          primary: "var(--brand-primary)",
+          hover: "var(--brand-hover)",
+          active: "#5D2816",
         },
       },
       borderRadius: {

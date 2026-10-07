@@ -8,7 +8,7 @@ export default function WorkspaceLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-[#F7F5F0] dark:bg-[#141210] text-[#111110] dark:text-[#F5F3EF] flex transition-colors">
+    <div className="min-h-screen bg-[#F7F5F0] dark:bg-[#0E0E0E] text-[#111110] dark:text-[#D4D2D0] flex transition-colors">
       {/* Floating Island Sidebar (Desktop) */}
       <FloatingSidebar />
 

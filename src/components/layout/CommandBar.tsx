@@ -47,10 +47,10 @@ function CommandBarContent() {
     <div className="hidden md:block relative max-w-md w-full mx-auto mb-6">
       <button
         onClick={() => setIsOpen(true)}
-        className="w-full flex items-center justify-between px-4 py-2 rounded-full bg-white/80 dark:bg-[#1C1A17]/80 backdrop-blur border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm hover:border-[#F95721]/50 text-xs text-[#6E6B66] dark:text-[#8A8680] transition-all"
+        className="w-full flex items-center justify-between px-4 py-2 rounded-full bg-white/80 dark:bg-[#131414]/90 backdrop-blur border border-[#ECE8E1] dark:border-[#55514B] shadow-sm hover:border-[#7F3922]/50 text-xs text-[#6E6B66] dark:text-[#8A8680] transition-all"
       >
         <div className="flex items-center gap-2">
-          <Search className="w-3.5 h-3.5 text-[#F95721]" />
+          <Search className="w-3.5 h-3.5 text-[#9F5639]" />
           <span>Search or run a command...</span>
         </div>
         <kbd className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 font-mono text-[10px] text-[#6E6B66] dark:text-[#8A8680] flex items-center gap-0.5">
@@ -62,7 +62,7 @@ function CommandBarContent() {
       {isOpen && (
         <div className="fixed inset-0 z-[300] bg-black/40 backdrop-blur-sm flex items-start justify-center pt-24 px-4">
           <div
-            className="w-full max-w-lg rounded-2xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            className="w-full max-w-lg rounded-2xl bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-[#222222] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-3 border-b border-[#ECE8E1] dark:border-[#2D2924] flex items-center gap-2">

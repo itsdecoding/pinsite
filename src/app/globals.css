@@ -8,14 +8,94 @@
   --text-main: #111110;
   --text-sub: #6E6B66;
   --border-subtle: #ECE8E1;
+  --brand-primary: #F95721;
+  --brand-hover: #E04612;
 }
 
 .dark {
-  --canvas-bg: #141210;
-  --surface-bg: #1C1A17;
-  --text-main: #F5F3EF;
+  --canvas-bg: #0E0E0E;
+  --surface-bg: #131414;
+  --card-bg: #111112;
+  --text-main: #D4D2D0;
   --text-sub: #8A8680;
-  --border-subtle: #2D2924;
+  --border-subtle: #222222;
+  --brand-primary: #7F3922;
+  --brand-hover: #6D301C;
+  --brand-text: #9F5639;
+}
+
+/* ========================================================================= */
+/* DARK MODE UPGRADE (IMAGE 2 PALETTE OVERRIDES)                             */
+/* ========================================================================= */
+.dark body {
+  background-color: #0E0E0E !important;
+  color: #D4D2D0 !important;
+}
+
+.dark .bg-\[\#141210\] {
+  background-color: #0E0E0E !important;
+}
+
+.dark .bg-\[\#1C1A17\] {
+  background-color: #131414 !important;
+}
+
+.dark .bg-\[\#181715\] {
+  background-color: #121213 !important;
+}
+
+/* Card & Container Borders: The signature crisp white/light line highlight stroke (#55514B) */
+.dark .border,
+.dark .border-\[\#2D2924\],
+.dark .border-\[\#262420\],
+.dark .border-\[\#ECE8E1\],
+.dark [class*="border-[#2D2924]"],
+.dark [class*="border-[#262420]"],
+.dark [class*="border-[#ECE8E1]"] {
+  border-color: #55514B !important;
+}
+
+/* Inner Sub-Cards & Metric Decks (Dial Now, Callbacks, Waiting, Done, Caller mini-deck, Active Callers box) (#6F6A65) */
+.dark .border-\[\#ECE8E1\]\/80,
+.dark .border-\[\#ECE8E1\]\/60,
+.dark .border-\[\#38342E\],
+.dark [class*="border-white/25"],
+.dark [class*="border-white/28"] {
+  border-color: #6F6A65 !important;
+}
+
+.dark .text-\[\#F5F3EF\] {
+  color: #D4D2D0 !important;
+}
+
+/* Brand Accent in Dark Mode (Rich Terracotta / Rust #7F3922) */
+.dark .bg-\[\#F95721\] {
+  background-color: #7F3922 !important;
+}
+
+.dark .hover\:bg-\[\#E04612\]:hover {
+  background-color: #6D301C !important;
+}
+
+.dark .text-\[\#F95721\] {
+  color: #9F5639 !important;
+}
+
+.dark .border-\[\#F95721\] {
+  border-color: #7F3922 !important;
+}
+
+.dark .hover\:border-\[\#F95721\]:hover,
+.dark .hover\:border-\[\#F95721\]\/50:hover {
+  border-color: rgba(127, 57, 34, 0.6) !important;
+}
+
+.dark .selection\:bg-\[\#F95721\]\/20 {
+  background-color: rgba(127, 57, 34, 0.35) !important;
+}
+
+.dark .selection\:text-\[\#F95721\] {
+  color: #B26142 !important;
 }
 
 body {

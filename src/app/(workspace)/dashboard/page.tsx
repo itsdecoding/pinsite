@@ -233,7 +233,7 @@ export default function ManagerDashboardPage() {
 
         <Link
           href="/studio/queue"
-          className="py-3 px-6 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs shadow-sm flex items-center gap-2 transition-all active:scale-[0.98] shrink-0"
+          className="py-3 px-6 bg-[#7F3922] hover:bg-[#6D301C] border border-[#A6543A]/40 text-white rounded-full font-semibold text-xs shadow-sm flex items-center gap-2 transition-all active:scale-[0.98] shrink-0"
         >
           <span>Start Calling</span>
           <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -243,9 +243,9 @@ export default function ManagerDashboardPage() {
       {/* 2. Middle Row: 2-Column Workspace Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Card: Active Priority Dial Queue */}
-        <div className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-6 shadow-sm flex flex-col justify-between min-h-[340px]">
+        <div className="bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-[#55514B] rounded-3xl p-6 shadow-sm flex flex-col justify-between min-h-[340px]">
           <div>
-            <div className="flex items-center justify-between pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924]">
+            <div className="flex items-center justify-between pb-4 border-b border-[#ECE8E1] dark:border-white/15">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-[#F95721]" />
                 <h3 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
@@ -282,7 +282,7 @@ export default function ManagerDashboardPage() {
                 </Link>
               </div>
             ) : (
-              <div className="divide-y divide-[#ECE8E1]/60 dark:divide-[#2D2924]/60 mt-2">
+              <div className="divide-y divide-[#ECE8E1]/60 dark:divide-white/10 mt-2">
                 {priorityLeads.map((lead) => (
                   <div key={lead.id} className="py-3.5 flex items-center justify-between gap-4 group">
                     <div className="min-w-0">
@@ -315,16 +315,16 @@ export default function ManagerDashboardPage() {
             )}
           </div>
 
-          <div className="pt-4 border-t border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between text-[11px] text-[#6E6B66] dark:text-[#8A8680]">
+          <div className="pt-4 border-t border-[#ECE8E1] dark:border-white/15 flex items-center justify-between text-[11px] text-[#6E6B66] dark:text-[#8A8680]">
             <span>100 leads top-up scheduled at 06:00 AM IST</span>
             <span className="font-mono text-[#F95721] font-semibold">100% Green</span>
           </div>
         </div>
 
         {/* Right Card: Needs Your Attention (Actionable Ops Alert Card) */}
-        <div className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-6 shadow-sm flex flex-col justify-between min-h-[340px]">
+        <div className="bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-[#55514B] rounded-3xl p-6 shadow-sm flex flex-col justify-between min-h-[340px]">
           <div>
-            <div className="flex items-center justify-between pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924]">
+            <div className="flex items-center justify-between pb-4 border-b border-[#ECE8E1] dark:border-white/15">
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-[#F95721]" />
                 <h3 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
@@ -403,7 +403,7 @@ export default function ManagerDashboardPage() {
                   </Link>
                 </div>
               ) : (
-                <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] flex items-center gap-3">
+                <div className="p-4 rounded-2xl bg-black/5 dark:bg-black/40 border border-[#ECE8E1] dark:border-white/25 flex items-center gap-3">
                   <CheckCircle2 className="w-5 h-5 text-feedback-success shrink-0" />
                   <div className="text-xs">
                     <p className="font-bold text-[#111110] dark:text-[#F5F3EF]">
@@ -417,7 +417,7 @@ export default function ManagerDashboardPage() {
               )}
 
               {/* Infrastructure Budget Protection Meter */}
-              <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] space-y-2">
+              <div className="p-4 rounded-2xl bg-black/5 dark:bg-black/40 border border-[#ECE8E1] dark:border-white/25 space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-semibold text-[#111110] dark:text-[#F5F3EF]">
                     Infrastructure Quota ($0 Budget Guard)
@@ -461,7 +461,7 @@ export default function ManagerDashboardPage() {
       {/* 3. Bottom Stat Metrics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         {/* Metric Card 1 */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-[#55514B] shadow-sm flex flex-col justify-between">
           <div className="w-8 h-8 rounded-full bg-[#F95721]/10 text-[#F95721] flex items-center justify-center">
             <PhoneCall className="w-4 h-4" />
           </div>
@@ -476,7 +476,7 @@ export default function ManagerDashboardPage() {
         </div>
 
         {/* Metric Card 2 */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-[#55514B] shadow-sm flex flex-col justify-between">
           <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center">
             <Zap className="w-4 h-4" />
           </div>
@@ -491,7 +491,7 @@ export default function ManagerDashboardPage() {
         </div>
 
         {/* Metric Card 3 */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-[#55514B] shadow-sm flex flex-col justify-between">
           <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
             <Users className="w-4 h-4" />
           </div>
@@ -506,7 +506,7 @@ export default function ManagerDashboardPage() {
         </div>
 
         {/* Metric Card 4 */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-[#55514B] shadow-sm flex flex-col justify-between">
           <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center">
             <Database className="w-4 h-4" />
           </div>
@@ -521,7 +521,7 @@ export default function ManagerDashboardPage() {
         </div>
 
         {/* Metric Card 5 */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-[#55514B] shadow-sm flex flex-col justify-between">
           <div className="w-8 h-8 rounded-full bg-purple-500/10 text-purple-500 flex items-center justify-center">
             <Mail className="w-4 h-4" />
           </div>

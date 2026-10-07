@@ -14,6 +14,7 @@ import {
   Tag,
   Gauge,
   Eye,
+  RotateCcw,
 } from "lucide-react";
 
 interface IngestionStats {
@@ -214,22 +215,38 @@ export default function LeadIngestionPage() {
   };
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924] pt-2">
-        <span className="text-[11px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
-          DATA PIPELINE
-        </span>
-        <h1 className="text-3xl sm:text-4xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-1">
-          High-velocity lead ingestion.
-        </h1>
-        <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1.5">
-          Import scraped and verified business lists directly into your dial queue. Automatically strips invalid numbers and normalizes to +91.
-        </p>
+    <div className="space-y-6 w-full">
+      {/* Top Status & Actions Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-mono font-bold px-3 py-1.5 rounded-xl bg-white dark:bg-[#181715] text-[#111110] dark:text-[#F5F3EF] border border-[#ECE8E1] dark:border-[#262420] shadow-sm">
+            Format: .CSV (UTF-8)
+          </span>
+          <span className="text-xs text-[#8A8680] hidden sm:inline">
+            Auto-normalizes to +91 &bull; Strips invalid numbers
+          </span>
+        </div>
+
+        {file && (
+          <button
+            type="button"
+            onClick={() => {
+              setFile(null);
+              setStats(null);
+              setPreviewRows([]);
+              setErrorMsg(null);
+              if (fileInputRef.current) fileInputRef.current.value = "";
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#181715] hover:bg-black/5 dark:hover:bg-white/5 rounded-xl text-xs font-medium text-[#111110] dark:text-[#F5F3EF] border border-[#ECE8E1] dark:border-[#262420] transition-all cursor-pointer self-end sm:self-auto shadow-sm"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-[#F95721]" />
+            <span>Reset File</span>
+          </button>
+        )}
       </div>
 
       {errorMsg && (
-        <div className="p-4 rounded-2xl bg-feedback-error/10 border border-feedback-error/20 text-feedback-error text-xs flex items-center gap-2">
+        <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span>{errorMsg}</span>
         </div>
@@ -238,7 +255,7 @@ export default function LeadIngestionPage() {
       {/* Upload Dropzone */}
       <div
         onClick={() => fileInputRef.current?.click()}
-        className="border-2 border-dashed border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721] bg-white dark:bg-[#1C1A17] rounded-3xl p-8 sm:p-10 text-center cursor-pointer transition-all shadow-sm group"
+        className="border-2 border-dashed border-[#ECE8E1] dark:border-[#262420] hover:border-[#F95721] bg-white dark:bg-[#181715] rounded-3xl p-8 sm:p-10 text-center cursor-pointer transition-all shadow-sm group"
       >
         <input
           ref={fileInputRef}
@@ -262,8 +279,8 @@ export default function LeadIngestionPage() {
 
       {/* File Configuration Panel */}
       {file && (
-        <div className="p-6 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924]">
+        <div className="p-6 rounded-3xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#ECE8E1] dark:border-[#262420]">
             <div className="flex items-center gap-3">
               <FileSpreadsheet className="w-6 h-6 text-[#F95721]" />
               <div>
@@ -290,7 +307,7 @@ export default function LeadIngestionPage() {
                 value={targetNiche}
                 onChange={(e) => setTargetNiche(e.target.value)}
                 placeholder="e.g. Dentist"
-                className="w-full text-xs px-3.5 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none"
+                className="w-full text-xs px-3.5 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none"
               />
             </div>
 
@@ -304,7 +321,7 @@ export default function LeadIngestionPage() {
                 value={targetArea}
                 onChange={(e) => setTargetArea(e.target.value)}
                 placeholder="e.g. Kothrud, Pune"
-                className="w-full text-xs px-3.5 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none"
+                className="w-full text-xs px-3.5 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none"
               />
             </div>
 
@@ -319,7 +336,7 @@ export default function LeadIngestionPage() {
                 max={100}
                 value={targetScore}
                 onChange={(e) => setTargetScore(parseInt(e.target.value, 10) || 75)}
-                className="w-full text-xs px-3.5 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none"
+                className="w-full text-xs px-3.5 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none"
               />
             </div>
           </div>
@@ -331,7 +348,7 @@ export default function LeadIngestionPage() {
                 <Eye className="w-3.5 h-3.5 text-[#F95721]" />
                 Sample Extracted Records
               </span>
-              <div className="divide-y divide-[#ECE8E1]/60 dark:divide-[#2D2924]/60 bg-black/5 dark:bg-white/5 rounded-2xl p-3 text-xs">
+              <div className="divide-y divide-[#ECE8E1]/60 dark:divide-[#262420]/60 bg-black/5 dark:bg-white/5 rounded-2xl p-3 text-xs">
                 {previewRows.slice(0, 3).map((item, idx) => (
                   <div key={idx} className="py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]">
                     <span className="font-bold text-[#111110] dark:text-[#F5F3EF] truncate max-w-xs">{item.name || "Untitled Business"}</span>
@@ -368,7 +385,7 @@ export default function LeadIngestionPage() {
 
       {/* Progress Bar */}
       {isProcessing && (
-        <div className="space-y-2 p-5 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924]">
+        <div className="space-y-2 p-5 rounded-3xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420]">
           <div className="flex items-center justify-between text-xs font-mono">
             <span className="text-[#6E6B66] dark:text-[#8A8680]">Batch Progress</span>
             <span className="text-[#F95721] font-bold">{progress}%</span>
@@ -384,29 +401,29 @@ export default function LeadIngestionPage() {
 
       {/* Stats Summary Card */}
       {stats && (
-        <div className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-6 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] rounded-3xl p-6 shadow-sm space-y-4">
           <div className="flex items-center gap-2 text-feedback-success font-bold text-sm">
             <CheckCircle2 className="w-5 h-5" />
             <span>Ingestion Batch Completed Successfully</span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
-            <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
+            <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420]">
               <span className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] block">Total Records in File</span>
               <span className="text-xl font-bold font-mono text-[#111110] dark:text-[#F5F3EF]">{stats.total}</span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
+            <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420]">
               <span className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] block">New Leads Inserted</span>
               <span className="text-xl font-bold font-mono text-feedback-success">{stats.inserted}</span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
+            <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420]">
               <span className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] block">Duplicates Skipped</span>
               <span className="text-xl font-bold font-mono text-amber-500">{stats.duplicates}</span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
+            <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420]">
               <span className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] block">Invalid / No-Phone Skipped</span>
               <span className="text-xl font-bold font-mono text-feedback-error">{stats.invalid}</span>
             </div>

@@ -631,64 +631,7 @@ export default function ManagerTeamPage() {
   const activeCallersCount = callers.filter((c) => c.role === "caller").length;
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-16">
-      {/* ========================================================================= */}
-      {/* 1. HEADER & SUB-NAVIGATION                                                */}
-      {/* ========================================================================= */}
-      <div className="pb-4 border-b border-[#ECE8E1] dark:border-[#262420] pt-2 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono tracking-widest uppercase text-[#F95721] font-bold">
-              TEAM COMMAND CENTER
-            </span>
-            <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] text-[#8A8680]">
-              IST (UTC+5:30)
-            </span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-1">
-            Team Roster & Telemetry
-          </h1>
-          <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1">
-            Who&apos;s working, who&apos;s stuck, and where to intervene.
-          </p>
-        </div>
-
-        {/* Sub-nav tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-black/5 dark:bg-white/5 rounded-2xl border border-[#ECE8E1] dark:border-[#262420] shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
-          <Link
-            href="/studio/manager/team"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#F95721] text-white shadow-sm transition-all"
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>Team Roster</span>
-          </Link>
-          <Link
-            href="/studio/manager/quarantine"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] transition-all"
-          >
-            <Inbox className="w-3.5 h-3.5" />
-            <span>Quarantine</span>
-            {quarantineCount > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-red-500/10 text-red-500 border border-red-500/20 font-bold">
-                {quarantineCount}
-              </span>
-            )}
-          </Link>
-          <Link
-            href="/studio/manager/invites"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] transition-all"
-          >
-            <span>Invites</span>
-          </Link>
-          <Link
-            href="/studio/manager/ingestion"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] transition-all"
-          >
-            <span>CSV Ingestion</span>
-          </Link>
-        </div>
-      </div>
-
+    <div className="space-y-6">
       {/* Telemetry Status Bar & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-3 flex-wrap">
@@ -706,7 +649,7 @@ export default function ManagerTeamPage() {
               onClick={() => setTimeRange("today")}
               className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
                 timeRange === "today"
-                  ? "bg-white dark:bg-[#1C1A17] text-[#111110] dark:text-[#F5F3EF] shadow-sm font-semibold"
+                  ? "bg-white dark:bg-[#181715] text-[#111110] dark:text-[#F5F3EF] shadow-sm font-semibold"
                   : "text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
               }`}
             >
@@ -717,7 +660,7 @@ export default function ManagerTeamPage() {
               onClick={() => setTimeRange("24h")}
               className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
                 timeRange === "24h"
-                  ? "bg-white dark:bg-[#1C1A17] text-[#111110] dark:text-[#F5F3EF] shadow-sm font-semibold"
+                  ? "bg-white dark:bg-[#181715] text-[#111110] dark:text-[#F5F3EF] shadow-sm font-semibold"
                   : "text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
               }`}
             >
@@ -754,7 +697,7 @@ export default function ManagerTeamPage() {
             type="button"
             onClick={() => fetchTeamStats(true)}
             disabled={refreshing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#262420] hover:border-[#F95721] text-[#111110] dark:text-[#F5F3EF] shadow-sm transition-all disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] hover:border-[#F95721] text-[#111110] dark:text-[#F5F3EF] shadow-sm transition-all disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-[#F95721]" : ""}`} />
             <span>Refresh</span>
@@ -765,10 +708,10 @@ export default function ManagerTeamPage() {
       {/* ========================================================================= */}
       {/* 2. FLEET PIPELINE — ONE HERO SECTION, 4 NUMBERS (Dial Now / Callbacks / Waiting / Done) */}
       {/* ========================================================================= */}
-      <div className="p-5 sm:p-6 rounded-3xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-[#ECE8E1]/80 dark:border-[#262420] gap-2">
+      <div className="p-5 sm:p-6 rounded-3xl bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-[#222222] shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-[#ECE8E1]/80 dark:border-[#222222] gap-2">
           <div>
-            <span className="text-[10px] font-mono tracking-widest uppercase text-[#F95721] font-bold">
+            <span className="text-[10px] font-mono tracking-widest uppercase text-[#9F5639] dark:text-[#9F5639] font-bold">
               FLEET PIPELINE
             </span>
             <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
@@ -782,7 +725,7 @@ export default function ManagerTeamPage() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 pt-5">
           {/* 1. Dial Now */}
-          <div className="p-4 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/60 dark:border-[#262420] flex flex-col justify-between">
+          <div className="p-4 rounded-2xl bg-black/[0.02] dark:bg-[#111112] border border-[#ECE8E1]/60 dark:border-[#38342E] flex flex-col justify-between">
             <span className="text-[11px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
               Dial Now
             </span>
@@ -797,13 +740,13 @@ export default function ManagerTeamPage() {
           </div>
 
           {/* 2. Callbacks */}
-          <div className="p-4 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/60 dark:border-[#262420] flex flex-col justify-between">
+          <div className="p-4 rounded-2xl bg-black/[0.02] dark:bg-[#111112] border border-[#ECE8E1]/60 dark:border-[#38342E] flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
                 Callbacks
               </span>
               {(summary.fleet_pipeline?.overdue_callbacks ?? 0) > 0 && (
-                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-500/15 dark:bg-[#B36B28]/20 text-amber-600 dark:text-[#D9822B] border border-amber-500/30 dark:border-[#B36B28]/40">
                   {summary.fleet_pipeline?.overdue_callbacks} overdue
                 </span>
               )}
@@ -819,7 +762,7 @@ export default function ManagerTeamPage() {
           </div>
 
           {/* 3. Waiting */}
-          <div className="p-4 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/60 dark:border-[#262420] flex flex-col justify-between">
+          <div className="p-4 rounded-2xl bg-black/[0.02] dark:bg-[#111112] border border-[#ECE8E1]/60 dark:border-[#38342E] flex flex-col justify-between">
             <span className="text-[11px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
               Waiting
             </span>
@@ -834,12 +777,12 @@ export default function ManagerTeamPage() {
           </div>
 
           {/* 4. Done Today */}
-          <div className="p-4 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/60 dark:border-[#262420] flex flex-col justify-between">
+          <div className="p-4 rounded-2xl bg-black/[0.02] dark:bg-[#111112] border border-[#ECE8E1]/60 dark:border-[#38342E] flex flex-col justify-between">
             <span className="text-[11px] font-mono uppercase tracking-wider text-[#6E6B66] dark:text-[#8A8680] font-semibold">
               Done Today
             </span>
             <div className="mt-2">
-              <div className="text-3xl sm:text-4xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
+              <div className="text-3xl sm:text-4xl font-black text-emerald-600 dark:text-[#589F7A] tracking-tight">
                 {summary.fleet_pipeline?.done_today ?? summary.total_dials_today}
               </div>
               <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] mt-0.5">
@@ -854,7 +797,7 @@ export default function ManagerTeamPage() {
       {/* 3. NEEDS ATTENTION STRIP (Quiet when fine, alert when action needed)       */}
       {/* ========================================================================= */}
       {summary.needs_attention && summary.needs_attention.length > 0 && (
-        <div className="p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 text-xs shadow-sm space-y-2.5 animate-in fade-in">
+        <div className="p-4 rounded-3xl bg-amber-500/10 dark:bg-[#1D1913] border border-amber-500/30 dark:border-[#3A2E1F] text-xs shadow-sm space-y-2.5 animate-in fade-in">
           <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-bold tracking-wider font-mono text-[11px] uppercase">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>NEEDS ATTENTION ({summary.needs_attention.length})</span>
@@ -894,7 +837,7 @@ export default function ManagerTeamPage() {
           <button
             type="button"
             onClick={() => setRoleDropdownOpen((prev) => !prev)}
-            className="flex items-center justify-between gap-2 px-3 py-1.5 w-48 bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] rounded-xl text-xs text-[#111110] dark:text-[#F5F3EF] font-medium shadow-sm hover:border-[#F95721]/50 transition-all cursor-pointer"
+            className="flex items-center justify-between gap-2 px-3 py-1.5 w-48 bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-white/20 rounded-xl text-xs text-[#111110] dark:text-[#F5F3EF] font-medium shadow-sm hover:border-[#7F3922]/50 transition-all cursor-pointer"
           >
             <span className="truncate">
               {roleFilter === "all" && `Filter: All (${roleCounts.all})`}
@@ -904,13 +847,13 @@ export default function ManagerTeamPage() {
             </span>
             <ChevronDown
               className={`w-3.5 h-3.5 text-[#8A8680] transition-transform duration-200 shrink-0 ${
-                roleDropdownOpen ? "rotate-180 text-[#F95721]" : ""
+                roleDropdownOpen ? "rotate-180 text-[#9F5639]" : ""
               }`}
             />
           </button>
 
           {roleDropdownOpen && (
-            <div className="absolute left-0 mt-1.5 w-48 rounded-xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] shadow-xl z-50 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="absolute left-0 mt-1.5 w-48 rounded-xl bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-white/20 shadow-xl z-50 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
               {[
                 { key: "all", label: `All (${roleCounts.all})` },
                 { key: "manager", label: `Managers (${roleCounts.manager})` },
@@ -950,7 +893,7 @@ export default function ManagerTeamPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search callers..."
-              className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] focus:border-[#F95721] rounded-xl text-xs text-[#111110] dark:text-[#F5F3EF] outline-none shadow-sm transition-all"
+              className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-white/20 focus:border-[#7F3922] rounded-xl text-xs text-[#111110] dark:text-[#F5F3EF] outline-none shadow-sm transition-all"
             />
           </div>
 
@@ -958,7 +901,7 @@ export default function ManagerTeamPage() {
           <select
             value={sortBy}
             onChange={(e: any) => setSortBy(e.target.value)}
-            className="px-3 py-1.5 bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] rounded-xl text-xs text-[#111110] dark:text-[#F5F3EF] outline-none shadow-sm cursor-pointer font-medium"
+            className="px-3 py-1.5 bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-white/20 rounded-xl text-xs text-[#111110] dark:text-[#F5F3EF] outline-none shadow-sm cursor-pointer font-medium"
           >
             <option value="urgency">Sort: Needs Attention First</option>
             <option value="dials">Sort: Most Dials</option>
@@ -968,7 +911,7 @@ export default function ManagerTeamPage() {
           </select>
 
           {/* Status Filter */}
-          <div className="flex items-center p-0.5 bg-white dark:bg-[#181715] rounded-xl border border-[#ECE8E1] dark:border-[#262420] shadow-sm text-xs">
+          <div className="flex items-center p-0.5 bg-white dark:bg-[#131414] rounded-xl border border-[#ECE8E1] dark:border-white/20 shadow-sm text-xs">
             <button
               type="button"
               onClick={() => setStatusFilter("all")}
@@ -1024,7 +967,7 @@ export default function ManagerTeamPage() {
           ))}
         </div>
       ) : filteredCallers.length === 0 ? (
-        <div className="text-center py-16 px-4 bg-white dark:bg-[#181715] rounded-3xl border border-[#ECE8E1] dark:border-[#262420] space-y-3">
+        <div className="text-center py-16 px-4 bg-white dark:bg-[#131414] rounded-3xl border border-[#ECE8E1] dark:border-white/20 space-y-3">
           <Users className="w-10 h-10 text-[#8A8680] mx-auto opacity-50" />
           <h3 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
             No team members match current filters
@@ -1055,14 +998,14 @@ export default function ManagerTeamPage() {
                 onClick={() => {
                   if (isCaller) openCallerDetail(caller.id);
                 }}
-                className={`p-5 rounded-3xl bg-white dark:bg-[#181715] border transition-all flex flex-col justify-between group ${
+                className={`p-5 rounded-3xl bg-white dark:bg-[#131414] border transition-all flex flex-col justify-between group ${
                   isCaller ? "cursor-pointer hover:shadow-md" : "cursor-default"
                 } ${
                   hasOverdue
-                    ? "border-amber-500/40 hover:border-amber-500"
+                    ? "border-amber-500/50 hover:border-amber-400"
                     : isCaller
-                    ? "border-[#ECE8E1] dark:border-[#262420] hover:border-[#F95721]/50"
-                    : "border-[#ECE8E1] dark:border-[#262420]"
+                    ? "border-[#ECE8E1] dark:border-white/20 hover:border-white/40"
+                    : "border-[#ECE8E1] dark:border-white/20"
                 }`}
               >
                 <div>
@@ -1072,10 +1015,10 @@ export default function ManagerTeamPage() {
                       <div
                         className={`w-10 h-10 rounded-2xl border flex items-center justify-center font-bold text-xs shrink-0 ${
                           isDeveloper
-                            ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20"
+                            ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/30"
                             : isManagerOrAdmin
-                            ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
-                            : "bg-black/5 dark:bg-white/5 border-[#ECE8E1] dark:border-[#262420] text-[#F95721]"
+                            ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30"
+                            : "bg-black/5 dark:bg-white/5 border-[#ECE8E1] dark:border-white/20 text-[#9F5639]"
                         }`}
                       >
                         {initials}
@@ -1129,7 +1072,7 @@ export default function ManagerTeamPage() {
                   {isCaller ? (
                     <>
                       {/* 4-State Pipeline Breakdown (Dial Now / Callbacks / Waiting / Done) */}
-                      <div className="grid grid-cols-4 gap-1 p-2 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/80 dark:border-[#262420] text-center mt-3.5">
+                      <div className="grid grid-cols-4 gap-1 p-2 rounded-2xl bg-black/[0.02] dark:bg-black/40 border border-[#ECE8E1]/80 dark:border-white/25 text-center mt-3.5">
                         <div>
                           <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Dial Now</span>
                           <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
@@ -1177,7 +1120,7 @@ export default function ManagerTeamPage() {
                       </div>
 
                       {/* Outcome Breakdown (Using Clean Lucide Icons — No Emojis!) */}
-                      <div className="mt-2.5 flex items-center gap-2 flex-wrap text-xs text-[#8A8680] pt-2 border-t border-[#ECE8E1]/60 dark:border-[#262420]/60">
+                      <div className="mt-2.5 flex items-center gap-2 flex-wrap text-xs text-[#8A8680] pt-2 border-t border-[#ECE8E1]/60 dark:border-white/15">
                         <span className="inline-flex items-center gap-1" title="Interested">
                           <Flame className="w-3.5 h-3.5 text-orange-500" />
                           <span className="font-mono text-[#111110] dark:text-[#F5F3EF] text-[11px]">{caller.outcomes_breakdown?.interested || 0}</span>
@@ -1202,7 +1145,7 @@ export default function ManagerTeamPage() {
                     </>
                   ) : isDeveloper ? (
                     /* Developer Card Overview (No cold-calling telemetry!) */
-                    <div className="mt-3.5 p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/80 dark:border-[#262420] space-y-2.5">
+                    <div className="mt-3.5 p-3.5 rounded-2xl bg-black/[0.02] dark:bg-black/40 border border-[#ECE8E1]/80 dark:border-white/25 space-y-2.5">
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-[10px] font-mono uppercase text-[#8A8680] flex items-center gap-1.5 font-semibold">
                           <Code2 className="w-3.5 h-3.5 text-cyan-500" />
@@ -1215,7 +1158,7 @@ export default function ManagerTeamPage() {
                       <p className="text-[11px] text-[#8A8680] leading-snug">
                         Dedicated to application code, sprint deliverables, and platform infrastructure.
                       </p>
-                      <div className="pt-2 border-t border-[#ECE8E1]/60 dark:border-[#262420]/60 flex items-center justify-between text-[11px] font-mono">
+                      <div className="pt-2 border-t border-[#ECE8E1]/60 dark:border-white/15 flex items-center justify-between text-[11px] font-mono">
                         <span className="text-[#8A8680]">Studio Status:</span>
                         <span className={caller.is_online ? "text-emerald-500 font-semibold" : "text-zinc-500"}>
                           {caller.is_online ? "Active / In Studio" : "Offline"}
@@ -1224,7 +1167,7 @@ export default function ManagerTeamPage() {
                     </div>
                   ) : (
                     /* Manager / Admin Card Overview (No cold-calling telemetry!) */
-                    <div className="mt-3.5 p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1]/80 dark:border-[#262420] space-y-2.5">
+                    <div className="mt-3.5 p-3.5 rounded-2xl bg-black/[0.02] dark:bg-black/40 border border-[#ECE8E1]/80 dark:border-white/25 space-y-2.5">
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-[10px] font-mono uppercase text-[#8A8680] flex items-center gap-1.5 font-semibold">
                           <ShieldCheck className="w-3.5 h-3.5 text-purple-500" />
@@ -1248,13 +1191,13 @@ export default function ManagerTeamPage() {
                 </div>
 
                 {/* Card Action Buttons */}
-                <div className="mt-4 pt-3 border-t border-[#ECE8E1] dark:border-[#262420]" onClick={(e) => e.stopPropagation()}>
+                <div className="mt-4 pt-3 border-t border-[#ECE8E1] dark:border-white/15" onClick={(e) => e.stopPropagation()}>
                   {isCaller ? (
                     /* Caller Actions: [Mirror] [Activity] [Reassign] */
                     <div className="grid grid-cols-3 gap-2">
                       <Link
                         href={`/queue?impersonate=${caller.id}`}
-                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-[#F95721] hover:text-white text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all"
+                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-[#7F3922] hover:text-white text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-white/15"
                         title={`Mirror view of ${caller.full_name}'s cockpit`}
                       >
                         <ExternalLink className="w-3 h-3" />
@@ -1264,16 +1207,16 @@ export default function ManagerTeamPage() {
                       <button
                         type="button"
                         onClick={() => openCallerDetail(caller.id)}
-                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all"
+                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-white/15"
                       >
-                        <FileText className="w-3 h-3 text-[#F95721]" />
+                        <FileText className="w-3 h-3 text-[#9F5639]" />
                         <span>Activity</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => openReassignModal(caller.id)}
-                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all"
+                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-white/15"
                       >
                         <PhoneForwarded className="w-3 h-3 text-[#8A8680]" />
                         <span>Reassign</span>
@@ -1292,7 +1235,7 @@ export default function ManagerTeamPage() {
 
                       <Link
                         href="/comms"
-                        className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-[#262420]"
+                        className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-white/15"
                       >
                         <MessageSquare className="w-3.5 h-3.5 text-[#8A8680]" />
                         <span>Message</span>
@@ -1311,7 +1254,7 @@ export default function ManagerTeamPage() {
 
                       <Link
                         href="/comms"
-                        className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-[#262420]"
+                        className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-white/15"
                       >
                         <MessageSquare className="w-3.5 h-3.5 text-[#8A8680]" />
                         <span>Message</span>
@@ -1644,7 +1587,7 @@ export default function ManagerTeamPage() {
                 onClick={() => setReassignMode("between")}
                 className={`flex-1 py-1.5 rounded-xl transition-all ${
                   reassignMode === "between"
-                    ? "bg-white dark:bg-[#1C1A17] text-[#111110] dark:text-[#F5F3EF] shadow-sm"
+                    ? "bg-white dark:bg-[#181715] text-[#111110] dark:text-[#F5F3EF] shadow-sm"
                     : "text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
                 }`}
               >
@@ -1655,7 +1598,7 @@ export default function ManagerTeamPage() {
                 onClick={() => setReassignMode("unassigned")}
                 className={`flex-1 py-1.5 rounded-xl transition-all ${
                   reassignMode === "unassigned"
-                    ? "bg-white dark:bg-[#1C1A17] text-[#111110] dark:text-[#F5F3EF] shadow-sm"
+                    ? "bg-white dark:bg-[#181715] text-[#111110] dark:text-[#F5F3EF] shadow-sm"
                     : "text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
                 }`}
               >
