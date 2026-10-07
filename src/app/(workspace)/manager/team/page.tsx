@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -226,7 +226,9 @@ export default function ManagerTeamPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
-  const [roleFilter, setRoleFilter] = useState<"all" | "caller" | "manager" | "developer" | "admin">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | "caller" | "manager" | "developer">("all");
+  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
+  const roleDropdownRef = useRef<HTMLDivElement>(null);
   const [sortBy, setSortBy] = useState<"urgency" | "dials" | "connects" | "queue" | "name">("urgency");
   const [timeRange, setTimeRange] = useState<"today" | "24h">("today");
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -318,6 +320,33 @@ export default function ManagerTeamPage() {
     return () => clearInterval(timer);
   }, [autoRefresh, fetchTeamStats]);
 
+  // Teammate count per role category
+  const roleCounts = useMemo(() => {
+    const all = callers.length;
+    const callersCount = callers.filter((c) => c.role === "caller").length;
+    const managersCount = callers.filter((c) => c.role === "manager" || c.role === "admin").length;
+    const developersCount = callers.filter((c) => c.role === "developer").length;
+    return {
+      all,
+      caller: callersCount,
+      manager: managersCount,
+      developer: developersCount,
+    };
+  }, [callers]);
+
+  // Close role filter dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (roleDropdownRef.current && !roleDropdownRef.current.contains(event.target as Node)) {
+        setRoleDropdownOpen(false);
+      }
+    }
+    if (roleDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [roleDropdownOpen]);
+
   // Fetch Caller Activity Detail when drawer is opened
   const openCallerDetail = async (callerId: string, initialTab: "calls" | "callbacks" | "queue" = "calls") => {
     setDetailCallerId(callerId);
@@ -355,7 +384,13 @@ export default function ManagerTeamPage() {
       if (statusFilter === "online") return c.is_online;
       if (statusFilter === "offline") return !c.is_online;
 
-      if (roleFilter !== "all" && c.role !== roleFilter) return false;
+      if (roleFilter !== "all") {
+        if (roleFilter === "manager") {
+          if (c.role !== "manager" && c.role !== "admin") return false;
+        } else if (c.role !== roleFilter) {
+          return false;
+        }
+      }
 
       return true;
     });
@@ -851,14 +886,59 @@ export default function ManagerTeamPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* 4. CALLERS ROSTER CONTROLS (Search, Default Sort: Urgency, Filters)        */}
+      {/* 4. TEAM ROSTER CONTROLS (Role Filter Dropdown, Search, Sort, Status)      */}
       {/* ========================================================================= */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-[#111110] dark:text-[#F5F3EF] font-mono">
-            CALLERS
-          </h2>
-          <span className="text-xs text-[#8A8680] font-mono">({activeCallersCount} active)</span>
+        {/* Role Filter Dropdown (Replaces static CALLERS header) */}
+        <div className="relative inline-block text-left" ref={roleDropdownRef}>
+          <button
+            type="button"
+            onClick={() => setRoleDropdownOpen((prev) => !prev)}
+            className="flex items-center justify-between gap-2 px-3 py-1.5 w-48 bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] rounded-xl text-xs text-[#111110] dark:text-[#F5F3EF] font-medium shadow-sm hover:border-[#F95721]/50 transition-all cursor-pointer"
+          >
+            <span className="truncate">
+              {roleFilter === "all" && `Filter: All (${roleCounts.all})`}
+              {roleFilter === "manager" && `Filter: Managers (${roleCounts.manager})`}
+              {roleFilter === "caller" && `Filter: Callers (${roleCounts.caller})`}
+              {roleFilter === "developer" && `Filter: Developers (${roleCounts.developer})`}
+            </span>
+            <ChevronDown
+              className={`w-3.5 h-3.5 text-[#8A8680] transition-transform duration-200 shrink-0 ${
+                roleDropdownOpen ? "rotate-180 text-[#F95721]" : ""
+              }`}
+            />
+          </button>
+
+          {roleDropdownOpen && (
+            <div className="absolute left-0 mt-1.5 w-48 rounded-xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] shadow-xl z-50 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              {[
+                { key: "all", label: `All (${roleCounts.all})` },
+                { key: "manager", label: `Managers (${roleCounts.manager})` },
+                { key: "caller", label: `Callers (${roleCounts.caller})` },
+                { key: "developer", label: `Developers (${roleCounts.developer})` },
+              ].map((opt) => {
+                const isActive = roleFilter === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => {
+                      setRoleFilter(opt.key as any);
+                      setRoleDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition-colors ${
+                      isActive
+                        ? "bg-[#F95721]/10 text-[#F95721] font-bold"
+                        : "text-[#111110] dark:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5"
+                    }`}
+                  >
+                    <span>{opt.label}</span>
+                    {isActive && <Check className="w-3.5 h-3.5 text-[#F95721]" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-1 max-w-xl md:justify-end">
@@ -947,10 +1027,10 @@ export default function ManagerTeamPage() {
         <div className="text-center py-16 px-4 bg-white dark:bg-[#181715] rounded-3xl border border-[#ECE8E1] dark:border-[#262420] space-y-3">
           <Users className="w-10 h-10 text-[#8A8680] mx-auto opacity-50" />
           <h3 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
-            No callers match current filters
+            No team members match current filters
           </h3>
           <p className="text-xs text-[#8A8680]">
-            Try adjusting your search query or status filter.
+            Try adjusting your search query, role filter, or status filter.
           </p>
         </div>
       ) : (
