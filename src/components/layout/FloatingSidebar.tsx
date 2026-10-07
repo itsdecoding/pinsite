@@ -124,10 +124,10 @@ export function FloatingSidebar() {
             .filter((item) => item.roles.includes(role))
             .map((item) => {
               const Icon = item.icon;
-              const isActive =
-                item.href === "/manager/team"
-                  ? pathname.startsWith("/manager")
-                  : pathname.startsWith(item.href);
+              const isManagerSection = item.href.includes("/manager");
+              const isActive = isManagerSection
+                ? pathname.includes("/manager")
+                : pathname.startsWith(item.href);
 
               return (
                 <Link

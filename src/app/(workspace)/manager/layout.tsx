@@ -17,10 +17,10 @@ export default function ManagerLayout({ children }: ManagerLayoutProps) {
   const isQuarantine = pathname.includes("/quarantine");
   const isInvites = pathname.includes("/invites");
   const isIngestion = pathname.includes("/ingestion");
-  const isTeam = !isQuarantine && !isInvites && !isIngestion; // default to team center
+  const isTeam = !isQuarantine && !isInvites && !isIngestion; // default to team roster
 
-  // Page title and subtitle mapping
-  let pageTitle = "Team Center";
+  // Page title and subtitle mapping (Team Roster is the child page of parent section Team Center)
+  let pageTitle = "Team Roster";
   let pageSubtitle = "Who's working, who's stuck, and where to intervene.";
 
   if (isQuarantine) {
@@ -56,18 +56,56 @@ export default function ManagerLayout({ children }: ManagerLayoutProps) {
     };
   }, [pathname]);
 
+  const subNavTabs = [
+    {
+      label: "Team Roster",
+      href: "/studio/manager/team",
+      icon: Users,
+      isActive: isTeam,
+    },
+    {
+      label: "Quarantine Bin",
+      href: "/studio/manager/quarantine",
+      icon: ShieldAlert,
+      isActive: isQuarantine,
+      badge: quarantineCount > 0 ? (
+        <span
+          className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono border font-bold ${
+            isQuarantine
+              ? "bg-[#F95721]/15 text-[#F95721] border-[#F95721]/30"
+              : "bg-red-500/10 text-red-500 border-red-500/20"
+          }`}
+        >
+          {quarantineCount}
+        </span>
+      ) : null,
+    },
+    {
+      label: "Invites",
+      href: "/studio/manager/invites",
+      icon: Mail,
+      isActive: isInvites,
+    },
+    {
+      label: "Import Leads",
+      href: "/studio/manager/ingestion",
+      icon: UploadCloud,
+      isActive: isIngestion,
+    },
+  ];
+
   return (
     <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6 pb-16">
       {/* ========================================================================= */}
       {/* SHARED MANAGER SHELL: Standardized Header & Persistent Sub-Navigation    */}
       {/* ========================================================================= */}
-      <div className="pb-4 border-b border-[#ECE8E1] dark:border-[#55514B] pt-2 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="pb-4 border-b border-[#ECE8E1] dark:border-[#262420] pt-2 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono tracking-widest uppercase text-[#9F5639] font-bold">
+            <span className="text-[10px] font-mono tracking-widest uppercase text-[#F95721] font-bold">
               TEAM COMMAND CENTER
             </span>
-            <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-black/5 dark:bg-[#131414] border border-[#ECE8E1] dark:border-[#55514B] text-[#8A8680]">
+            <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] text-[#8A8680]">
               IST (UTC+5:30)
             </span>
           </div>
@@ -79,66 +117,36 @@ export default function ManagerLayout({ children }: ManagerLayoutProps) {
           </p>
         </div>
 
-        {/* Persistent Sub-nav tabs on EVERY /manager/* route */}
-        <div className="flex items-center gap-1.5 p-1 bg-black/5 dark:bg-[#131414] rounded-2xl border border-[#ECE8E1] dark:border-[#55514B] shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
-          <Link
-            href="/studio/manager/team"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs transition-all shrink-0 ${
-              isTeam
-                ? "font-semibold bg-[#7F3922] text-white shadow-sm border border-[#A6543A] ring-1 ring-[#A6543A]/40"
-                : "font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>Team Center</span>
-          </Link>
+        {/* Persistent Sub-nav tabs: Team Roster · Quarantine Bin · Invites · Import Leads */}
+        <div className="flex items-center gap-1 p-1 bg-black/5 dark:bg-white/5 rounded-2xl border border-[#ECE8E1] dark:border-[#262420] shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
+          {subNavTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = tab.isActive;
 
-          <Link
-            href="/studio/manager/quarantine"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs transition-all shrink-0 ${
-              isQuarantine
-                ? "font-semibold bg-[#7F3922] text-white shadow-sm border border-[#A6543A] ring-1 ring-[#A6543A]/40"
-                : "font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-            }`}
-          >
-            <ShieldAlert className="w-3.5 h-3.5" />
-            <span>Quarantine Bin</span>
-            {quarantineCount > 0 && (
-              <span
-                className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono border font-bold ${
-                  isQuarantine
-                    ? "bg-white/20 text-white border-white/30"
-                    : "bg-red-500/10 text-red-500 border-red-500/20"
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition-all shrink-0 relative rounded-xl ${
+                  isActive
+                    ? "font-bold text-[#111110] dark:text-[#F5F3EF] bg-white dark:bg-[#181715] shadow-sm"
+                    : "font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
                 }`}
               >
-                {quarantineCount}
-              </span>
-            )}
-          </Link>
-
-          <Link
-            href="/studio/manager/invites"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs transition-all shrink-0 ${
-              isInvites
-                ? "font-semibold bg-[#7F3922] text-white shadow-sm border border-[#A6543A] ring-1 ring-[#A6543A]/40"
-                : "font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-            }`}
-          >
-            <Mail className="w-3.5 h-3.5" />
-            <span>Invites</span>
-          </Link>
-
-          <Link
-            href="/studio/manager/ingestion"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs transition-all shrink-0 ${
-              isIngestion
-                ? "font-semibold bg-[#7F3922] text-white shadow-sm border border-[#A6543A] ring-1 ring-[#A6543A]/40"
-                : "font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-            }`}
-          >
-            <UploadCloud className="w-3.5 h-3.5" />
-            <span>Import Leads</span>
-          </Link>
+                <Icon
+                  className={`w-3.5 h-3.5 ${
+                    isActive ? "text-[#F95721] stroke-[2.2]" : "text-[#8A8680]"
+                  }`}
+                />
+                <span>{tab.label}</span>
+                {tab.badge}
+                {/* Active Orange Underline */}
+                {isActive && (
+                  <span className="absolute bottom-0 left-2.5 right-2.5 h-[2px] bg-[#F95721] rounded-full" />
+                )}
+              </Link>
+            );
+          })}
         </div>
       </div>
 
