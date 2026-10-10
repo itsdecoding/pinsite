@@ -130,32 +130,58 @@ export default function ManagerDashboardPage() {
         .eq("active", true);
 
       if (callers && callers.length > 0) {
+        const callerIds = callers.map((c) => c.id);
+
+        // Batch fetch dials today and assigned leads across all callers in parallel
+        const [callsTodayRes, assignedLeadsRes] = await Promise.all([
+          supabase
+            .from("calls")
+            .select("caller_id")
+            .in("caller_id", callerIds)
+            .gte("called_at", todayStr),
+          supabase
+            .from("leads")
+            .select("assigned_to, updated_at")
+            .in("assigned_to", callerIds)
+            .eq("status", "assigned")
+            .is("deleted_at", null)
+            .order("updated_at", { ascending: false }),
+        ]);
+
+        const callsByCaller = new Map<string, number>();
+        for (const call of callsTodayRes.data || []) {
+          if (call.caller_id) {
+            callsByCaller.set(call.caller_id, (callsByCaller.get(call.caller_id) || 0) + 1);
+          }
+        }
+
+        const uncalledCountByCaller = new Map<string, number>();
+        const latestAssignmentByCaller = new Map<string, number>();
+        for (const lead of assignedLeadsRes.data || []) {
+          if (!lead.assigned_to) continue;
+          uncalledCountByCaller.set(
+            lead.assigned_to,
+            (uncalledCountByCaller.get(lead.assigned_to) || 0) + 1
+          );
+          if (!latestAssignmentByCaller.has(lead.assigned_to) && lead.updated_at) {
+            latestAssignmentByCaller.set(
+              lead.assigned_to,
+              new Date(lead.updated_at).getTime()
+            );
+          }
+        }
+
         const flagged: InactiveCallerAlert[] = [];
         let totalAssignedShiftLeads = 0;
         let recentBatchCount = 0;
 
         for (const c of callers) {
-          const { count: dials } = await supabase
-            .from("calls")
-            .select("*", { count: "exact", head: true })
-            .eq("caller_id", c.id)
-            .gte("called_at", todayStr);
-
-          const { data: assignedLeads, count: uncalled } = await supabase
-            .from("leads")
-            .select("updated_at", { count: "exact" })
-            .eq("assigned_to", c.id)
-            .eq("status", "assigned")
-            .order("updated_at", { ascending: false })
-            .limit(1);
-
-          const uncalledCount = uncalled || 0;
+          const dials = callsByCaller.get(c.id) || 0;
+          const uncalledCount = uncalledCountByCaller.get(c.id) || 0;
           totalAssignedShiftLeads += uncalledCount;
 
           if (dials === 0 && uncalledCount > 0) {
-            const lastAssignedTime = assignedLeads?.[0]?.updated_at
-              ? new Date(assignedLeads[0].updated_at).getTime()
-              : 0;
+            const lastAssignedTime = latestAssignmentByCaller.get(c.id) || 0;
             const elapsedHours = (Date.now() - lastAssignedTime) / (1000 * 60 * 60);
 
             // A caller is only flagged as inactive if their leads were assigned >= 2.5 hours ago

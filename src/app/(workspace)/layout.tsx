@@ -8,7 +8,11 @@ export default function WorkspaceLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-[#F7F5F0] dark:bg-[#0E0E0E] text-[#111110] dark:text-[#D4D2D0] flex transition-colors">
+    <div className="min-h-screen bg-[#F7F5F0] dark:bg-[#0E0E0E] text-[#111110] dark:text-[#D4D2D0] flex transition-colors relative overflow-x-hidden">
+      {/* Ambient optical background auras to give real frosted glass depth and refraction */}
+      <div className="pointer-events-none fixed top-0 left-0 w-[500px] h-[500px] bg-gradient-to-br from-[#7F3922]/15 via-[#7F3922]/5 to-transparent blur-[120px] -z-10" />
+      <div className="pointer-events-none fixed bottom-0 left-10 w-[400px] h-[400px] bg-gradient-to-tr from-white/[0.04] via-transparent to-transparent blur-[100px] -z-10" />
+
       {/* Floating Island Sidebar (Desktop) */}
       <FloatingSidebar />
 

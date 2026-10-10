@@ -26,6 +26,7 @@ import {
   Radio,
   Eye,
   CheckSquare,
+  Lock,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -73,8 +74,15 @@ export interface CallerShiftStats {
   dnc: number;
 }
 
-interface CallerCockpitProps {
+export interface CallerCockpitProps {
+  callerId?: string;
+  targetCallerId?: string;
+  callerName?: string;
+  initialStats?: Partial<CallerShiftStats>;
+  viewingAs?: "caller" | "manager";
+  embedded?: boolean;
   readOnly?: boolean;
+  hideMirrorBanner?: boolean;
 }
 
 /**
@@ -215,69 +223,39 @@ function playHapticTick(freq = 900, duration = 0.018) {
   }
 }
 
-export function CallerCockpitSkeleton() {
+export function CallerCockpitSkeleton({ embedded = false }: { embedded?: boolean }) {
   return (
-    <div className="w-full max-w-[420px] mx-auto min-h-screen bg-[#0c0c0e] text-zinc-100 flex flex-col justify-between overflow-x-hidden relative select-none font-sans sm:border-x sm:border-[#202025] pb-24">
-      <div className="flex-1 p-4 space-y-4 flex flex-col justify-between">
-        <div className="flex items-center justify-between">
-          <div className="w-32 h-6 rounded-full bg-zinc-800 animate-pulse" />
-          <div className="w-16 h-5 rounded-md bg-zinc-800 animate-pulse" />
-        </div>
-        <div className="w-full h-[290px] rounded-[26px] bg-zinc-900 border border-white/[0.06] p-5 flex flex-col justify-between animate-pulse">
-          <div className="w-48 h-4 rounded-md bg-zinc-800" />
-          <div className="space-y-2">
-            <div className="w-full h-6 rounded-md bg-zinc-800" />
-            <div className="w-3/4 h-5 rounded-md bg-zinc-800" />
-          </div>
-          <div className="w-full h-12 rounded-xl bg-zinc-800" />
-        </div>
-        <div className="w-full h-14 rounded-[22px] bg-zinc-800 animate-pulse" />
-        <div className="grid grid-cols-2 gap-2">
-          <div className="h-11 rounded-2xl bg-zinc-800 animate-pulse" />
-          <div className="h-11 rounded-2xl bg-zinc-800 animate-pulse" />
-        </div>
-      </div>
-
-      {/* FIXED BOTTOM ANCHORED STRIP & NAVIGATION (Rendered during loading too) */}
-      <div className="fixed bottom-0 left-0 right-0 max-w-[420px] mx-auto z-40 bg-[#0c0c0e] shadow-2xl">
-        <div className="w-full px-5 py-2 bg-[#09090c] border-t border-white/[0.06] flex items-center justify-between text-xs text-zinc-400">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500/40 animate-pulse" />
-            <span className="font-mono text-[10px] text-zinc-400 font-medium">
-              Queue Initializing...
-            </span>
-          </div>
-          <span className="text-zinc-500 font-bold text-[10px]">
-            Shift: Loading...
-          </span>
-        </div>
-        <nav className="w-full bg-[#101014] border-t border-white/[0.08] px-4 py-2 grid grid-cols-4 gap-1 text-center opacity-60 pointer-events-none">
-          <div className="flex flex-col items-center justify-center py-1 text-[#F95721]">
-            <Phone className="w-4 h-4" />
-            <span className="text-[10px] font-bold mt-0.5">Queue</span>
-          </div>
-          <div className="flex flex-col items-center justify-center py-1 text-zinc-500">
-            <MessageSquare className="w-4 h-4" />
-            <span className="text-[10px] font-medium mt-0.5">Comms</span>
-          </div>
-          <div className="flex flex-col items-center justify-center py-1 text-zinc-500">
-            <Calendar className="w-4 h-4" />
-            <span className="text-[10px] font-medium mt-0.5">Today</span>
-          </div>
-          <div className="flex flex-col items-center justify-center py-1 text-zinc-500">
-            <User className="w-4 h-4" />
-            <span className="text-[10px] font-medium mt-0.5">Profile</span>
-          </div>
-        </nav>
+    <div
+      className={`w-full max-w-[420px] mx-auto bg-[#0c0c0e] text-zinc-100 flex flex-col items-center justify-center select-none font-sans ${
+        embedded
+          ? "h-full min-h-full"
+          : "min-h-screen sm:border-x sm:border-[#202025]"
+      }`}
+    >
+      <div className="flex flex-col items-center justify-center p-6 text-center">
+        <Loader2 className="w-8 h-8 animate-spin text-[#F95721] mb-3" />
+        <span className="text-xs font-mono text-zinc-400 font-medium tracking-wide">
+          Loading cockpit...
+        </span>
       </div>
     </div>
   );
 }
 
-export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
+export function CallerCockpit({
+  callerId,
+  targetCallerId,
+  callerName,
+  initialStats,
+  viewingAs = "caller",
+  embedded = false,
+  readOnly = false,
+  hideMirrorBanner = false,
+}: CallerCockpitProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const impersonateParam = searchParams.get("impersonate");
+  const resolvedTargetId = callerId || targetCallerId;
+  const impersonateParam = resolvedTargetId || searchParams.get("impersonate");
   const supabase = createClient();
 
   // Screen Views: 'cockpit' (Screen 1) | 'detail' (Screen 3 Dossier) | 'comms' | 'summary' (Screen 4 Daily Report) | 'callbacks' | 'waiting'
@@ -304,14 +282,14 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
 
   // Shift Performance / Daily Report stats
   const [shiftStats, setShiftStats] = useState<CallerShiftStats>({
-    totalDials: 0,
-    connects: 0,
-    totalTalkSeconds: 0,
-    interested: 0,
-    callbacks: 0,
-    noAnswer: 0,
-    rejected: 0,
-    dnc: 0,
+    totalDials: initialStats?.totalDials ?? 0,
+    connects: initialStats?.connects ?? 0,
+    totalTalkSeconds: initialStats?.totalTalkSeconds ?? 0,
+    interested: initialStats?.interested ?? 0,
+    callbacks: initialStats?.callbacks ?? 0,
+    noAnswer: initialStats?.noAnswer ?? 0,
+    rejected: initialStats?.rejected ?? 0,
+    dnc: initialStats?.dnc ?? 0,
   });
 
   // User Profile
@@ -326,7 +304,11 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
   const [impersonatedCaller, setImpersonatedCaller] = useState<{
     id: string;
     full_name: string;
-  } | null>(null);
+  } | null>(
+    (callerId || targetCallerId) && callerName
+      ? { id: (callerId || targetCallerId)!, full_name: callerName }
+      : null
+  );
 
   // Drawers & Sheets
   const [isDispositionDrawerOpen, setIsDispositionDrawerOpen] = useState(false);
@@ -399,63 +381,120 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
     };
   }, []);
 
-  // 3. Load Leads & Stats
+  // User profile loaded ref to avoid re-fetching auth profile repeatedly
+  const userProfileLoadedRef = useRef(false);
+
+  // 3. Load Leads & Stats (Parallelized fast-path: single concurrent roundtrip)
   const loadLeadsAndStats = useCallback(
     async (silent: boolean = false) => {
       if (!silent) setLoading(true);
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        let effectiveCallerId = resolvedTargetId;
 
-        if (!user) {
-          if (!silent) setLoading(false);
-          return;
-        }
+        // If not passed as prop, resolve user id from auth
+        if (!effectiveCallerId) {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
 
-        // Fetch user profile
-        const { data: myProfile } = await supabase
-          .from("profiles")
-          .select("id, full_name, role")
-          .eq("id", user.id)
-          .maybeSingle();
+          if (!user) {
+            if (!silent) setLoading(false);
+            return;
+          }
 
-        setCurrentUserProfile({
-          id: user.id,
-          full_name: myProfile?.full_name || "Caller",
-          role: myProfile?.role || "caller",
-          email: user.email,
-        });
+          effectiveCallerId = user.id;
 
-        let targetCallerId = user.id;
+          // Check for query param impersonation if manager/admin
+          if (impersonateParam) {
+            const { data: myProfile } = await supabase
+              .from("profiles")
+              .select("id, full_name, role")
+              .eq("id", user.id)
+              .maybeSingle();
 
-        // Impersonation check
-        if (impersonateParam && (myProfile?.role === "admin" || myProfile?.role === "manager")) {
-          const { data: callerData } = await supabase
-            .from("profiles")
-            .select("id, full_name")
-            .eq("id", impersonateParam)
-            .maybeSingle();
-
-          if (callerData) {
-            targetCallerId = callerData.id;
-            setImpersonatedCaller({ id: callerData.id, full_name: callerData.full_name });
+            if (myProfile?.role === "admin" || myProfile?.role === "manager") {
+              effectiveCallerId = impersonateParam;
+            }
           }
         }
 
-        // Query all assigned active leads for this caller
-        const { data: leadsData, error: leadsErr } = await supabase
+        // IST Day Start: UTC+5:30
+        const istOffsetMs = 5.5 * 60 * 60 * 1000;
+        const istNow = new Date(Date.now() + istOffsetMs);
+        const istDateStr = istNow.toISOString().split("T")[0];
+        const istStartUtc = new Date(
+          new Date(`${istDateStr}T00:00:00.000Z`).getTime() - istOffsetMs
+        ).toISOString();
+
+        // RUN LEADS & CALLS IN PARALLEL (Eliminates sequential roundtrips)
+        const leadsPromise = supabase
           .from("leads")
-          .select("*, profiles:assigned_to(full_name)")
-          .eq("assigned_to", targetCallerId)
+          .select("*")
+          .eq("assigned_to", effectiveCallerId)
           .is("deleted_at", null)
           .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")')
           .order("next_callback_at", { ascending: true, nullsFirst: false })
           .order("score", { ascending: false });
 
+        const callsPromise = supabase
+          .from("calls")
+          .select("id, outcome, duration_seconds, called_at")
+          .eq("caller_id", effectiveCallerId)
+          .gte("called_at", istStartUtc);
+
+        // Background non-blocking profile resolution (never blocks cockpit rendering)
+        if (!userProfileLoadedRef.current) {
+          (async () => {
+            try {
+              const {
+                data: { user },
+              } = await supabase.auth.getUser();
+              if (user) {
+                const { data: myProfile } = await supabase
+                  .from("profiles")
+                  .select("id, full_name, role")
+                  .eq("id", user.id)
+                  .maybeSingle();
+                userProfileLoadedRef.current = true;
+                setCurrentUserProfile({
+                  id: user.id,
+                  full_name: myProfile?.full_name || "Caller",
+                  role: myProfile?.role || "caller",
+                  email: user.email,
+                });
+              }
+            } catch {
+              // Non-blocking background fetch
+            }
+          })();
+        }
+
+        // Resolve impersonated caller name if not supplied
+        if (resolvedTargetId && !callerName) {
+          (async () => {
+            try {
+              const { data: callerData } = await supabase
+                .from("profiles")
+                .select("id, full_name")
+                .eq("id", resolvedTargetId)
+                .maybeSingle();
+              if (callerData) {
+                setImpersonatedCaller({ id: callerData.id, full_name: callerData.full_name });
+              }
+            } catch {
+              // Non-blocking background fetch
+            }
+          })();
+        }
+
+        const [{ data: leadsData, error: leadsErr }, { data: todayCalls }] = await Promise.all([
+          leadsPromise,
+          callsPromise,
+        ]);
+
         if (leadsErr) throw leadsErr;
 
-        const allLeads: Lead[] = leadsData || [];
+        const allLeads: Lead[] = (leadsData as Lead[]) || [];
 
         // Partition leads into Pipeline tabs
         const callbacks: Lead[] = [];
@@ -480,19 +519,6 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
         setWaitingLeads(waiting);
 
         // Fetch today's calls for shift stats (IST Day Start: UTC+5:30)
-        const istOffsetMs = 5.5 * 60 * 60 * 1000;
-        const istNow = new Date(Date.now() + istOffsetMs);
-        const istDateStr = istNow.toISOString().split("T")[0];
-        const istStartUtc = new Date(
-          new Date(`${istDateStr}T00:00:00.000Z`).getTime() - istOffsetMs
-        ).toISOString();
-
-        const { data: todayCalls } = await supabase
-          .from("calls")
-          .select("id, outcome, duration_seconds, called_at")
-          .eq("caller_id", targetCallerId)
-          .gte("called_at", istStartUtc);
-
         const calls = todayCalls || [];
         let totalTalkSec = 0;
         let interestedCount = 0;
@@ -531,12 +557,64 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
         if (!silent) setLoading(false);
       }
     },
-    [supabase, impersonateParam]
+    [supabase, impersonateParam, resolvedTargetId, callerName]
   );
 
   useEffect(() => {
     loadLeadsAndStats();
   }, [loadLeadsAndStats]);
+
+  // Live real-time syncing for leads & calls (updates immediately <2s if outcome logged)
+  useEffect(() => {
+    const liveCallerId = resolvedTargetId || impersonatedCaller?.id || currentUserProfile?.id;
+    if (!liveCallerId) return;
+
+    let leadChannel: any = null;
+    let callChannel: any = null;
+
+    leadChannel = supabase
+      .channel(`cockpit-live-leads-${liveCallerId}-${Date.now()}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "leads",
+          filter: `assigned_to=eq.${liveCallerId}`,
+        },
+        () => {
+          loadLeadsAndStats(true);
+        }
+      )
+      .subscribe();
+
+    callChannel = supabase
+      .channel(`cockpit-live-calls-${liveCallerId}-${Date.now()}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "calls",
+          filter: `caller_id=eq.${liveCallerId}`,
+        },
+        () => {
+          loadLeadsAndStats(true);
+        }
+      )
+      .subscribe();
+
+    // Fallback sync every 60s (real-time subscriptions above handle instant updates without hammering the database)
+    const interval = setInterval(() => {
+      loadLeadsAndStats(true);
+    }, 60000);
+
+    return () => {
+      if (leadChannel) supabase.removeChannel(leadChannel);
+      if (callChannel) supabase.removeChannel(callChannel);
+      clearInterval(interval);
+    };
+  }, [resolvedTargetId, impersonatedCaller?.id, currentUserProfile?.id, supabase, loadLeadsAndStats]);
 
   // 4. Fetch past call history whenever active lead changes
   useEffect(() => {
@@ -587,7 +665,7 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
 
   // 5. Dial Trigger Action
   const handleDialClick = () => {
-    if (readOnly || !currentLead) return;
+    if ((readOnly && viewingAs !== "manager") || !currentLead) return;
     setInCall(true);
     setCallStartTime(Date.now());
     dialerOpenedRef.current = true;
@@ -599,7 +677,7 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
 
   // 6. Outcome Submission
   const handleSubmitOutcome = async (outcomeType: string, targetState = "dialNow") => {
-    if (readOnly || !currentLead || isSubmitting) return;
+    if ((readOnly && viewingAs !== "manager") || !currentLead || isSubmitting) return;
 
     if (outcomeType === "dnc" && !dncConfirmed) {
       alert("Please confirm the Do Not Call (DNC) checkmark before removing lead.");
@@ -646,8 +724,9 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
         outcomeType === "not_interested" ? rejectionReason.trim() || "Rejected by caller" : null,
     };
 
-    if (impersonatedCaller) {
-      payload.p_impersonate_caller_id = impersonatedCaller.id;
+    const targetImpId = resolvedTargetId || impersonatedCaller?.id;
+    if (targetImpId) {
+      payload.p_impersonate_caller_id = targetImpId;
     }
 
     try {
@@ -696,6 +775,17 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
 
   // 8. Navigation handler between 4 bottom tabs
   const handleBottomNavClick = (tabKey: "queue" | "comms" | "today" | "profile") => {
+    if (readOnly) {
+      // In readOnly cockpit overlay, keep within cockpit and summary without navigating away
+      if (tabKey === "queue") {
+        setActiveScreen("cockpit");
+        setActiveBottomNav("queue");
+      } else if (tabKey === "today") {
+        setActiveScreen("summary");
+        setActiveBottomNav("today");
+      }
+      return;
+    }
     playHapticTick(850, 0.02);
     setActiveBottomNav(tabKey);
     if (tabKey === "queue") {
@@ -737,14 +827,20 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
   )}`;
 
   return (
-    <div className="w-full max-w-[420px] mx-auto min-h-screen bg-[#0c0c0e] text-zinc-100 flex flex-col justify-between overflow-x-hidden relative select-none font-sans sm:border-x sm:border-[#202025] pb-24">
+    <div
+      className={`w-full max-w-[420px] mx-auto bg-[#0c0c0e] text-zinc-100 flex flex-col justify-between overflow-x-hidden relative select-none font-sans ${
+        embedded
+          ? "h-full min-h-full overflow-hidden"
+          : "min-h-screen sm:border-x sm:border-[#202025] pb-24"
+      }`}
+    >
       {/* SKELETON LOADING STATE */}
       {loading ? (
-        <CallerCockpitSkeleton />
+        <CallerCockpitSkeleton embedded={embedded} />
       ) : (
         <>
           {/* READ-ONLY / MIRROR MODE AMBER BANNER */}
-          {(readOnly || impersonatedCaller) && (
+          {!hideMirrorBanner && (readOnly || impersonatedCaller) && (
             <div className="w-full px-4 py-2 bg-amber-500/15 border-b border-amber-500/30 text-amber-300 text-xs flex items-center justify-between z-40 backdrop-blur-md">
               <div className="flex items-center gap-2 min-w-0">
                 <Eye className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
@@ -789,31 +885,39 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
           )}
 
           {/* APP HEADER & SEGMENTED 4-TAB PIPELINE */}
-          <header className="w-full px-3.5 sm:px-4 pt-2.5 pb-2 bg-[#0c0c0e]/95 backdrop-blur-xl border-b border-white/[0.06] z-30 shrink-0">
-            <div className="flex items-center justify-between mb-2 px-0.5">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-[#F95721] shadow-sm shadow-[#F95721]/50" />
-                <span className="text-xs font-black tracking-widest text-zinc-200 uppercase">
+          <header className="w-full px-3 sm:px-3.5 pt-2 pb-1.5 bg-[#0c0c0e]/95 backdrop-blur-xl border-b border-white/[0.06] z-30 shrink-0">
+            <div className="flex items-center justify-between mb-1.5 px-0.5">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <div className="w-2 h-2 rounded-full bg-[#F95721] shadow-sm shadow-[#F95721]/50 shrink-0" />
+                <span className="text-xs font-black tracking-widest text-zinc-200 uppercase truncate">
                   Pinsite CRM
                 </span>
-                <span className="text-[10px] font-bold tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1">
+                <span className="text-[9px] font-bold tracking-wider text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1 shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   Queue Active
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsDeckQueueOpen(true);
-                  playHapticTick(800, 0.02);
-                }}
-                className="flex items-center gap-1.5 bg-zinc-800/90 hover:bg-zinc-700 active:scale-95 text-zinc-300 text-xs px-2.5 py-1 rounded-full border border-zinc-700/60 transition"
-              >
-                <FileText className="w-3 h-3 text-[#F95721]" />
-                <span className="text-[11px] font-semibold">
-                  Queue ({dialNowLeads.length + callbackLeads.length + waitingLeads.length})
-                </span>
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {(viewingAs === "manager" || readOnly || embedded) && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 font-mono text-[9px] font-bold tracking-wider flex items-center gap-1 shrink-0">
+                    <Lock className="w-2.5 h-2.5" />
+                    MIRROR
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDeckQueueOpen(true);
+                    playHapticTick(800, 0.02);
+                  }}
+                  className="flex items-center gap-1 bg-zinc-800/90 hover:bg-zinc-700 active:scale-95 text-zinc-300 text-xs px-2 py-0.5 rounded-full border border-zinc-700/60 transition"
+                >
+                  <FileText className="w-3 h-3 text-[#F95721]" />
+                  <span className="text-[10px] font-semibold">
+                    Queue ({dialNowLeads.length + callbackLeads.length + waitingLeads.length})
+                  </span>
+                </button>
+              </div>
             </div>
 
             {/* Segmented Pipeline Tabs */}
@@ -952,14 +1056,14 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
 
                       {/* HERO CARD CONTAINER */}
                       <div
-                        className={`rounded-[26px] p-4 relative overflow-hidden flex flex-col justify-between min-h-[300px] bg-gradient-to-b from-[#1c1c21]/90 to-[#121216]/95 border border-white/[0.08] shadow-2xl transition-all duration-200 ${
+                        className={`rounded-[22px] p-3 sm:p-3.5 relative overflow-hidden flex flex-col justify-between flex-1 min-h-0 bg-gradient-to-b from-[#1c1c21]/90 to-[#121216]/95 border border-white/[0.08] shadow-2xl transition-all duration-200 ${
                           cardAnimating ? "scale-95 opacity-0" : "scale-100 opacity-100"
                         }`}
                       >
                         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 
                         {/* Top Status Strip */}
-                        <div className="pb-2.5 border-b border-white/[0.08] flex items-center justify-between">
+                        <div className="pb-2 border-b border-white/[0.08] flex items-center justify-between">
                           <div className="flex items-center gap-2 text-xs min-w-0 pr-2">
                             <span
                               className={`w-2 h-2 rounded-full shrink-0 ${
@@ -985,24 +1089,24 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
                             }}
                             className="text-xs font-bold text-[#F95721] hover:text-orange-300 flex items-center gap-0.5 active:scale-95 transition shrink-0"
                           >
-                            <span>Dossier</span>
+                            <span>History</span>
                             <ChevronRight className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
-                        {/* Business Name & Decision Maker (Bug 7: Dominant scale, Bug 8: Human actionable instruction) */}
-                        <div className="py-2.5">
+                        {/* Business Name & Decision Maker */}
+                        <div className="py-1.5">
                           <h2
-                            className="text-2xl sm:text-[28px] font-black tracking-tight text-white leading-tight break-words line-clamp-2"
+                            className="text-xl sm:text-2xl font-black tracking-tight text-white leading-tight break-words line-clamp-2"
                             title={formatLeadName(currentLead.name)}
                           >
                             {formatLeadName(currentLead.name)}
                           </h2>
 
                           {/* Target Decision Maker Pill */}
-                          <div className="mt-2.5 p-2 rounded-2xl bg-[#141418] border border-white/[0.06] flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-xl bg-[#F95721]/10 border border-[#F95721]/20 flex items-center justify-center shrink-0">
-                              <User className="w-3.5 h-3.5 text-[#F95721]" />
+                          <div className="mt-2 p-1.5 sm:p-2 rounded-xl bg-[#141418] border border-white/[0.06] flex items-center gap-2">
+                            <div className="w-5 h-5 rounded-lg bg-[#F95721]/10 border border-[#F95721]/20 flex items-center justify-center shrink-0">
+                              <User className="w-3 h-3 text-[#F95721]" />
                             </div>
                             <div className="overflow-hidden min-w-0">
                               <span className="text-[9px] uppercase font-bold tracking-wider text-zinc-400 block leading-none">
@@ -1016,9 +1120,9 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
 
                           {/* CALLER NOTE BOX (View-Only Snapshot with prior note) */}
                           {latestHistoricalNote?.notes && (
-                            <div className="mt-2.5 p-2.5 bg-amber-950/20 border border-amber-500/20 rounded-xl">
+                            <div className="mt-2 p-2 bg-amber-950/20 border border-amber-500/20 rounded-xl">
                               <div className="flex items-center justify-between text-[9px] text-amber-300/80 font-bold mb-0.5">
-                                <span>CALLER NOTE (BY {latestHistoricalNote.caller_name.toUpperCase()})</span>
+                                <span>CALLER NOTE ({latestHistoricalNote.caller_name.toUpperCase()})</span>
                                 <span>{formatRelativeTime(latestHistoricalNote.called_at).toUpperCase()}</span>
                               </div>
                               <p className="text-xs text-zinc-200 line-clamp-2 italic leading-relaxed">
@@ -1028,8 +1132,8 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
                           )}
                         </div>
 
-                        {/* Locality & Pitch Needed Flag (Bug 3: word boundary, no mid-word cut) */}
-                        <div className="pt-2.5 flex items-center justify-between border-t border-white/[0.06] text-xs gap-2">
+                        {/* Locality & Pitch Needed Flag */}
+                        <div className="pt-2 flex items-center justify-between border-t border-white/[0.06] text-xs gap-2">
                           <div className="flex items-start gap-1.5 text-zinc-400 flex-1 min-w-0 pr-1">
                             <MapPin className="w-3.5 h-3.5 text-zinc-400 shrink-0 mt-0.5" />
                             <span className="text-[11px] leading-snug line-clamp-2 text-zinc-300 break-words">
@@ -1046,49 +1150,54 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
                     </div>
 
                     {/* BOTTOM COCKPIT ACTIONS */}
-                    <div className="w-full flex flex-col gap-2 pt-2">
-                      {/* Primary Action 1: DIAL BUTTON (Bug 3: Whitespace-nowrap phone number) */}
-                      {readOnly ? (
-                        <div className="w-full py-3.5 px-5 rounded-[22px] bg-zinc-900 border border-amber-500/30 text-amber-300 font-bold text-center text-xs">
-                          Diagnostic Observer Mode Active (Dialing Disabled)
-                        </div>
-                      ) : (
+                    <div className="w-full flex flex-col gap-1.5 pt-2 shrink-0">
+                      {/* Primary Action 1: DIAL BUTTON */}
+                      <div className="relative">
                         <a
                           href={formatTelLink(currentLead.phone)}
                           onClick={handleDialClick}
-                          className="w-full py-3.5 px-4 sm:px-5 rounded-[22px] bg-gradient-to-r from-[#F95721] via-orange-600 to-amber-600 text-white font-bold shadow-lg shadow-[#F95721]/30 flex items-center justify-between active:scale-[0.97] transition cursor-pointer relative overflow-hidden group"
+                          className="w-full py-2.5 sm:py-3 px-3.5 sm:px-4 rounded-[18px] sm:rounded-[20px] bg-gradient-to-r from-[#F95721] via-orange-600 to-amber-600 text-white font-bold shadow-lg shadow-[#F95721]/30 flex items-center justify-between active:scale-[0.97] transition cursor-pointer relative overflow-hidden group"
                         >
                           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-black/25 flex items-center justify-center shadow-inner shrink-0">
-                              <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-white animate-pulse" />
+                            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-black/25 flex items-center justify-center shadow-inner shrink-0">
+                              <Phone className="w-4 h-4 text-white animate-pulse" />
                             </div>
                             <div className="text-left min-w-0">
-                              <span className="text-[9px] uppercase font-black tracking-widest text-orange-200 block leading-tight whitespace-nowrap">
+                              <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-orange-200 block leading-tight whitespace-nowrap">
                                 DIAL PRIMARY LINE
                               </span>
-                              <span className="text-[15px] sm:text-[17px] font-black text-white tracking-normal font-mono tabular-nums leading-tight block whitespace-nowrap">
+                              <span className="text-[14px] sm:text-[16px] font-black text-white tracking-normal font-mono tabular-nums leading-tight block whitespace-nowrap">
                                 {formatPhoneDisplay(currentLead.phone)}
                               </span>
                             </div>
                           </div>
-                          <div className="shrink-0 bg-black/30 backdrop-blur-sm border border-white/20 px-3 py-1.5 rounded-xl text-xs font-bold text-white flex items-center gap-1">
+                          <div className="shrink-0 bg-black/30 backdrop-blur-sm border border-white/20 px-2.5 py-1 rounded-lg text-xs font-bold text-white flex items-center gap-1">
                             <span>Call</span>
                             <ChevronRight className="w-3.5 h-3.5" />
                           </div>
                         </a>
-                      )}
+
+                        {/* Read-Only Overlay Badge only if explicitly readOnly and not viewingAs manager */}
+                        {readOnly && viewingAs !== "manager" && (
+                          <div className="absolute inset-0 rounded-[18px] sm:rounded-[20px] bg-black/40 backdrop-blur-[1px] flex items-center justify-center pointer-events-auto cursor-not-allowed border border-white/10">
+                            <span className="px-3 py-1 rounded-full bg-black/80 border border-white/20 text-white text-[10px] font-bold tracking-wider flex items-center gap-1.5 shadow-lg">
+                              <span>🔒</span> READ-ONLY
+                            </span>
+                          </div>
+                        )}
+                      </div>
 
                       {/* Primary Action 2: SIDE-BY-SIDE (Log Outcome + Skip Lead >>) */}
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => {
-                            if (readOnly) return;
+                            if (readOnly && viewingAs !== "manager") return;
                             setIsDispositionDrawerOpen(true);
                             playHapticTick(750, 0.02);
                           }}
-                          disabled={readOnly}
-                          className="w-full py-3 bg-[#1a1a20] hover:bg-[#23232b] text-white font-bold text-xs rounded-2xl border border-white/10 active:scale-[0.97] transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-40"
+                          disabled={readOnly && viewingAs !== "manager"}
+                          className="w-full py-2.5 bg-[#1a1a20] hover:bg-[#23232b] text-white font-bold text-xs rounded-xl border border-white/10 active:scale-[0.97] transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <CheckCircle className="w-4 h-4 text-[#F95721]" />
                           <span>Log Outcome</span>
@@ -1096,8 +1205,9 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
 
                         <button
                           type="button"
-                          onClick={handleSkipLead}
-                          className="w-full py-3 bg-[#121216] hover:bg-[#18181c] text-zinc-400 hover:text-zinc-200 font-semibold text-xs rounded-2xl border border-white/[0.05] active:scale-[0.97] transition flex items-center justify-center gap-1.5"
+                          onClick={readOnly && viewingAs !== "manager" ? undefined : handleSkipLead}
+                          disabled={readOnly && viewingAs !== "manager"}
+                          className="w-full py-2.5 bg-[#121216] hover:bg-[#18181c] text-zinc-400 hover:text-zinc-200 font-semibold text-xs rounded-xl border border-white/[0.05] active:scale-[0.97] transition flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <span>Skip Lead</span>
                           <span className="text-zinc-500 font-mono">››</span>
@@ -1813,14 +1923,18 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
             </div>
           )}
 
-          {/* FIXED BOTTOM ANCHORED STRIP & NAVIGATION (Always pinned to bottom, never scrolls) */}
-          <div className="fixed bottom-0 left-0 right-0 max-w-[420px] mx-auto z-40 bg-[#0c0c0e] shadow-2xl">
+          {/* FIXED / STICKY BOTTOM ANCHORED STRIP & NAVIGATION */}
+          <div
+            className={`${
+              embedded ? "shrink-0" : "fixed bottom-0"
+            } left-0 right-0 max-w-[420px] mx-auto z-40 bg-[#0c0c0e] shadow-2xl`}
+          >
             {/* PERSISTENT FOOTER STRIP */}
-            <div className="w-full px-5 py-2 bg-[#09090c] border-t border-white/[0.06] flex items-center justify-between text-xs text-zinc-400">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span className="font-mono text-[10px] text-zinc-300 font-medium">
-                  Queue Active · Dial Ready
+            <div className="w-full px-4 py-1.5 bg-[#09090c] border-t border-white/[0.06] flex items-center justify-between text-xs text-zinc-400">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                <span className="font-mono text-[10px] text-zinc-300 font-medium truncate">
+                  Queue Active
                 </span>
               </div>
               <button
@@ -1830,10 +1944,10 @@ export function CallerCockpit({ readOnly = false }: CallerCockpitProps) {
                   setActiveBottomNav("today");
                   playHapticTick(850, 0.02);
                 }}
-                className="text-[#F95721] hover:text-orange-300 font-bold text-[10px] flex items-center gap-1 active:scale-95 transition"
+                className="shrink-0 text-[#F95721] hover:text-orange-300 font-mono text-[10px] font-bold flex items-center gap-1 active:scale-95 transition ml-2"
               >
                 <span>Shift: {shiftStats.totalDials} Dials</span>
-                <ChevronRight className="w-3 h-3" />
+                <ChevronRight className="w-3 h-3 shrink-0" />
               </button>
             </div>
 

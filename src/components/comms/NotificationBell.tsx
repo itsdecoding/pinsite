@@ -22,6 +22,8 @@ export function NotificationBell() {
   const supabase = createClient();
 
   useEffect(() => {
+    let activeChannel: any = null;
+
     async function init() {
       const {
         data: { user },
@@ -40,8 +42,8 @@ export function NotificationBell() {
         setUnreadCount(data.filter((n) => !n.read_at).length);
       }
 
-      const channel = supabase
-        .channel(`user-notifications-${user.id}`)
+      activeChannel = supabase
+        .channel(`user-notifications-${user.id}-${Date.now()}`)
         .on(
           "postgres_changes",
           {
@@ -57,14 +59,18 @@ export function NotificationBell() {
           }
         )
         .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
     }
 
     init();
 
+    return () => {
+      if (activeChannel) {
+        supabase.removeChannel(activeChannel);
+      }
+    };
+  }, [supabase]);
+
+  useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
         setIsOpen(false);

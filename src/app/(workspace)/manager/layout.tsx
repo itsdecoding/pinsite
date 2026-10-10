@@ -34,16 +34,16 @@ export default function ManagerLayout({ children }: ManagerLayoutProps) {
     pageSubtitle = "Upload and validate lead CSV files for distribution into active dial queues.";
   }
 
-  // Fetch quarantine count for badge indicator across all tabs
+  // Fetch quarantine count for badge indicator across tabs (lightweight count query)
   useEffect(() => {
     let isMounted = true;
     async function fetchCount() {
       try {
-        const res = await fetch("/api/manager/team-stats?range=today");
+        const res = await fetch("/api/manager/quarantine?count_only=true");
         if (res.ok) {
           const data = await res.json();
-          if (isMounted && typeof data.quarantine_count === "number") {
-            setQuarantineCount(data.quarantine_count);
+          if (isMounted && typeof data.count === "number") {
+            setQuarantineCount(data.count);
           }
         }
       } catch {
@@ -51,10 +51,12 @@ export default function ManagerLayout({ children }: ManagerLayoutProps) {
       }
     }
     fetchCount();
+    const interval = setInterval(fetchCount, 60000);
     return () => {
       isMounted = false;
+      clearInterval(interval);
     };
-  }, [pathname]);
+  }, [isQuarantine]);
 
   const subNavTabs = [
     {

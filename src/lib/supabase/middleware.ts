@@ -103,41 +103,35 @@ export async function updateSession(request: NextRequest) {
     return createRedirect(url, supabaseResponse);
   }
 
+  // For API routes, session cookies are refreshed via getUser() above.
+  // API endpoints handle their own granular authorization and session verification.
+  if (pathname.startsWith("/api")) {
+    return supabaseResponse;
+  }
+
   // If authenticated user is on public routes (login/signup without token, or /studio), redirect to their workspace
   if (user) {
-    // 1. Fetch guaranteed profile columns (role, active)
+    // 1. Fetch profile columns (role, active, require_password_change) in a single consolidated query
     let role: string | null = (user.user_metadata?.role as string) || (user.app_metadata?.role as string) || null;
     let isActive = true;
+    let requirePasswordChange = false;
 
     try {
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role, active")
+        .select("role, active, require_password_change")
         .eq("id", user.id)
         .maybeSingle();
 
-      if (profile?.role) {
-        role = profile.role;
+      if (profile) {
+        if (profile.role) role = profile.role;
         isActive = profile.active !== false;
+        if (profile.require_password_change) {
+          requirePasswordChange = true;
+        }
       }
     } catch (e) {
       console.warn("Middleware profile lookup failed, falling back to session metadata:", e);
-    }
-
-    // 2. Defensively check require_password_change (safely ignore if column does not exist yet)
-    let requirePasswordChange = false;
-    try {
-      const { data: pwdProfile, error: pwdErr } = await supabase
-        .from("profiles")
-        .select("require_password_change")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (!pwdErr && pwdProfile?.require_password_change) {
-        requirePasswordChange = true;
-      }
-    } catch {
-      // Column does not exist yet prior to migration; fail open safely
     }
 
     if (requirePasswordChange) {

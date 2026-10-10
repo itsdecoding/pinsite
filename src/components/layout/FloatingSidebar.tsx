@@ -91,7 +91,12 @@ export function FloatingSidebar() {
   ];
 
   return (
-    <aside className="hidden lg:flex fixed top-4 left-4 bottom-4 w-60 z-50 rounded-3xl bg-white dark:bg-[#131414] border border-[#ECE8E1] dark:border-[#42403C] shadow-island dark:shadow-islandDark flex-col justify-between p-4 transition-colors">
+    <aside className="hidden lg:flex fixed top-4 left-4 bottom-4 w-60 z-50 rounded-3xl bg-white/70 dark:bg-white/[0.04] backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.14] shadow-[0_20px_50px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.25)] flex-col justify-between p-4 transition-all overflow-hidden group">
+      {/* Specular glass reflection at top */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-white/[0.08] to-transparent" />
+      {/* Internal ambient aura */}
+      <div className="pointer-events-none absolute -top-10 -left-10 w-36 h-36 bg-white/[0.03] rounded-full blur-2xl" />
+      <div className="pointer-events-none absolute -bottom-10 -right-10 w-36 h-36 bg-[#7F3922]/15 rounded-full blur-2xl" />
       {/* Top Section */}
       <div className="space-y-4">
         {/* Workspace Brand Pill */}
@@ -109,13 +114,13 @@ export function FloatingSidebar() {
           </div>
         </div>
 
-        {/* Primary Action Button (Matches Simpliscale reference) */}
         <Link
           href={role === "caller" ? "/queue" : role === "developer" ? "/projects" : "/manager/ingestion"}
-          className="w-full py-2.5 px-3 bg-[#7F3922] hover:bg-[#6D301C] border border-[#A6543A]/40 text-white rounded-full font-semibold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+          className="relative w-full py-2.5 px-3 bg-gradient-to-b from-[#8E4128]/95 to-[#6E2E1A]/95 hover:from-[#9E4A2F] hover:to-[#7E351F] border border-[#D97755]/50 text-white rounded-full font-semibold text-xs shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_4px_14px_rgba(127,57,34,0.35)] flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] overflow-hidden"
         >
-          <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-          <span>{role === "caller" ? "Start Dialing" : role === "developer" ? "New Task" : "Import Leads"}</span>
+          <span className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent rounded-t-full" />
+          <Plus className="w-3.5 h-3.5 stroke-[2.5] relative z-10" />
+          <span className="relative z-10">{role === "caller" ? "Start Dialing" : role === "developer" ? "New Task" : "Import Leads"}</span>
         </Link>
 
         {/* Vertical Nav Stack */}
@@ -133,18 +138,21 @@ export function FloatingSidebar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs transition-all ${
+                  className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs transition-all overflow-hidden ${
                     isActive
-                      ? "bg-[#7F3922] border border-[#A6543A] text-white font-semibold shadow-sm ring-1 ring-[#A6543A]/40"
-                      : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5 font-medium"
+                      ? "bg-gradient-to-b from-[#8E4128]/90 to-[#6E2E1A]/90 border border-[#D97755]/50 text-white font-semibold shadow-[inset_0_1px_1px_rgba(255,255,255,0.35),0_4px_12px_rgba(127,57,34,0.3)]"
+                      : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/[0.05] font-medium"
                   }`}
                 >
+                  {isActive && (
+                    <span className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent rounded-t-xl" />
+                  )}
                   <Icon
-                    className={`w-4 h-4 shrink-0 ${
+                    className={`w-4 h-4 shrink-0 relative z-10 ${
                       isActive ? "text-white stroke-[2.2]" : "text-[#6E6B66] dark:text-[#8A8680]"
                     }`}
                   />
-                  <span className="truncate">{item.label}</span>
+                  <span className="truncate relative z-10">{item.label}</span>
                 </Link>
               );
             })}
@@ -152,7 +160,7 @@ export function FloatingSidebar() {
       </div>
 
       {/* Bottom Controls */}
-      <div className="pt-4 border-t border-[#ECE8E1] dark:border-white/15 space-y-2">
+      <div className="pt-4 border-t border-[#ECE8E1]/80 dark:border-white/10 space-y-2 relative z-10">
         <div className="flex items-center justify-between px-1">
           <ThemeToggle />
           <NotificationBell />

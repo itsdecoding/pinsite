@@ -35,7 +35,10 @@ import {
   Kanban,
   ShieldCheck,
   MessageSquare,
+  Maximize2,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { CallerCockpitOverlay } from "@/components/queue/CallerCockpitOverlay";
 
 interface OutcomeBreakdown {
   interested: number;
@@ -109,40 +112,6 @@ interface TeamSummary {
   needs_attention?: NeedsAttentionItem[];
 }
 
-interface CallLedgerItem {
-  id: string;
-  called_at: string;
-  outcome: string;
-  duration_seconds: number;
-  notes: string | null;
-  callback_at: string | null;
-  lead: {
-    id: string;
-    name: string;
-    phone: string;
-    niche: string;
-    area: string;
-    status: string;
-    attempts_count: number;
-  } | null;
-}
-
-interface CallerActivityDetail {
-  caller: CallerStat;
-  summary: {
-    total_dials: number;
-    all_time_dials?: number;
-    connects: number;
-    connect_rate: number | null;
-    talk_time_seconds: number;
-    active_queue_count: number;
-    range?: string;
-    range_label?: string;
-    pipeline?: PipelineCounts;
-  };
-  calls: CallLedgerItem[];
-  active_leads: any[];
-}
 
 function formatDuration(totalSeconds: number): string {
   if (!totalSeconds || totalSeconds <= 0) return "0s";
@@ -198,6 +167,57 @@ function generateTemporaryPassword(): string {
   return `Pinsite-${randomPart}!`;
 }
 
+interface AutoRefreshButtonProps {
+  autoRefresh: boolean;
+  onToggleAutoRefresh: () => void;
+  onTriggerRefresh: () => void;
+  refreshTrigger: number;
+}
+
+const AutoRefreshButton = React.memo(function AutoRefreshButton({
+  autoRefresh,
+  onToggleAutoRefresh,
+  onTriggerRefresh,
+  refreshTrigger,
+}: AutoRefreshButtonProps) {
+  const [countdown, setCountdown] = useState(30);
+
+  useEffect(() => {
+    setCountdown(30);
+  }, [refreshTrigger]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          onTriggerRefresh();
+          return 30;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [autoRefresh, onTriggerRefresh]);
+
+  return (
+    <button
+      type="button"
+      onClick={onToggleAutoRefresh}
+      className={`px-2.5 py-1.5 rounded-xl font-mono text-[11px] transition-all flex items-center gap-1.5 ${
+        autoRefresh
+          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+          : "bg-black/5 dark:bg-white/5 text-[#8A8680] border border-transparent"
+      }`}
+      title={autoRefresh ? "Auto-refreshing every 30 seconds" : "Auto-refresh paused"}
+    >
+      <span>Auto: {autoRefresh ? `${countdown}s` : "Off"}</span>
+    </button>
+  );
+});
+
 export default function ManagerTeamPage() {
   const router = useRouter();
   const [callers, setCallers] = useState<CallerStat[]>([]);
@@ -233,7 +253,7 @@ export default function ManagerTeamPage() {
   const [timeRange, setTimeRange] = useState<"today" | "24h">("today");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(new Date());
-  const [countdown, setCountdown] = useState(30);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Password reset modal state
   const [targetCaller, setTargetCaller] = useState<CallerStat | null>(null);
@@ -243,11 +263,9 @@ export default function ManagerTeamPage() {
   const [resetSuccess, setResetSuccess] = useState<string | null>(null);
   const [copiedPassword, setCopiedPassword] = useState(false);
 
-  // Caller detail drawer state
-  const [detailCallerId, setDetailCallerId] = useState<string | null>(null);
-  const [detailData, setDetailData] = useState<CallerActivityDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailTab, setDetailTab] = useState<"calls" | "callbacks" | "queue">("calls");
+  // Caller mobile cockpit phone frame overlay state
+  const [overlayCaller, setOverlayCaller] = useState<CallerStat | null>(null);
+
 
   // Reassign modal state
   const [reassignModalOpen, setReassignModalOpen] = useState(false);
@@ -283,7 +301,7 @@ export default function ManagerTeamPage() {
             setQuarantineCount(data.quarantine_count);
           }
           setLastRefreshedAt(new Date());
-          setCountdown(30);
+          setRefreshTrigger((prev) => prev + 1);
         } else {
           console.warn("Failed to load team stats:", res.status);
         }
@@ -302,23 +320,6 @@ export default function ManagerTeamPage() {
   useEffect(() => {
     fetchTeamStats();
   }, [fetchTeamStats]);
-
-  // 30-second Auto-refresh countdown effect
-  useEffect(() => {
-    if (!autoRefresh) return;
-
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          fetchTeamStats();
-          return 30;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [autoRefresh, fetchTeamStats]);
 
   // Teammate count per role category
   const roleCounts = useMemo(() => {
@@ -347,30 +348,6 @@ export default function ManagerTeamPage() {
     }
   }, [roleDropdownOpen]);
 
-  // Fetch Caller Activity Detail when drawer is opened
-  const openCallerDetail = async (callerId: string, initialTab: "calls" | "callbacks" | "queue" = "calls") => {
-    setDetailCallerId(callerId);
-    setDetailLoading(true);
-    setDetailTab(initialTab);
-    try {
-      const res = await fetch(`/api/manager/caller-activity?caller_id=${callerId}&range=${timeRange}`);
-      if (res.ok) {
-        const data = await res.json();
-        setDetailData(data);
-      } else {
-        console.error("Failed to load caller detail");
-      }
-    } catch (err) {
-      console.error("Error loading caller detail:", err);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
-
-  const closeCallerDetail = () => {
-    setDetailCallerId(null);
-    setDetailData(null);
-  };
 
   // Filtered & Sorted callers list (Default sort: Urgency / Needs attention first)
   const filteredCallers = useMemo(() => {
@@ -680,18 +657,12 @@ export default function ManagerTeamPage() {
             <span>Reassign Leads</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`px-2.5 py-1.5 rounded-xl font-mono text-[11px] transition-all flex items-center gap-1.5 ${
-              autoRefresh
-                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                : "bg-black/5 dark:bg-white/5 text-[#8A8680] border border-transparent"
-            }`}
-            title={autoRefresh ? "Auto-refreshing every 30 seconds" : "Auto-refresh paused"}
-          >
-            <span>Auto: {autoRefresh ? `${countdown}s` : "Off"}</span>
-          </button>
+          <AutoRefreshButton
+            autoRefresh={autoRefresh}
+            onToggleAutoRefresh={() => setAutoRefresh(!autoRefresh)}
+            onTriggerRefresh={() => fetchTeamStats()}
+            refreshTrigger={refreshTrigger}
+          />
 
           <button
             type="button"
@@ -815,7 +786,8 @@ export default function ManagerTeamPage() {
                     if (item.type === "imbalance") {
                       openReassignModal(item.caller_id);
                     } else if (item.caller_id) {
-                      openCallerDetail(item.caller_id, item.type === "overdue_callbacks" ? "callbacks" : "calls");
+                      const matched = callers.find((c) => c.id === item.caller_id);
+                      if (matched) setOverlayCaller(matched);
                     }
                   }}
                   className="text-[11px] font-bold text-[#F95721] hover:underline shrink-0"
@@ -995,17 +967,10 @@ export default function ManagerTeamPage() {
             return (
               <div
                 key={caller.id}
-                onClick={() => {
-                  if (isCaller) openCallerDetail(caller.id);
-                }}
                 className={`p-5 rounded-3xl bg-white dark:bg-[#131414] border transition-all flex flex-col justify-between group ${
-                  isCaller ? "cursor-pointer hover:shadow-md" : "cursor-default"
-                } ${
                   hasOverdue
                     ? "border-amber-500/50 hover:border-amber-400"
-                    : isCaller
-                    ? "border-[#ECE8E1] dark:border-white/20 hover:border-white/40"
-                    : "border-[#ECE8E1] dark:border-white/20"
+                    : "border-[#ECE8E1] dark:border-white/20 hover:border-white/30"
                 }`}
               >
                 <div>
@@ -1071,41 +1036,55 @@ export default function ManagerTeamPage() {
                   {/* Body: Distinct per role type */}
                   {isCaller ? (
                     <>
-                      {/* 4-State Pipeline Breakdown (Dial Now / Callbacks / Waiting / Done) */}
-                      <div className="grid grid-cols-4 gap-1 p-2 rounded-2xl bg-black/[0.02] dark:bg-black/40 border border-[#ECE8E1]/80 dark:border-white/25 text-center mt-3.5">
-                        <div>
-                          <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Dial Now</span>
-                          <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
-                            {caller.pipeline?.dial_now ?? 0}
-                          </strong>
+                      {/* 4-State Pipeline Breakdown (Dial Now / Callbacks / Waiting / Done) - Clickable to open mobile cockpit */}
+                      <motion.div
+                        layoutId={`pipeline-box-${caller.id}`}
+                        onClick={() => setOverlayCaller(caller)}
+                        role="button"
+                        tabIndex={0}
+                        title={`Click to open ${caller.full_name}'s live mobile cockpit`}
+                        className="relative cursor-pointer group rounded-2xl bg-black/[0.02] dark:bg-black/40 border border-[#ECE8E1]/80 dark:border-white/25 hover:border-[#F95721]/60 hover:shadow-[0_0_15px_rgba(249,87,33,0.12)] transition-all mt-3.5 p-2 text-center"
+                      >
+                        {/* Expand Icon in top-right */}
+                        <div className="absolute top-1.5 right-1.5 text-zinc-400 group-hover:text-[#F95721] opacity-60 group-hover:opacity-100 transition-all pointer-events-none">
+                          <Maximize2 className="w-2.5 h-2.5" />
                         </div>
 
-                        <div>
-                          <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Callbacks</span>
-                          <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
-                            {caller.pipeline?.callbacks ?? 0}
-                            {hasOverdue && (
-                              <span className="ml-0.5 text-[9px] text-amber-500 font-bold">
-                                ({caller.pipeline.overdue_callbacks} od)
-                              </span>
-                            )}
-                          </strong>
-                        </div>
+                        <div className="grid grid-cols-4 gap-1">
+                          <div>
+                            <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Dial Now</span>
+                            <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                              {caller.pipeline?.dial_now ?? 0}
+                            </strong>
+                          </div>
 
-                        <div>
-                          <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Waiting</span>
-                          <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
-                            {caller.pipeline?.waiting ?? 0}
-                          </strong>
-                        </div>
+                          <div>
+                            <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Callbacks</span>
+                            <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                              {caller.pipeline?.callbacks ?? 0}
+                              {hasOverdue && (
+                                <span className="ml-0.5 text-[9px] text-amber-500 font-bold">
+                                  ({caller.pipeline.overdue_callbacks} od)
+                                </span>
+                              )}
+                            </strong>
+                          </div>
 
-                        <div>
-                          <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Done</span>
-                          <strong className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                            {caller.dials_today}
-                          </strong>
+                          <div>
+                            <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Waiting</span>
+                            <strong className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
+                              {caller.pipeline?.waiting ?? 0}
+                            </strong>
+                          </div>
+
+                          <div>
+                            <span className="text-[9px] font-mono uppercase text-[#8A8680] block">Done</span>
+                            <strong className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                              {caller.dials_today}
+                            </strong>
+                          </div>
                         </div>
-                      </div>
+                      </motion.div>
 
                       {/* Shift Output Row: Dials · Connects · Talk Time */}
                       <div className="mt-3 flex items-center justify-between text-xs text-[#8A8680] font-mono">
@@ -1193,35 +1172,15 @@ export default function ManagerTeamPage() {
                 {/* Card Action Buttons */}
                 <div className="mt-4 pt-3 border-t border-[#ECE8E1] dark:border-white/15" onClick={(e) => e.stopPropagation()}>
                   {isCaller ? (
-                    /* Caller Actions: [Mirror] [Activity] [Reassign] */
-                    <div className="grid grid-cols-3 gap-2">
-                      <Link
-                        href={`/queue?impersonate=${caller.id}`}
-                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-[#7F3922] hover:text-white text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-white/15"
-                        title={`Mirror view of ${caller.full_name}'s cockpit`}
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        <span>Mirror</span>
-                      </Link>
-
-                      <button
-                        type="button"
-                        onClick={() => openCallerDetail(caller.id)}
-                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-white/15"
-                      >
-                        <FileText className="w-3 h-3 text-[#9F5639]" />
-                        <span>Activity</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => openReassignModal(caller.id)}
-                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-white/15"
-                      >
-                        <PhoneForwarded className="w-3 h-3 text-[#8A8680]" />
-                        <span>Reassign</span>
-                      </button>
-                    </div>
+                    /* Caller Actions: [Reassign Leads] (Mirror and Activity replaced by clicking stats box) */
+                    <button
+                      type="button"
+                      onClick={() => openReassignModal(caller.id)}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-white/15"
+                    >
+                      <PhoneForwarded className="w-3.5 h-3.5 text-[#8A8680]" />
+                      <span>Reassign Leads</span>
+                    </button>
                   ) : isDeveloper ? (
                     /* Developer Actions: [View Projects] [Message] */
                     <div className="grid grid-cols-2 gap-2">
@@ -1285,271 +1244,6 @@ export default function ManagerTeamPage() {
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 6. CALLER ACTIVITY LEDGER DRAWER / SLIDE-OVER                              */}
-      {/* ========================================================================= */}
-      {detailCallerId && (
-        <div className="fixed inset-0 z-[400] bg-black/50 backdrop-blur-sm flex justify-end">
-          <div
-            className="w-full max-w-xl h-full bg-white dark:bg-[#181715] border-l border-[#ECE8E1] dark:border-[#262420] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Drawer Header */}
-            <div className="p-5 border-b border-[#ECE8E1] dark:border-[#262420] flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] flex items-center justify-center font-bold text-sm text-[#F95721]">
-                  {detailData?.caller.full_name?.slice(0, 2).toUpperCase() || "CL"}
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-[#111110] dark:text-[#F5F3EF]">
-                    {detailData?.caller.full_name || "Caller Activity"}
-                  </h3>
-                  <p className="text-xs text-[#8A8680] mt-0.5">
-                    {detailData?.caller.email} &bull; <span className="uppercase font-mono">{detailData?.caller.role}</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Link
-                  href={`/queue?impersonate=${detailCallerId}`}
-                  className="px-3 py-1.5 rounded-xl bg-[#F95721] text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm hover:opacity-90"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Mirror View</span>
-                </Link>
-                <button
-                  type="button"
-                  onClick={closeCallerDetail}
-                  className="p-1.5 rounded-xl text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Metrics Bar — Matches the Card Exactly! */}
-            {detailData && (
-              <div className="grid grid-cols-4 gap-2 p-4 bg-black/[0.02] dark:bg-white/[0.02] border-b border-[#ECE8E1] dark:border-[#262420] text-center text-xs">
-                <div>
-                  <span className="text-[10px] font-mono text-[#8A8680] block">Dials ({detailData.summary.range_label || "Today"})</span>
-                  <strong className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
-                    {detailData.summary.total_dials}
-                  </strong>
-                  {detailData.summary.all_time_dials !== undefined && (
-                    <span className="text-[10px] text-[#8A8680] block font-mono">
-                      ({detailData.summary.all_time_dials} all-time)
-                    </span>
-                  )}
-                </div>
-                <div>
-                  <span className="text-[10px] font-mono text-[#8A8680] block">Connects</span>
-                  <strong className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                    {detailData.summary.connects}
-                  </strong>
-                </div>
-                <div>
-                  <span className="text-[10px] font-mono text-[#8A8680] block">Talk Time</span>
-                  <strong className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
-                    {formatDuration(detailData.summary.talk_time_seconds)}
-                  </strong>
-                </div>
-                <div>
-                  <span className="text-[10px] font-mono text-[#8A8680] block">Queue Depth</span>
-                  <strong className="text-sm font-bold text-[#F95721]">
-                    {detailData.summary.active_queue_count}
-                  </strong>
-                </div>
-              </div>
-            )}
-
-            {/* 3 Tabs: Calls, Callbacks (Fixing Bug 2!), Queue */}
-            <div className="flex border-b border-[#ECE8E1] dark:border-[#262420] text-xs">
-              <button
-                type="button"
-                onClick={() => setDetailTab("calls")}
-                className={`flex-1 py-3 font-semibold text-center border-b-2 transition-all ${
-                  detailTab === "calls"
-                    ? "border-[#F95721] text-[#F95721]"
-                    : "border-transparent text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-                }`}
-              >
-                Calls ({detailData?.calls?.length || 0})
-              </button>
-              <button
-                type="button"
-                onClick={() => setDetailTab("callbacks")}
-                className={`flex-1 py-3 font-semibold text-center border-b-2 transition-all ${
-                  detailTab === "callbacks"
-                    ? "border-[#F95721] text-[#F95721]"
-                    : "border-transparent text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-                }`}
-              >
-                Callbacks ({detailData?.summary.pipeline?.callbacks || 0})
-              </button>
-              <button
-                type="button"
-                onClick={() => setDetailTab("queue")}
-                className={`flex-1 py-3 font-semibold text-center border-b-2 transition-all ${
-                  detailTab === "queue"
-                    ? "border-[#F95721] text-[#F95721]"
-                    : "border-transparent text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-                }`}
-              >
-                Queue ({detailData?.active_leads?.length || 0})
-              </button>
-            </div>
-
-            {/* Drawer Body Content */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
-              {detailLoading ? (
-                <div className="py-16 text-center text-[#8A8680]">
-                  <RefreshCw className="w-6 h-6 animate-spin mx-auto text-[#F95721] mb-2" />
-                  <p className="text-xs">Loading activity ledger...</p>
-                </div>
-              ) : detailTab === "calls" ? (
-                detailData?.calls?.length === 0 ? (
-                  <div className="py-16 text-center text-[#8A8680] space-y-2">
-                    <PhoneOff className="w-8 h-8 mx-auto opacity-40" />
-                    <p className="text-xs">No calls logged yet in this time range.</p>
-                  </div>
-                ) : (
-                  detailData?.calls?.map((call) => (
-                    <div
-                      key={call.id}
-                      className="p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#262420] space-y-2"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h4 className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
-                            {call.lead?.name || "Unknown Lead"}
-                          </h4>
-                          <p className="text-[11px] text-[#8A8680] font-mono mt-0.5">
-                            {formatPhoneDisplay(call.lead?.phone)} &bull; {call.lead?.niche || "Dental"} &bull; {call.lead?.area || "Mumbai"}
-                          </p>
-                        </div>
-
-                        <div className="text-right shrink-0">
-                          <span
-                            className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase ${
-                              call.outcome === "interested"
-                                ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
-                                : call.outcome === "callback"
-                                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                                : call.outcome === "gatekeeper"
-                                ? "bg-purple-500/10 text-purple-600 dark:text-purple-400"
-                                : call.outcome === "not_interested"
-                                ? "bg-red-500/10 text-red-600 dark:text-red-400"
-                                : "bg-black/5 dark:bg-white/5 text-[#8A8680]"
-                            }`}
-                          >
-                            {call.outcome}
-                          </span>
-                          <span className="block text-[10px] font-mono text-[#8A8680] mt-0.5">
-                            {formatDuration(call.duration_seconds)}
-                          </span>
-                        </div>
-                      </div>
-
-                      {call.notes && (
-                        <p className="text-xs bg-white dark:bg-[#181715] p-2.5 rounded-xl border border-[#ECE8E1] dark:border-[#262420] text-[#111110] dark:text-[#F5F3EF] italic">
-                          &ldquo;{call.notes}&rdquo;
-                        </p>
-                      )}
-                    </div>
-                  ))
-                )
-              ) : detailTab === "callbacks" ? (
-                // Dedicated Callbacks Tab (Fixing Bug 2!)
-                (() => {
-                  const callbacksList = (detailData?.active_leads || []).filter(
-                    (l) => l.status === "callback" || Boolean(l.next_callback_at)
-                  );
-
-                  if (callbacksList.length === 0) {
-                    return (
-                      <div className="py-16 text-center text-[#8A8680] space-y-2">
-                        <Calendar className="w-8 h-8 mx-auto opacity-40 text-blue-400" />
-                        <p className="text-xs">No pending callbacks scheduled for this caller.</p>
-                      </div>
-                    );
-                  }
-
-                  return callbacksList.map((lead) => {
-                    const cbInfo = formatCallbackDate(lead.next_callback_at);
-                    return (
-                      <div
-                        key={lead.id}
-                        className={`p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border space-y-2 ${
-                          cbInfo.isOverdue
-                            ? "border-amber-500/50 bg-amber-500/[0.02]"
-                            : "border-[#ECE8E1] dark:border-[#262420]"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h4 className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
-                                {lead.name}
-                              </h4>
-                              {cbInfo.isOverdue && (
-                                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300">
-                                  OVERDUE
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-[#8A8680] font-mono mt-0.5">
-                              {formatPhoneDisplay(lead.phone)} &bull; {lead.area}
-                            </p>
-                          </div>
-
-                          <div className="text-right shrink-0">
-                            <span className={`text-[11px] font-mono font-bold block ${
-                              cbInfo.isOverdue ? "text-amber-600 dark:text-amber-400" : "text-blue-500"
-                            }`}>
-                              {cbInfo.label}
-                            </span>
-                            <span className="text-[10px] text-[#8A8680] block font-mono">
-                              Attempt #{lead.attempts_count || 1}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  });
-                })()
-              ) : (
-                // Queue Tab
-                detailData?.active_leads?.length === 0 ? (
-                  <div className="py-16 text-center text-[#8A8680]">
-                    <p className="text-xs">Queue is empty. No leads currently assigned.</p>
-                  </div>
-                ) : (
-                  detailData?.active_leads?.map((lead) => (
-                    <div
-                      key={lead.id}
-                      className="p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#262420] flex items-center justify-between text-xs"
-                    >
-                      <div>
-                        <h4 className="font-bold text-[#111110] dark:text-[#F5F3EF]">{lead.name}</h4>
-                        <p className="text-[11px] text-[#8A8680] font-mono mt-0.5">
-                          {formatPhoneDisplay(lead.phone)} &bull; {lead.niche} &bull; {lead.area}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span className="px-2 py-0.5 rounded-md font-mono text-[10px] uppercase bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] text-[#8A8680]">
-                          {lead.status}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )
-              )}
-            </div>
-          </div>
         </div>
       )}
 
@@ -2045,6 +1739,18 @@ export default function ManagerTeamPage() {
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* 8. CALLER MOBILE COCKPIT PHONE FRAME OVERLAY                              */}
+      {/* ========================================================================= */}
+      <AnimatePresence>
+        {overlayCaller && (
+          <CallerCockpitOverlay
+            caller={overlayCaller}
+            onClose={() => setOverlayCaller(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

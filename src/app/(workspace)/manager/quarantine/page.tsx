@@ -152,12 +152,12 @@ export default function ManagerQuarantinePage() {
     fetchQuarantineData();
   }, [fetchQuarantineData]);
 
-  // Periodic ticker for disposal countdown accuracy
+  // Gentle 60s ticker for disposal countdown without mutating leads array reference
+  const [, setTicker] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => {
-      // triggers re-render of countdowns every 30s
-      setLeads((prev) => [...prev]);
-    }, 30000);
+      setTicker((t) => (t + 1) % 1000);
+    }, 60000);
     return () => clearInterval(timer);
   }, []);
 

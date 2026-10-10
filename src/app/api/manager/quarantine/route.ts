@@ -56,6 +56,19 @@ export async function GET(req: NextRequest) {
 
     const admin = getAdminClient();
 
+    // Fast path: Count only for badge indicators (avoids loading and mapping lead rows)
+    const countOnly = req.nextUrl.searchParams.get("count_only") === "true";
+    if (countOnly) {
+      const { count, error: countErr } = await admin
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "not_interested")
+        .is("deleted_at", null);
+
+      if (countErr) throw countErr;
+      return NextResponse.json({ count: count || 0 });
+    }
+
     // 1. Fetch all quarantined leads (status = 'not_interested' AND deleted_at IS NULL)
     let quarantinedLeads: any[] | null = null;
     const { data: qLeadsData, error: leadsErr } = await admin

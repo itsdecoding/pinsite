@@ -374,6 +374,12 @@ CREATE INDEX IF NOT EXISTS idx_messages_channel_feed ON public.messages(channel_
 CREATE INDEX IF NOT EXISTS idx_entity_comments_feed ON public.entity_comments(entity_type, entity_id, created_at ASC) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_dm_messages_thread ON public.dm_messages(thread_id, created_at ASC) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_email_queue_pending ON public.email_queue(status, created_at ASC) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_calls_called_at ON public.calls(called_at DESC);
+CREATE INDEX IF NOT EXISTS idx_calls_lead_id ON public.calls(lead_id);
+CREATE INDEX IF NOT EXISTS idx_calls_called_at_outcome ON public.calls(called_at DESC, outcome);
+CREATE INDEX IF NOT EXISTS idx_profiles_role_active ON public.profiles(role, active, is_available);
+CREATE INDEX IF NOT EXISTS idx_leads_normalized_phone ON public.leads(normalized_phone) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_leads_assigned_active ON public.leads(assigned_to, status) WHERE deleted_at IS NULL;
 
 --------------------------------------------------------------------------------
 -- 5.1 Universal Updated-At & Defensive Triggers
