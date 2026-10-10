@@ -31,3 +31,29 @@ CREATE INDEX IF NOT EXISTS idx_leads_normalized_phone
 CREATE INDEX IF NOT EXISTS idx_leads_assigned_active 
   ON public.leads(assigned_to, status) 
   WHERE deleted_at IS NULL;
+
+-- 4. RLS Optimization for current_user_role
+-- Evaluates directly against JWT user_metadata in 0ms when present,
+-- or cleanly evaluates (SELECT role FROM public.profiles WHERE id = auth.uid()) without per-row table scans.
+CREATE OR REPLACE FUNCTION public.current_user_role()
+RETURNS user_role
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT COALESCE(
+    CASE 
+      WHEN (NULLIF(current_setting('request.jwt.claims', true), '')::jsonb->'user_metadata'->>'role') IN ('caller', 'developer', 'manager', 'admin')
+      THEN (NULLIF(current_setting('request.jwt.claims', true), '')::jsonb->'user_metadata'->>'role')::user_role
+      ELSE NULL
+    END,
+    CASE 
+      WHEN (NULLIF(current_setting('request.jwt.claim.user_metadata', true), '')::jsonb->>'role') IN ('caller', 'developer', 'manager', 'admin')
+      THEN (NULLIF(current_setting('request.jwt.claim.user_metadata', true), '')::jsonb->>'role')::user_role
+      ELSE NULL
+    END,
+    (SELECT role FROM public.profiles WHERE id = auth.uid())
+  );
+$$;
+

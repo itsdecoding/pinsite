@@ -34,6 +34,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { EntityComments } from "@/components/comms/EntityComments";
 import { get, set } from "idb-keyval";
+import { QueueKanban, KanbanLead } from "./QueueKanban";
 
 interface Lead {
   id: string;
@@ -227,6 +228,40 @@ export function DesktopQueue() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const impersonateParam = searchParams.get("impersonate");
+  const viewParam = searchParams.get("view");
+  const [activeView, setActiveView] = useState<"deck" | "kanban">(
+    viewParam === "kanban" ? "kanban" : "deck"
+  );
+
+  const handleSelectFromKanban = (kanbanLead: KanbanLead) => {
+    const existingIdx = leads.findIndex((l) => l.id === kanbanLead.id);
+    if (existingIdx !== -1) {
+      setActiveLeadIndex(existingIdx);
+    } else {
+      const convertedLead: Lead = {
+        id: kanbanLead.id,
+        name: kanbanLead.name,
+        phone: kanbanLead.phone,
+        normalized_phone: kanbanLead.normalized_phone || kanbanLead.phone,
+        website: kanbanLead.website,
+        has_website: Boolean(kanbanLead.has_website),
+        address: kanbanLead.address,
+        niche: kanbanLead.niche,
+        area: kanbanLead.area,
+        score: kanbanLead.score,
+        status: kanbanLead.status,
+        assigned_to: kanbanLead.assigned_to || null,
+        attempts_count: kanbanLead.attempts_count || 0,
+        next_callback_at: kanbanLead.next_callback_at || null,
+        last_called_at: kanbanLead.last_called_at || null,
+        cooldown_until: kanbanLead.cooldown_until || null,
+        profiles: kanbanLead.profiles,
+      };
+      setLeads((prev) => [convertedLead, ...prev]);
+      setActiveLeadIndex(0);
+    }
+    setActiveView("deck");
+  };
 
   const supabase = createClient();
   const notesInputRef = useRef<HTMLTextAreaElement>(null);
@@ -402,12 +437,12 @@ export function DesktopQueue() {
           setImpersonatedCaller(null);
         }
 
-        // 3. Check total pool & unassigned counts (strictly excluding not_interested)
+        // 3. Check total pool & unassigned counts (strictly excluding closed, dnc, not_interested, and interested)
         const { count: poolCount } = await supabase
           .from("leads")
           .select("*", { count: "exact", head: true })
           .is("deleted_at", null)
-          .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")');
+          .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")');
 
         setTotalPoolCount(poolCount || 0);
 
@@ -416,7 +451,7 @@ export function DesktopQueue() {
           .select("*", { count: "exact", head: true })
           .is("deleted_at", null)
           .is("assigned_to", null)
-          .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")');
+          .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")');
 
         setUnassignedPoolCount(unassignedCount || 0);
 
@@ -433,7 +468,7 @@ export function DesktopQueue() {
             .from("leads")
             .select("assigned_to")
             .is("deleted_at", null)
-            .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")')
+            .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")')
             .not("assigned_to", "is", null);
 
           const counts: Record<string, number> = {};
@@ -456,13 +491,13 @@ export function DesktopQueue() {
         const nowIso = new Date().toISOString();
 
         // 5. Build query based on role, mirror mode, and scope
-        // Strictly exclude not_interested & exclude active cooldowns (cooldown_until > NOW())
+        // Strictly exclude not_interested, closed, dnc, and interested (deals/prospects)
         const buildLeadQuery = (includeCooldown: boolean) => {
           let q = supabase
             .from("leads")
             .select("*, profiles:assigned_to(full_name)")
             .is("deleted_at", null)
-            .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")');
+            .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")');
 
           if (includeCooldown) {
             q = q.or(`cooldown_until.is.null,cooldown_until.lte.${nowIso}`);
@@ -758,7 +793,7 @@ export function DesktopQueue() {
   return (
     <div className="space-y-6 max-w-full overflow-x-hidden pb-24 md:pb-8">
       {/* Sleek Compact Header Bar (Zero wasted vertical space) */}
-      <div className="flex items-center justify-between gap-3 pt-1 pb-1">
+      <div className="flex items-center justify-between gap-3 pt-1 pb-1 flex-wrap">
         <div className="flex items-center gap-2.5 flex-wrap">
           <span className="text-xs font-mono tracking-wider uppercase text-[#F95721] font-bold">
             {isManagement ? "OUTBOUND DECK" : "DIAL QUEUE"}
@@ -769,15 +804,43 @@ export function DesktopQueue() {
             </span>
           )}
 
-          {/* Caller's Queue Number moved directly into the header bar */}
-          {leads.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F95721] text-white text-xs font-mono font-bold shadow-sm">
+          {/* Primary View Navigation Switcher (Rule: 2-4 options, switched frequently -> visible tabs/pills) */}
+          <div className="flex items-center p-0.5 rounded-full bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] ml-1 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setActiveView("deck")}
+              className={`px-3 py-1 rounded-full text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
+                activeView === "deck"
+                  ? "bg-[#F95721] text-white shadow-sm"
+                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+              }`}
+            >
+              <PhoneCall className="w-3.5 h-3.5" />
+              <span>Dial Deck</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveView("kanban")}
+              className={`px-3 py-1 rounded-full text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
+                activeView === "kanban"
+                  ? "bg-[#F95721] text-white shadow-sm"
+                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Transparent Kanban</span>
+            </button>
+          </div>
+
+          {/* Caller's Queue Number moved directly into the header bar (when viewing deck) */}
+          {activeView === "deck" && leads.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F95721]/10 text-[#F95721] border border-[#F95721]/20 text-xs font-mono font-bold shadow-sm">
               <span>Lead {activeLeadIndex + 1} of {leads.length}</span>
             </span>
           )}
 
-          {/* Admin/Manager-Only Scope Filter Dropdown (Strictly hidden from callers) */}
-          {isManagement && !impersonatedCaller && (
+          {/* Admin/Manager-Only Scope Filter Dropdown (Strictly hidden from callers, shown in deck mode) */}
+          {isManagement && !impersonatedCaller && activeView === "deck" && (
             <div className="flex items-center gap-1.5 ml-1">
               <span className="text-[10px] font-mono uppercase text-[#6E6B66] dark:text-[#8A8680] font-bold tracking-wider hidden sm:inline">
                 Scope:
@@ -913,9 +976,16 @@ export function DesktopQueue() {
         </div>
       </div>
 
-      {/* Main Single-Column Cockpit (< 768px) and Grid (lg+) */}
-      {!currentLead ? (
-        totalPoolCount === 0 ? (
+      {activeView === "kanban" ? (
+        <QueueKanban
+          userRole={userRole}
+          onSelectLeadForDial={handleSelectFromKanban}
+        />
+      ) : (
+        <>
+          {/* Main Single-Column Cockpit (< 768px) and Grid (lg+) */}
+          {!currentLead ? (
+            totalPoolCount === 0 ? (
           <div className="p-8 sm:p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
             <div className="w-12 h-12 rounded-full bg-[#F95721]/10 text-[#F95721] flex items-center justify-center mx-auto mb-3">
               <Phone className="w-6 h-6" />
@@ -1397,6 +1467,8 @@ export function DesktopQueue() {
           </div>
         </div>
       )}
+    </>
+  )}
 
 
       {/* Slide-Up Bottom Sheet Outcome Drawer with Rejection Reason */}

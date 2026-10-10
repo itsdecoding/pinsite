@@ -188,7 +188,7 @@ export async function GET(req: NextRequest) {
       .select("id, name, phone, niche, area, score, attempts_count, next_callback_at, last_called_at, status, cooldown_until")
       .eq("assigned_to", callerId)
       .is("deleted_at", null)
-      .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")')
+      .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")')
       .order("score", { ascending: false })
       .limit(100);
 

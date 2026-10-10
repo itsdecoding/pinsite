@@ -147,7 +147,7 @@ export async function GET(req: NextRequest) {
       .select("id, assigned_to, status, next_callback_at, cooldown_until")
       .is("deleted_at", null)
       .not("assigned_to", "is", null)
-      .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")');
+      .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")');
 
     if (leadsErr) {
       throw leadsErr;

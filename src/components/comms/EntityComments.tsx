@@ -34,7 +34,7 @@ export function EntityComments({ entityType, entityId }: EntityCommentsProps) {
   const [showMentionPicker, setShowMentionPicker] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const supabase = createClient();
+  const supabase = React.useMemo(() => createClient(), []);
 
   useEffect(() => {
     async function loadProfiles() {
@@ -62,8 +62,9 @@ export function EntityComments({ entityType, entityId }: EntityCommentsProps) {
     }
     loadComments();
 
+    const channelTopic = `comments-${entityType}-${entityId}-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel(`comments-${entityType}-${entityId}`)
+      .channel(channelTopic)
       .on(
         "postgres_changes",
         {

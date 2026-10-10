@@ -27,6 +27,14 @@ export async function updateSession(request: NextRequest) {
     request,
   });
 
+  const pathname = request.nextUrl.pathname;
+
+  // FAST PATH: API routes handle their own granular authorization and session verification.
+  // Bypass middleware immediately before any network calls to eliminate mandatory 180ms network round-trip.
+  if (pathname.startsWith("/api")) {
+    return supabaseResponse;
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key",
@@ -52,7 +60,6 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const pathname = request.nextUrl.pathname;
   const token = request.nextUrl.searchParams.get("token");
 
   // 1. If user navigates to /login or root with an invite token, forward to /signup
@@ -103,35 +110,32 @@ export async function updateSession(request: NextRequest) {
     return createRedirect(url, supabaseResponse);
   }
 
-  // For API routes, session cookies are refreshed via getUser() above.
-  // API endpoints handle their own granular authorization and session verification.
-  if (pathname.startsWith("/api")) {
-    return supabaseResponse;
-  }
-
   // If authenticated user is on public routes (login/signup without token, or /studio), redirect to their workspace
   if (user) {
-    // 1. Fetch profile columns (role, active, require_password_change) in a single consolidated query
+    // 1. Fetch profile columns (role, active, require_password_change)
+    // Fast path: if role is present in session JWT user_metadata, read it in 0ms without querying the profiles table
     let role: string | null = (user.user_metadata?.role as string) || (user.app_metadata?.role as string) || null;
     let isActive = true;
-    let requirePasswordChange = false;
+    let requirePasswordChange = Boolean(user.user_metadata?.require_password_change);
 
-    try {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role, active, require_password_change")
-        .eq("id", user.id)
-        .maybeSingle();
+    if (!role) {
+      try {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role, active, require_password_change")
+          .eq("id", user.id)
+          .maybeSingle();
 
-      if (profile) {
-        if (profile.role) role = profile.role;
-        isActive = profile.active !== false;
-        if (profile.require_password_change) {
-          requirePasswordChange = true;
+        if (profile) {
+          if (profile.role) role = profile.role;
+          isActive = profile.active !== false;
+          if (profile.require_password_change) {
+            requirePasswordChange = true;
+          }
         }
+      } catch (e) {
+        console.warn("Middleware profile lookup failed, falling back to session metadata:", e);
       }
-    } catch (e) {
-      console.warn("Middleware profile lookup failed, falling back to session metadata:", e);
     }
 
     if (requirePasswordChange) {

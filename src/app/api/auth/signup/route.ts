@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
       email_confirm: true,
       user_metadata: {
         full_name: fullName,
+        role: invite.role,
       },
     });
 

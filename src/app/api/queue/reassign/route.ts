@@ -67,16 +67,17 @@ export async function POST(req: NextRequest) {
     // 3. Fetch current lead assignment state for audit trail
     const { data: currentLead } = await admin
       .from("leads")
-      .select("assigned_to")
+      .select("assigned_to, status")
       .eq("id", lead_id)
       .maybeSingle();
 
     const fromCallerId = currentLead?.assigned_to || null;
+    const isCurrentlyInterested = currentLead?.status === "interested";
 
     // 4. Update lead assignment (clearing quarantine attribution & metadata if rescued)
     const updateData: Record<string, any> = {
       assigned_to: caller_id || null,
-      status: caller_id ? "assigned" : "unassigned",
+      status: caller_id ? (isCurrentlyInterested ? "interested" : "assigned") : "unassigned",
       assigned_date: caller_id ? new Date().toISOString().split("T")[0] : null,
       updated_at: new Date().toISOString(),
       quarantined_at: null,

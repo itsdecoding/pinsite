@@ -42,8 +42,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Execute depth-aware assign_daily_leads
-    const { data: rpcData, error: rpcError } = await admin.rpc("assign_daily_leads", { p_target_cap: 30 });
+    // 3. Execute depth-aware assign_daily_leads (default cap 100)
+    const { data: rpcData, error: rpcError } = await admin.rpc("assign_daily_leads", { p_target_cap: 100 });
     if (rpcError) throw rpcError;
 
     // 3. Return updated counts

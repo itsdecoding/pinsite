@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Bell, Check, ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useUserSession } from "@/contexts/UserSessionContext";
 
 interface NotificationItem {
   id: string;
@@ -19,56 +20,60 @@ export function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const popoverRef = useRef<HTMLDivElement>(null);
-  const supabase = createClient();
+  const supabase = React.useMemo(() => createClient(), []);
+  const { user } = useUserSession();
 
   useEffect(() => {
-    let activeChannel: any = null;
+    if (!user?.id) return;
+    let isMounted = true;
 
-    async function init() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+    // Fetch initial notifications
+    async function loadNotifications() {
+      try {
+        const { data } = await supabase
+          .from("notifications")
+          .select("*")
+          .eq("user_id", user!.id)
+          .order("created_at", { ascending: false })
+          .limit(20);
 
-      const { data } = await supabase
-        .from("notifications")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      if (data) {
-        setNotifications(data);
-        setUnreadCount(data.filter((n) => !n.read_at).length);
+        if (data && isMounted) {
+          setNotifications(data);
+          setUnreadCount(data.filter((n) => !n.read_at).length);
+        }
+      } catch (e) {
+        console.warn("Failed to load initial notifications:", e);
       }
-
-      activeChannel = supabase
-        .channel(`user-notifications-${user.id}-${Date.now()}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "notifications",
-            filter: `user_id=eq.${user.id}`,
-          },
-          (payload) => {
-            const newNotif = payload.new as NotificationItem;
-            setNotifications((prev) => [newNotif, ...prev]);
-            setUnreadCount((prev) => prev + 1);
-          }
-        )
-        .subscribe();
     }
 
-    init();
+    loadNotifications();
+
+    // Unique topic per mount prevents reusing already-subscribed channels across React StrictMode cycles
+    const channelTopic = `user-notifs-${user.id}-${Math.random().toString(36).substring(2, 9)}`;
+    const channel = supabase
+      .channel(channelTopic)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          if (!isMounted) return;
+          const newNotif = payload.new as NotificationItem;
+          setNotifications((prev) => [newNotif, ...prev]);
+          setUnreadCount((prev) => prev + 1);
+        }
+      )
+      .subscribe();
 
     return () => {
-      if (activeChannel) {
-        supabase.removeChannel(activeChannel);
-      }
+      isMounted = false;
+      supabase.removeChannel(channel);
     };
-  }, [supabase]);
+  }, [user?.id, supabase]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {

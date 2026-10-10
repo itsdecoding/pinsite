@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
       .select("id, name, phone")
       .eq("assigned_to", source_caller_id)
       .is("deleted_at", null)
-      .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")')
+      .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")')
       .order("attempts_count", { ascending: true })
       .order("created_at", { ascending: true })
       .limit(rebalanceCount);

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -18,34 +18,13 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { NotificationBell } from "@/components/comms/NotificationBell";
+import { useUserSession } from "@/contexts/UserSessionContext";
 
 export function FloatingSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [profile, setProfile] = useState<{ full_name: string; role: string } | null>(null);
+  const { profile } = useUserSession();
   const supabase = createClient();
-
-  useEffect(() => {
-    async function loadUser() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { data } = await supabase
-          .from("profiles")
-          .select("full_name, role")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        if (data) setProfile(data);
-      } catch (err) {
-        // Fallback gracefully
-      }
-    }
-    loadUser();
-  }, [supabase]);
 
   async function handleLogout() {
     try {

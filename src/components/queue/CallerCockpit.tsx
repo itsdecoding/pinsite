@@ -27,8 +27,11 @@ import {
   Eye,
   CheckSquare,
   Lock,
+  Layers,
+  PhoneCall,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { QueueKanban, KanbanLead } from "./QueueKanban";
 
 export interface Lead {
   id: string;
@@ -83,6 +86,7 @@ export interface CallerCockpitProps {
   embedded?: boolean;
   readOnly?: boolean;
   hideMirrorBanner?: boolean;
+  initialView?: "cockpit" | "kanban";
 }
 
 /**
@@ -191,6 +195,39 @@ function formatDurationTimer(seconds: number): string {
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
+/**
+ * Dedicated, memoized subcomponent for live in-call elapsed timer.
+ * Isolates 1-second interval re-renders to prevent the entire 2,000+ line
+ * cockpit tree from re-rendering every second during active calls.
+ */
+export const CallTimerDisplay = React.memo(function CallTimerDisplay({
+  startTime,
+  duration,
+  className = "font-mono text-white font-bold tabular-nums",
+}: {
+  startTime?: number | null;
+  duration?: number;
+  className?: string;
+}) {
+  const [elapsed, setElapsed] = useState<number>(() => {
+    return startTime ? Math.max(0, Math.floor((Date.now() - startTime) / 1000)) : 0;
+  });
+
+  useEffect(() => {
+    if (typeof duration === "number" || !startTime) {
+      return;
+    }
+    setElapsed(Math.max(0, Math.floor((Date.now() - startTime) / 1000)));
+    const interval = setInterval(() => {
+      setElapsed(Math.max(0, Math.floor((Date.now() - startTime) / 1000)));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startTime, duration]);
+
+  const displaySeconds = typeof duration === "number" ? duration : (startTime ? elapsed : 0);
+  return <span className={className}>{formatDurationTimer(displaySeconds)}</span>;
+});
+
 function formatHoursMinutes(totalSeconds: number): string {
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
@@ -199,15 +236,28 @@ function formatHoursMinutes(totalSeconds: number): string {
 }
 
 /**
- * Web Audio API synthesizer for instant tactile mobile haptic feedback
+ * Web Audio API synthesizer for instant tactile mobile haptic feedback.
+ * Uses a lazily initialized, shared singleton AudioContext instance to prevent hardware thread leaks.
  */
+let sharedAudioCtx: AudioContext | null = null;
+
+function getSharedAudioContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioContextClass) return null;
+  if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
+    sharedAudioCtx = new AudioContextClass();
+  }
+  if (sharedAudioCtx.state === "suspended") {
+    sharedAudioCtx.resume().catch(() => {});
+  }
+  return sharedAudioCtx;
+}
+
 function playHapticTick(freq = 900, duration = 0.018) {
   try {
-    if (typeof window === "undefined") return;
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    if (ctx.state === "suspended") ctx.resume();
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "triangle";
@@ -251,12 +301,18 @@ export function CallerCockpit({
   embedded = false,
   readOnly = false,
   hideMirrorBanner = false,
+  initialView = "cockpit",
 }: CallerCockpitProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const resolvedTargetId = callerId || targetCallerId;
   const impersonateParam = resolvedTargetId || searchParams.get("impersonate");
   const supabase = createClient();
+
+  const viewParam = searchParams.get("view");
+  const [viewMode, setViewMode] = useState<"cockpit" | "kanban">(
+    initialView || (viewParam === "kanban" ? "kanban" : "cockpit")
+  );
 
   // Screen Views: 'cockpit' (Screen 1) | 'detail' (Screen 3 Dossier) | 'comms' | 'summary' (Screen 4 Daily Report) | 'callbacks' | 'waiting'
   const [activeScreen, setActiveScreen] = useState<
@@ -275,6 +331,40 @@ export function CallerCockpit({
   const [waitingLeads, setWaitingLeads] = useState<Lead[]>([]);
   const [activeLeadIndex, setActiveLeadIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  const handleSelectLeadFromKanban = useCallback((kanbanLead: KanbanLead) => {
+    setDialNowLeads((prev) => {
+      const existingIdx = prev.findIndex((l) => l.id === kanbanLead.id);
+      if (existingIdx !== -1) {
+        setActiveLeadIndex(existingIdx);
+        return prev;
+      }
+      const convertedLead: Lead = {
+        id: kanbanLead.id,
+        name: kanbanLead.name,
+        phone: kanbanLead.phone,
+        normalized_phone: kanbanLead.normalized_phone || kanbanLead.phone,
+        website: kanbanLead.website,
+        has_website: Boolean(kanbanLead.has_website),
+        address: kanbanLead.address,
+        niche: kanbanLead.niche,
+        area: kanbanLead.area,
+        score: kanbanLead.score,
+        status: kanbanLead.status,
+        assigned_to: kanbanLead.assigned_to || null,
+        attempts_count: kanbanLead.attempts_count || 0,
+        next_callback_at: kanbanLead.next_callback_at || null,
+        last_called_at: kanbanLead.last_called_at || null,
+        cooldown_until: kanbanLead.cooldown_until || null,
+        profiles: kanbanLead.profiles,
+      };
+      setActiveLeadIndex(0);
+      return [convertedLead, ...prev];
+    });
+    setPipelineTab("dialNow");
+    setViewMode("cockpit");
+    playHapticTick(900, 0.02);
+  }, []);
 
   // Active Lead Call History
   const [historicalLogs, setHistoricalLogs] = useState<HistoricalCallLog[]>([]);
@@ -319,7 +409,8 @@ export function CallerCockpit({
   // Active Call Timer
   const [inCall, setInCall] = useState(false);
   const [callStartTime, setCallStartTime] = useState<number | null>(null);
-  const [callElapsedSeconds, setCallElapsedSeconds] = useState(0);
+  const [lastCallDuration, setLastCallDuration] = useState(0);
+  const callStartTimeRef = useRef<number | null>(null);
   const dialerOpenedRef = useRef(false);
 
   // Post-Call Form State
@@ -336,23 +427,7 @@ export function CallerCockpit({
   const activeLeadsList = pipelineTab === "callbacks" ? callbackLeads : dialNowLeads;
   const currentLead = activeLeadsList[activeLeadIndex] || null;
 
-  // 1. Live In-Call Timer
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (inCall && callStartTime) {
-      setCallElapsedSeconds(Math.max(0, Math.floor((Date.now() - callStartTime) / 1000)));
-      interval = setInterval(() => {
-        setCallElapsedSeconds(Math.max(0, Math.floor((Date.now() - callStartTime) / 1000)));
-      }, 1000);
-    } else {
-      setCallElapsedSeconds(0);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [inCall, callStartTime]);
-
-  // 2. Auto-open disposition drawer upon returning from phone dialer
+  // 1. Auto-open disposition drawer upon returning from phone dialer
   useEffect(() => {
     function handleReturnFromDialer() {
       const isDialing =
@@ -363,6 +438,9 @@ export function CallerCockpit({
         dialerOpenedRef.current = false;
         if (typeof window !== "undefined") {
           sessionStorage.removeItem("pinsite_dialer_active");
+        }
+        if (callStartTimeRef.current) {
+          setLastCallDuration(Math.max(1, Math.round((Date.now() - callStartTimeRef.current) / 1000)));
         }
         setInCall(false);
         setIsDispositionDrawerOpen(true);
@@ -392,6 +470,7 @@ export function CallerCockpit({
         let effectiveCallerId = resolvedTargetId;
 
         // If not passed as prop, resolve user id from auth
+        let authUserObj: any = null;
         if (!effectiveCallerId) {
           const {
             data: { user },
@@ -402,6 +481,7 @@ export function CallerCockpit({
             return;
           }
 
+          authUserObj = user;
           effectiveCallerId = user.id;
 
           // Check for query param impersonation if manager/admin
@@ -432,7 +512,7 @@ export function CallerCockpit({
           .select("*")
           .eq("assigned_to", effectiveCallerId)
           .is("deleted_at", null)
-          .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")')
+          .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")')
           .order("next_callback_at", { ascending: true, nullsFirst: false })
           .order("score", { ascending: false });
 
@@ -446,21 +526,21 @@ export function CallerCockpit({
         if (!userProfileLoadedRef.current) {
           (async () => {
             try {
-              const {
-                data: { user },
-              } = await supabase.auth.getUser();
-              if (user) {
+              const userToResolve =
+                authUserObj ||
+                (await supabase.auth.getUser()).data?.user;
+              if (userToResolve) {
                 const { data: myProfile } = await supabase
                   .from("profiles")
                   .select("id, full_name, role")
-                  .eq("id", user.id)
+                  .eq("id", userToResolve.id)
                   .maybeSingle();
                 userProfileLoadedRef.current = true;
                 setCurrentUserProfile({
-                  id: user.id,
+                  id: userToResolve.id,
                   full_name: myProfile?.full_name || "Caller",
                   role: myProfile?.role || "caller",
-                  email: user.email,
+                  email: userToResolve.email,
                 });
               }
             } catch {
@@ -560,6 +640,29 @@ export function CallerCockpit({
     [supabase, impersonateParam, resolvedTargetId, callerName]
   );
 
+  // Outcome reload debouncing to collapse multiple realtime events and post-submission fetches into one
+  const reloadTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedLoadLeadsAndStats = useCallback(
+    (delayMs = 300) => {
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current);
+      }
+      reloadTimerRef.current = setTimeout(() => {
+        loadLeadsAndStats(true);
+        reloadTimerRef.current = null;
+      }, delayMs);
+    },
+    [loadLeadsAndStats]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     loadLeadsAndStats();
   }, [loadLeadsAndStats]);
@@ -573,7 +676,7 @@ export function CallerCockpit({
     let callChannel: any = null;
 
     leadChannel = supabase
-      .channel(`cockpit-live-leads-${liveCallerId}-${Date.now()}`)
+      .channel(`cockpit-live-leads-${liveCallerId}-${Math.random().toString(36).substring(2, 9)}`)
       .on(
         "postgres_changes",
         {
@@ -583,13 +686,13 @@ export function CallerCockpit({
           filter: `assigned_to=eq.${liveCallerId}`,
         },
         () => {
-          loadLeadsAndStats(true);
+          debouncedLoadLeadsAndStats(300);
         }
       )
       .subscribe();
 
     callChannel = supabase
-      .channel(`cockpit-live-calls-${liveCallerId}-${Date.now()}`)
+      .channel(`cockpit-live-calls-${liveCallerId}-${Math.random().toString(36).substring(2, 9)}`)
       .on(
         "postgres_changes",
         {
@@ -599,7 +702,7 @@ export function CallerCockpit({
           filter: `caller_id=eq.${liveCallerId}`,
         },
         () => {
-          loadLeadsAndStats(true);
+          debouncedLoadLeadsAndStats(300);
         }
       )
       .subscribe();
@@ -614,7 +717,7 @@ export function CallerCockpit({
       if (callChannel) supabase.removeChannel(callChannel);
       clearInterval(interval);
     };
-  }, [resolvedTargetId, impersonatedCaller?.id, currentUserProfile?.id, supabase, loadLeadsAndStats]);
+  }, [resolvedTargetId, impersonatedCaller?.id, currentUserProfile?.id, supabase, loadLeadsAndStats, debouncedLoadLeadsAndStats]);
 
   // 4. Fetch past call history whenever active lead changes
   useEffect(() => {
@@ -666,8 +769,11 @@ export function CallerCockpit({
   // 5. Dial Trigger Action
   const handleDialClick = () => {
     if ((readOnly && viewingAs !== "manager") || !currentLead) return;
+    const now = Date.now();
+    callStartTimeRef.current = now;
+    setCallStartTime(now);
+    setLastCallDuration(0);
     setInCall(true);
-    setCallStartTime(Date.now());
     dialerOpenedRef.current = true;
     if (typeof window !== "undefined") {
       sessionStorage.setItem("pinsite_dialer_active", "true");
@@ -692,7 +798,13 @@ export function CallerCockpit({
     setIsSubmitting(true);
     playHapticTick(1200, 0.03);
 
-    const duration = callStartTime ? Math.round((Date.now() - callStartTime) / 1000) : callElapsedSeconds;
+    const duration =
+      lastCallDuration ||
+      (callStartTimeRef.current
+        ? Math.round((Date.now() - callStartTimeRef.current) / 1000)
+        : callStartTime
+        ? Math.round((Date.now() - callStartTime) / 1000)
+        : 0);
 
     let callbackTimestamp: string | null = null;
     if (outcomeType === "callback") {
@@ -750,11 +862,13 @@ export function CallerCockpit({
       setDncConfirmed(false);
       setInCall(false);
       setCallStartTime(null);
+      callStartTimeRef.current = null;
+      setLastCallDuration(0);
 
       // Trigger spring crossfade animation
       setCardAnimating(true);
       setTimeout(() => {
-        loadLeadsAndStats(true);
+        debouncedLoadLeadsAndStats(100);
         setCardAnimating(false);
         playHapticTick(950, 0.02);
       }, 220);
@@ -866,13 +980,14 @@ export function CallerCockpit({
                 <span className="text-emerald-300 font-bold text-[11px] uppercase tracking-wide">
                   Call in progress:
                 </span>
-                <span className="font-mono text-white font-bold tabular-nums">
-                  {formatDurationTimer(callElapsedSeconds)}
-                </span>
+                <CallTimerDisplay startTime={callStartTime} />
               </div>
               <button
                 type="button"
                 onClick={() => {
+                  if (callStartTimeRef.current) {
+                    setLastCallDuration(Math.max(1, Math.round((Date.now() - callStartTimeRef.current) / 1000)));
+                  }
                   setInCall(false);
                   setIsDispositionDrawerOpen(true);
                   playHapticTick(800, 0.02);
@@ -886,17 +1001,41 @@ export function CallerCockpit({
 
           {/* APP HEADER & SEGMENTED 4-TAB PIPELINE */}
           <header className="w-full px-3 sm:px-3.5 pt-2 pb-1.5 bg-[#0c0c0e]/95 backdrop-blur-xl border-b border-white/[0.06] z-30 shrink-0">
-            <div className="flex items-center justify-between mb-1.5 px-0.5">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <div className="w-2 h-2 rounded-full bg-[#F95721] shadow-sm shadow-[#F95721]/50 shrink-0" />
-                <span className="text-xs font-black tracking-widest text-zinc-200 uppercase truncate">
-                  Pinsite CRM
-                </span>
-                <span className="text-[9px] font-bold tracking-wider text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1 shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Queue Active
-                </span>
+            {/* Primary View Navigation Switcher (Rule: 2-4 options, primary navigation, switched frequently -> Tabs/Pills always visible) */}
+            <div className="flex items-center justify-between mb-2 px-0.5 gap-2">
+              <div className="flex items-center p-0.5 rounded-full bg-white/[0.06] border border-white/[0.1] shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode("cockpit");
+                    playHapticTick(850, 0.02);
+                  }}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-mono font-bold transition-all flex items-center gap-1.5 ${
+                    viewMode === "cockpit"
+                      ? "bg-[#F95721] text-white shadow-sm"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  <PhoneCall className="w-3 h-3" />
+                  <span>Cockpit</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode("kanban");
+                    playHapticTick(850, 0.02);
+                  }}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-mono font-bold transition-all flex items-center gap-1.5 ${
+                    viewMode === "kanban"
+                      ? "bg-[#F95721] text-white shadow-sm"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  <Layers className="w-3 h-3" />
+                  <span>Transparent Kanban</span>
+                </button>
               </div>
+
               <div className="flex items-center gap-1.5 shrink-0">
                 {(viewingAs === "manager" || readOnly || embedded) && (
                   <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 font-mono text-[9px] font-bold tracking-wider flex items-center gap-1 shrink-0">
@@ -904,24 +1043,27 @@ export function CallerCockpit({
                     MIRROR
                   </span>
                 )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsDeckQueueOpen(true);
-                    playHapticTick(800, 0.02);
-                  }}
-                  className="flex items-center gap-1 bg-zinc-800/90 hover:bg-zinc-700 active:scale-95 text-zinc-300 text-xs px-2 py-0.5 rounded-full border border-zinc-700/60 transition"
-                >
-                  <FileText className="w-3 h-3 text-[#F95721]" />
-                  <span className="text-[10px] font-semibold">
-                    Queue ({dialNowLeads.length + callbackLeads.length + waitingLeads.length})
-                  </span>
-                </button>
+                {viewMode === "cockpit" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDeckQueueOpen(true);
+                      playHapticTick(800, 0.02);
+                    }}
+                    className="flex items-center gap-1 bg-zinc-800/90 hover:bg-zinc-700 active:scale-95 text-zinc-300 text-xs px-2 py-0.5 rounded-full border border-zinc-700/60 transition"
+                  >
+                    <FileText className="w-3 h-3 text-[#F95721]" />
+                    <span className="text-[10px] font-semibold">
+                      Queue ({dialNowLeads.length + callbackLeads.length + waitingLeads.length})
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Segmented Pipeline Tabs */}
-            <nav className="grid grid-cols-4 gap-1 p-1 bg-[#141418] rounded-2xl border border-white/[0.06] text-xs shadow-inner">
+            {viewMode === "cockpit" && (
+              /* Segmented Pipeline Tabs */
+              <nav className="grid grid-cols-4 gap-1 p-1 bg-[#141418] rounded-2xl border border-white/[0.06] text-xs shadow-inner">
               <button
                 type="button"
                 onClick={() => handlePipelineTabSelect("dialNow")}
@@ -990,10 +1132,20 @@ export function CallerCockpit({
                 </span>
               </button>
             </nav>
+          )}
           </header>
 
           {/* MAIN BODY CONTAINER */}
-          <main className="flex-1 relative overflow-hidden flex flex-col px-3.5 sm:px-4 pt-2.5 pb-2">
+          <main className={`flex-1 relative overflow-hidden flex flex-col ${viewMode === "kanban" ? "px-2 pt-1 pb-2 overflow-y-auto" : "px-3.5 sm:px-4 pt-2.5 pb-2"}`}>
+            {viewMode === "kanban" ? (
+              <div className="w-full flex-1 overflow-x-auto pb-4">
+                <QueueKanban
+                  userRole={currentUserProfile?.role || viewingAs || "caller"}
+                  onSelectLeadForDial={handleSelectLeadFromKanban}
+                />
+              </div>
+            ) : (
+              <>
             {/* SCREEN 1: COCKPIT VIEW */}
             {activeScreen === "cockpit" && (
               <div className="flex-1 flex flex-col justify-between">
@@ -1193,6 +1345,10 @@ export function CallerCockpit({
                           type="button"
                           onClick={() => {
                             if (readOnly && viewingAs !== "manager") return;
+                            if (callStartTimeRef.current) {
+                              setLastCallDuration(Math.max(1, Math.round((Date.now() - callStartTimeRef.current) / 1000)));
+                            }
+                            setInCall(false);
                             setIsDispositionDrawerOpen(true);
                             playHapticTick(750, 0.02);
                           }}
@@ -1572,6 +1728,8 @@ export function CallerCockpit({
                 </button>
               </div>
             )}
+            </>
+            )}
           </main>
 
           {/* SCREEN 2: POST-CALL DISPOSITION DRAWER (SLIDE-UP SHEET) */}
@@ -1591,9 +1749,15 @@ export function CallerCockpit({
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                       <span>
                         CALL CONCLUDED •{" "}
-                        <span className="font-mono text-white tabular-nums">
-                          {formatDurationTimer(callElapsedSeconds)}
-                        </span>
+                        <CallTimerDisplay
+                          duration={
+                            lastCallDuration ||
+                            (callStartTimeRef.current
+                              ? Math.max(1, Math.round((Date.now() - callStartTimeRef.current) / 1000))
+                              : 0)
+                          }
+                          className="font-mono text-white tabular-nums"
+                        />
                       </span>
                     </div>
                     <h3 className="text-sm font-black text-white mt-1 truncate max-w-[230px]">

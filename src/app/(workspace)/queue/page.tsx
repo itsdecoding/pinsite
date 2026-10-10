@@ -3,14 +3,14 @@
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { useUserSession } from "@/contexts/UserSessionContext";
 import { DesktopQueue } from "@/components/queue/DesktopQueue";
 import { DesktopMirrorQueue } from "@/components/queue/DesktopMirrorQueue";
 import { CallerCockpit, CallerCockpitSkeleton } from "@/components/queue/CallerCockpit";
 
 function QueueEntry() {
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const { profile, loading: sessionLoading } = useUserSession();
   const searchParams = useSearchParams();
   const impersonateParam = searchParams.get("impersonate");
 
@@ -22,30 +22,15 @@ function QueueEntry() {
     checkViewport();
     window.addEventListener("resize", checkViewport);
 
-    // 2. Fetch authenticated user profile role
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .maybeSingle()
-          .then(({ data }) => {
-            setUserRole(data?.role || "caller");
-          });
-      } else {
-        setUserRole("caller");
-      }
-    });
-
     return () => window.removeEventListener("resize", checkViewport);
   }, []);
 
   // During initial hydration / mount, render sleek loading skeleton inside cockpit
-  if (isMobile === null || userRole === null) {
+  if (isMobile === null || sessionLoading) {
     return <CallerCockpitSkeleton />;
   }
+
+  const userRole = profile?.role || "caller";
 
   // Forking principle (Zero media-query hiding):
   // 1. Mobile Caller -> New Designer 2 Caller Cockpit (5 screens)
@@ -54,12 +39,15 @@ function QueueEntry() {
   const isCaller = userRole === "caller";
   const isMirroring = Boolean(impersonateParam);
 
+  const viewParam = searchParams.get("view");
+  const initialView = viewParam === "kanban" ? "kanban" : "cockpit";
+
   if (isCaller && isMobile) {
-    return <CallerCockpit />;
+    return <CallerCockpit initialView={initialView} />;
   }
 
   if (isMirroring && isMobile) {
-    return <CallerCockpit readOnly />;
+    return <CallerCockpit readOnly initialView={initialView} />;
   }
 
   if (isMirroring && impersonateParam) {

@@ -435,7 +435,7 @@ export default function ManagerTeamPage() {
         const res = await fetch("/api/manager/leads/distribute", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target_cap: 30 }),
+          body: JSON.stringify({ target_cap: 100 }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to reassign unassigned leads");
@@ -1386,7 +1386,7 @@ export default function ManagerTeamPage() {
               ) : (
                 <div className="p-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-[#ECE8E1] dark:border-[#262420] space-y-2">
                   <p className="text-xs text-[#111110] dark:text-[#F5F3EF] font-medium">
-                    Automatically distribute available unassigned leads across active callers with capacity (capped at 30 leads per caller).
+                    Automatically distribute available unassigned leads across active callers with capacity (capped at 100 leads per caller).
                   </p>
                   <p className="text-[11px] text-[#8A8680]">
                     Only callers who are currently active will receive leads.

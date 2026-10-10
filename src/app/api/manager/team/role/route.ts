@@ -131,6 +131,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
+    // Keep auth.users user_metadata.role in sync with profiles.role
+    try {
+      await admin.auth.admin.updateUserById(userId, {
+        user_metadata: {
+          ...targetAuthUser?.user?.user_metadata,
+          role: newRole,
+        },
+      });
+    } catch (authMetaErr) {
+      console.warn("Failed to sync user_metadata role on role change:", authMetaErr);
+    }
+
     // 4b. Permanent Fix: When changing from caller -> non-caller, auto-reassign active leads to unassigned pool
     let reassignedCount = 0;
     if (targetProfile.role === "caller" && newRole !== "caller") {

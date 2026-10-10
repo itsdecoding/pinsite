@@ -248,7 +248,7 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
         .select("*, profiles:assigned_to(full_name)")
         .eq("assigned_to", callerId)
         .is("deleted_at", null)
-        .not("status", "in", '("closed_won","closed_lost","dnc","not_interested")')
+        .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")')
         .order("next_callback_at", { ascending: true, nullsFirst: false })
         .order("score", { ascending: false });
 
