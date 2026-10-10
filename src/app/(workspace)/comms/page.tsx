@@ -70,12 +70,12 @@ function CommsHubContainer() {
   }
 
   return (
-    <div className="w-full h-[calc(100dvh-5rem)] lg:h-[calc(100dvh-6.5rem)] max-h-[920px] flex rounded-2xl md:rounded-3xl border border-black/[0.08] dark:border-white/[0.08] overflow-hidden shadow-2xl bg-white dark:bg-[#111213] pb-[env(safe-area-inset-bottom,0.5rem)]">
+    <div className="w-full min-w-0 max-w-full h-[calc(100dvh-5rem)] lg:h-[calc(100dvh-6.5rem)] max-h-[920px] flex rounded-none lg:rounded-3xl border-0 lg:border border-black/[0.08] dark:border-white/[0.08] overflow-hidden shadow-none lg:shadow-2xl bg-white dark:bg-[#111213] pb-[env(safe-area-inset-bottom,0.5rem)]">
       {/* 1. DIRECTORY RAIL:
           On Desktop: Always visible (w-72 or w-80).
           On Mobile (< lg): Visible only when mobileView === 'list' */}
       <div
-        className={`h-full w-full lg:w-72 xl:w-80 shrink-0 ${
+        className={`h-full w-full min-w-0 max-w-full lg:w-72 xl:w-80 shrink-0 ${
           mobileView === "list" ? "block" : "hidden lg:block"
         }`}
       >
@@ -97,7 +97,7 @@ function CommsHubContainer() {
           On Desktop: Always visible (flex-1).
           On Mobile (< lg): Visible only when mobileView === 'chat' */}
       <div
-        className={`h-full flex-1 min-w-0 ${
+        className={`h-full w-full min-w-0 max-w-full lg:flex-1 ${
           mobileView === "chat" ? "block" : "hidden lg:block"
         }`}
       >

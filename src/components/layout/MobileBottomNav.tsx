@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   PhoneCall,
+  FolderKanban,
   MessageSquare,
   LayoutDashboard,
   User,
@@ -85,38 +86,53 @@ export function MobileBottomNav() {
     router.push("/studio/login");
   };
 
-  const getTodayHref = () => {
+  const getTodayHref = React.useCallback(() => {
     if (role === "caller") return "/studio/queue";
     if (role === "developer") return "/studio/projects";
     return "/studio/dashboard";
-  };
+  }, [role]);
 
-  const navItems = [
-    {
-      label: "Queue",
-      href: role === "developer" ? "/studio/projects" : "/studio/queue",
-      icon: PhoneCall,
-      isAction: false,
-    },
-    {
-      label: "Comms",
-      href: "/studio/comms",
-      icon: MessageSquare,
-      isAction: false,
-    },
-    {
-      label: "Today",
-      href: getTodayHref(),
-      icon: LayoutDashboard,
-      isAction: false,
-    },
-    {
-      label: "Profile",
-      href: "#profile",
-      icon: User,
-      isAction: true,
-    },
-  ];
+  const navItems = React.useMemo(() => {
+    const isCaller = role === "caller";
+    const primaryLabel = isCaller ? "Queue" : "Projects";
+    const primaryHref = isCaller ? "/studio/queue" : "/studio/projects";
+    const PrimaryIcon = isCaller ? PhoneCall : FolderKanban;
+
+    const items = [
+      {
+        label: primaryLabel,
+        href: primaryHref,
+        icon: PrimaryIcon,
+        isAction: false,
+      },
+      {
+        label: "Comms",
+        href: "/studio/comms",
+        icon: MessageSquare,
+        isAction: false,
+      },
+      {
+        label: "Today",
+        href: getTodayHref(),
+        icon: LayoutDashboard,
+        isAction: false,
+      },
+      {
+        label: "Profile",
+        href: "#profile",
+        icon: User,
+        isAction: true,
+      },
+    ];
+
+    // Guarantee strictly unique tabs
+    const seen = new Set<string>();
+    return items.filter((item) => {
+      if (seen.has(item.label)) return false;
+      seen.add(item.label);
+      return true;
+    });
+  }, [role, getTodayHref]);
 
   return (
     <>
@@ -195,7 +211,7 @@ export function MobileBottomNav() {
         aria-label="Mobile Navigation"
         className="fixed bottom-0 inset-x-0 lg:hidden z-40 bg-white/90 dark:bg-[#111213]/95 backdrop-blur-2xl border-t border-black/[0.08] dark:border-white/[0.12] shadow-[0_-10px_25px_rgba(0,0,0,0.2)] pb-[env(safe-area-inset-bottom)] px-3 py-1.5 transition-all"
       >
-        <div className="flex items-center justify-around max-w-lg mx-auto">
+        <div className="grid grid-cols-4 max-w-lg mx-auto w-full">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive =

@@ -332,7 +332,7 @@ export function CommsDirectory({
             handleRowClick(chat);
           }
         }}
-        className={`group relative min-h-[72px] px-4 py-3 flex items-center gap-3 w-full text-left transition select-none cursor-pointer ${
+        className={`group relative min-h-[72px] px-4 py-3 flex items-center gap-3 w-full min-w-0 max-w-full text-left transition select-none cursor-pointer overflow-hidden box-border ${
           isSelected
             ? "bg-black/[0.06] dark:bg-white/[0.08]"
             : "hover:bg-black/[0.03] dark:hover:bg-white/[0.04] active:bg-black/[0.06] dark:active:bg-white/[0.06]"
@@ -368,10 +368,10 @@ export function CommsDirectory({
         </div>
 
         {/* Center: Name & Last Message preview */}
-        <div className="min-w-0 flex-1 flex flex-col justify-center">
-          <div className="flex items-center justify-between mb-0.5">
+        <div className="min-w-0 flex-1 flex flex-col justify-center overflow-hidden">
+          <div className="flex items-center justify-between mb-0.5 w-full min-w-0 gap-2">
             <h4
-              className={`text-[16px] truncate leading-tight ${
+              className={`text-[16px] truncate leading-tight min-w-0 flex-1 ${
                 hasUnread
                   ? "font-bold text-[#111110] dark:text-white"
                   : "font-semibold text-zinc-900 dark:text-zinc-100"
@@ -383,7 +383,7 @@ export function CommsDirectory({
             {/* Right Top: Timestamp formatted like WhatsApp */}
             {chat.lastMessageTime && (
               <span
-                className={`text-[12px] shrink-0 ml-2 font-mono ${
+                className={`text-[12px] shrink-0 font-mono whitespace-nowrap text-right ${
                   hasUnread
                     ? "text-[#F95721] font-semibold"
                     : "text-zinc-400 dark:text-zinc-500"
@@ -394,10 +394,10 @@ export function CommsDirectory({
             )}
           </div>
 
-          <div className="flex items-center justify-between gap-2 mt-0.5">
+          <div className="flex items-center justify-between gap-2 mt-0.5 w-full min-w-0">
             {/* Center Bottom: Single-line preview with inline read receipts */}
             <p
-              className={`text-[15px] truncate leading-snug flex-1 flex items-center ${
+              className={`text-[15px] truncate leading-snug flex-1 flex items-center min-w-0 ${
                 hasUnread
                   ? "font-semibold text-zinc-900 dark:text-zinc-100"
                   : "text-zinc-500 dark:text-zinc-400"
@@ -451,7 +451,7 @@ export function CommsDirectory({
 
   return (
     <div
-      className={`h-full flex flex-col bg-white dark:bg-[#111213] border-r border-black/[0.08] dark:border-white/[0.08] overflow-hidden select-none relative ${className}`}
+      className={`h-full w-full min-w-0 max-w-full flex flex-col bg-white dark:bg-[#111213] border-r border-black/[0.08] dark:border-white/[0.08] overflow-hidden select-none relative ${className}`}
     >
       {/* 1. TOP OF PAGE: Huge bold title: Comms (34px, white, bold) + Top-right + button */}
       <div className="px-4 pt-4 pb-2.5 bg-white dark:bg-[#111213]">
