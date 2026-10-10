@@ -12,6 +12,7 @@ export interface Channel {
   last_message?: {
     body: string;
     sender_name?: string;
+    sender_id?: string;
     created_at: string;
   } | null;
   unread_count?: number;

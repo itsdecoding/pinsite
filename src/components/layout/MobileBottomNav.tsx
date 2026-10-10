@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -21,7 +21,52 @@ export function MobileBottomNav() {
   const router = useRouter();
   const { user, profile } = useUserSession();
   const [showProfileSheet, setShowProfileSheet] = useState(false);
-  const supabase = createClient();
+  const [unreadCommsCount, setUnreadCommsCount] = useState(0);
+  const supabase = React.useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let isMounted = true;
+
+    async function loadUnreadCount() {
+      try {
+        const { count } = await supabase
+          .from("notifications")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user!.id)
+          .is("read_at", null);
+
+        if (isMounted && typeof count === "number") {
+          setUnreadCommsCount(count);
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    loadUnreadCount();
+
+    const ch = supabase
+      .channel(`mobile-unread-badge-${user.id}-${Math.random().toString(36).substring(2, 7)}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadUnreadCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(ch);
+    };
+  }, [user?.id, supabase]);
 
   const role =
     profile?.role ||
@@ -199,13 +244,18 @@ export function MobileBottomNav() {
                 }`}
               >
                 <div
-                  className={`p-1.5 rounded-xl transition ${
+                  className={`p-1.5 rounded-xl transition relative ${
                     isActive
                       ? "bg-[#7F3922]/15 text-[#F95721]"
                       : "bg-transparent text-current"
                   }`}
                 >
                   <Icon className="w-5 h-5" />
+                  {item.label === "Comms" && unreadCommsCount > 0 && (
+                    <span className="absolute -top-0.5 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center shadow-sm">
+                      {unreadCommsCount > 99 ? "99+" : unreadCommsCount}
+                    </span>
+                  )}
                 </div>
                 <span className="text-[10px] tracking-tight leading-none mt-0.5">
                   {item.label}

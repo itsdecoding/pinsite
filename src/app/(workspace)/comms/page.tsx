@@ -87,6 +87,7 @@ function CommsHubContainer() {
           activeChannelId={activeChannelId}
           activeDmUser={activeDmUser}
           onlineUsers={onlineUsers}
+          currentUserId={currentUserId}
           onSelectChannel={handleSelectChannel}
           onSelectDm={handleSelectDm}
         />
