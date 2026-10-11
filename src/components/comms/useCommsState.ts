@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useUserSession } from "@/contexts/UserSessionContext";
 
 export interface Channel {
   id: string;
@@ -70,12 +71,33 @@ export interface DMConversation {
 export function useCommsState() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user: sessionUser, profile: sessionProfile } = useUserSession();
   const supabase = useMemo(() => createClient(), []);
 
-  // Core state
-  const [currentUserId, setCurrentUserId] = useState<string>("");
-  const [currentUserProfile, setCurrentUserProfile] = useState<PublicProfile | null>(null);
+  // Core state - initialized immediately from UserSessionContext to eliminate async race condition
+  const [currentUserId, setCurrentUserId] = useState<string>(sessionUser?.id || "");
+  const [currentUserProfile, setCurrentUserProfile] = useState<PublicProfile | null>(
+    sessionProfile
+      ? { id: sessionProfile.id, full_name: sessionProfile.full_name, role: sessionProfile.role }
+      : null
+  );
   const [loading, setLoading] = useState(true);
+
+  // Sync state if session updates
+  useEffect(() => {
+    if (sessionUser?.id && currentUserId !== sessionUser.id) {
+      setCurrentUserId(sessionUser.id);
+    }
+    if (sessionProfile && currentUserProfile?.id !== sessionProfile.id) {
+      const prof = {
+        id: sessionProfile.id,
+        full_name: sessionProfile.full_name,
+        role: sessionProfile.role,
+      };
+      setCurrentUserProfile(prof);
+      profileCacheRef.current[sessionProfile.id] = prof;
+    }
+  }, [sessionUser, sessionProfile, currentUserId, currentUserProfile]);
 
   // Channels & DM Conversations
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -176,17 +198,25 @@ export function useCommsState() {
           data: { user },
         } = await supabase.auth.getUser();
 
-        if (user && mounted) {
-          setCurrentUserId(user.id);
+        const activeUser = user || sessionUser;
+
+        if (activeUser && mounted) {
+          setCurrentUserId(activeUser.id);
           const { data: myProfile } = await supabase
             .from("profiles")
             .select("id, full_name, role")
-            .eq("id", user.id)
+            .eq("id", activeUser.id)
             .maybeSingle();
 
-          if (myProfile && mounted) {
-            setCurrentUserProfile(myProfile);
-            profileCacheRef.current[user.id] = myProfile;
+          const resolvedProfile = myProfile || sessionProfile;
+          if (resolvedProfile && mounted) {
+            const prof = {
+              id: resolvedProfile.id,
+              full_name: resolvedProfile.full_name,
+              role: resolvedProfile.role,
+            };
+            setCurrentUserProfile(prof);
+            profileCacheRef.current[activeUser.id] = prof;
           }
         }
 

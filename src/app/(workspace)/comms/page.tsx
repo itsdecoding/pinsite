@@ -109,6 +109,7 @@ function CommsHubContainer() {
           isLoading={isMessagesLoading}
           currentUserId={currentUserId}
           currentUserRole={currentUserProfile?.role || "caller"}
+          currentUserProfile={currentUserProfile}
           onlineUsers={onlineUsers}
           totalTeamCount={teamMembers.length + 1}
           teamMembers={teamMembers}

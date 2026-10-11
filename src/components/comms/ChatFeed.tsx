@@ -10,7 +10,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Channel, PublicProfile, Message, MessageAttachment } from "./useCommsState";
-import { MessageItem } from "./MessageItem";
+import { MessageItem, cleanSenderName } from "./MessageItem";
 import { MessageComposer } from "./MessageComposer";
 
 interface ChatFeedProps {
@@ -21,6 +21,7 @@ interface ChatFeedProps {
   isLoading: boolean;
   currentUserId: string;
   currentUserRole?: string;
+  currentUserProfile?: PublicProfile | null;
   onlineUsers: Set<string>;
   totalTeamCount?: number;
   teamMembers?: PublicProfile[];
@@ -47,6 +48,7 @@ export function ChatFeed({
   isLoading,
   currentUserId,
   currentUserRole = "caller",
+  currentUserProfile,
   onlineUsers,
   totalTeamCount = 5,
   teamMembers = [],
@@ -176,7 +178,7 @@ export function ChatFeed({
                     </span>
                   ) : (
                     <span className="text-zinc-500 dark:text-zinc-400">
-                      {onlineCount} of {totalTeamCount} online
+                      {totalTeamCount} members
                     </span>
                   )}
                 </p>
@@ -250,7 +252,16 @@ export function ChatFeed({
 
               {/* Message List with Consecutive Grouping */}
               {group.items.map((msg, index) => {
-                const isCurrent = msg.sender_id === currentUserId;
+                const cleanUserFullName = cleanSenderName(currentUserProfile?.full_name);
+                const cleanMsgSenderName = cleanSenderName(msg.profiles?.full_name);
+
+                const isCurrent = Boolean(
+                  (currentUserId && msg.sender_id === currentUserId) ||
+                  (currentUserProfile?.id && msg.sender_id === currentUserProfile.id) ||
+                  (cleanUserFullName &&
+                    cleanMsgSenderName &&
+                    cleanMsgSenderName.toLowerCase() === cleanUserFullName.toLowerCase())
+                );
                 const prevMsg = group.items[index - 1];
 
                 const isSameSenderAsPrev =

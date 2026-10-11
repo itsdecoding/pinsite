@@ -25,6 +25,13 @@ interface MessageItemProps {
   quotedMessage?: Message | null;
 }
 
+export function cleanSenderName(rawName?: string): string {
+  if (!rawName) return "Teammate";
+  return rawName
+    .replace(/\s*\((?:Admin|Caller|Developer|Manager|Staff|Operator|User|Owner)\)/gi, "")
+    .trim();
+}
+
 export function MessageItem({
   message,
   isCurrentUser,
@@ -41,7 +48,9 @@ export function MessageItem({
   const [isSaving, setIsSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const senderName = message.profiles?.full_name || (isCurrentUser ? "You" : "Teammate");
+  const senderName = isCurrentUser
+    ? "You"
+    : cleanSenderName(message.profiles?.full_name);
 
   const formatTime = (ts: string) => {
     try {
@@ -111,11 +120,18 @@ export function MessageItem({
   const isDelivered = Boolean(message.id);
 
   // Quote source
-  const replyInfo = message.reply_to || (quotedMessage ? {
-    id: quotedMessage.id,
-    sender_name: quotedMessage.profiles?.full_name || "Teammate",
-    body: quotedMessage.body,
-  } : null);
+  const replyInfo = message.reply_to
+    ? {
+        ...message.reply_to,
+        sender_name: cleanSenderName(message.reply_to.sender_name),
+      }
+    : quotedMessage
+    ? {
+        id: quotedMessage.id,
+        sender_name: cleanSenderName(quotedMessage.profiles?.full_name),
+        body: quotedMessage.body,
+      }
+    : null;
 
   return (
     <div

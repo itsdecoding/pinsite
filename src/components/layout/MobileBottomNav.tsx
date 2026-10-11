@@ -21,9 +21,14 @@ export function MobileBottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, profile } = useUserSession();
+  const [mounted, setMounted] = useState(false);
   const [showProfileSheet, setShowProfileSheet] = useState(false);
   const [unreadCommsCount, setUnreadCommsCount] = useState(0);
   const supabase = React.useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -86,53 +91,49 @@ export function MobileBottomNav() {
     router.push("/studio/login");
   };
 
-  const getTodayHref = React.useCallback(() => {
-    if (role === "caller") return "/studio/queue";
-    if (role === "developer") return "/studio/projects";
-    return "/studio/dashboard";
-  }, [role]);
-
   const navItems = React.useMemo(() => {
     const isCaller = role === "caller";
     const primaryLabel = isCaller ? "Queue" : "Projects";
     const primaryHref = isCaller ? "/studio/queue" : "/studio/projects";
     const PrimaryIcon = isCaller ? PhoneCall : FolderKanban;
+    const isManagerOrAdmin = role === "admin" || role === "manager";
 
-    const items = [
+    return [
       {
+        id: "primary",
         label: primaryLabel,
         href: primaryHref,
         icon: PrimaryIcon,
         isAction: false,
       },
       {
+        id: "comms",
         label: "Comms",
         href: "/studio/comms",
         icon: MessageSquare,
         isAction: false,
       },
       {
+        id: "today",
         label: "Today",
-        href: getTodayHref(),
+        href: isManagerOrAdmin ? "/studio/dashboard" : primaryHref,
         icon: LayoutDashboard,
         isAction: false,
       },
       {
+        id: "profile",
         label: "Profile",
         href: "#profile",
         icon: User,
         isAction: true,
       },
     ];
+  }, [role]);
 
-    // Guarantee strictly unique tabs
-    const seen = new Set<string>();
-    return items.filter((item) => {
-      if (seen.has(item.label)) return false;
-      seen.add(item.label);
-      return true;
-    });
-  }, [role, getTodayHref]);
+  // Prevent SSR hydration duplication on client mount
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <>
@@ -214,17 +215,23 @@ export function MobileBottomNav() {
         <div className="grid grid-cols-4 max-w-lg mx-auto w-full">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive =
-              !item.isAction &&
-              (pathname === item.href ||
-                pathname.startsWith(item.href) ||
-                pathname === item.href.replace(/^\/studio/, "") ||
-                pathname.startsWith(item.href.replace(/^\/studio/, "")));
+            let isActive = false;
+
+            if (item.id === "comms") {
+              isActive = pathname.startsWith("/studio/comms") || pathname.startsWith("/comms");
+            } else if (item.id === "today") {
+              isActive = pathname.startsWith("/studio/dashboard") || pathname.startsWith("/dashboard");
+            } else if (item.id === "primary") {
+              isActive =
+                (pathname.startsWith(item.href) || pathname.startsWith(item.href.replace(/^\/studio/, ""))) &&
+                !pathname.startsWith("/studio/dashboard") &&
+                !pathname.startsWith("/dashboard");
+            }
 
             if (item.isAction) {
               return (
                 <button
-                  key={item.label}
+                  key={item.id}
                   type="button"
                   onClick={() => setShowProfileSheet(true)}
                   className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition active:scale-95 ${
@@ -251,7 +258,7 @@ export function MobileBottomNav() {
 
             return (
               <Link
-                key={item.href}
+                key={item.id}
                 href={item.href}
                 className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition active:scale-95 ${
                   isActive
@@ -267,7 +274,7 @@ export function MobileBottomNav() {
                   }`}
                 >
                   <Icon className="w-5 h-5" />
-                  {item.label === "Comms" && unreadCommsCount > 0 && (
+                  {item.id === "comms" && unreadCommsCount > 0 && (
                     <span className="absolute -top-0.5 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center shadow-sm">
                       {unreadCommsCount > 99 ? "99+" : unreadCommsCount}
                     </span>
