@@ -451,11 +451,11 @@ export function CommsDirectory({
 
   return (
     <div
-      className={`h-full w-full min-w-0 max-w-full flex flex-col bg-white dark:bg-[#111213] border-r border-black/[0.08] dark:border-white/[0.08] overflow-hidden select-none relative ${className}`}
+      className={`h-full w-full min-w-0 max-w-full flex flex-col bg-white dark:bg-[#111213] border-r-0 lg:border-r border-black/[0.08] dark:border-white/[0.08] overflow-hidden select-none relative ${className}`}
     >
       {/* 1. TOP OF PAGE: Huge bold title: Comms (34px, white, bold) + Top-right + button */}
-      <div className="px-4 pt-4 pb-2.5 bg-white dark:bg-[#111213]">
-        <div className="flex items-center justify-between mb-3">
+      <div className="px-4 pt-4 pb-2.5 bg-white dark:bg-[#111213] w-full min-w-0 max-w-full shrink-0 overflow-hidden">
+        <div className="flex items-center justify-between mb-3 w-full min-w-0">
           <h1 className="text-[34px] font-bold text-[#111110] dark:text-white tracking-tight leading-none">
             Comms
           </h1>
@@ -463,21 +463,21 @@ export function CommsDirectory({
             type="button"
             onClick={() => setIsNewDmOpen(true)}
             title="Start new chat"
-            className="w-9 h-9 rounded-full bg-black/[0.05] dark:bg-white/[0.08] hover:bg-[#7F3922]/20 text-zinc-700 dark:text-zinc-200 hover:text-[#F95721] flex items-center justify-center transition active:scale-95"
+            className="w-9 h-9 rounded-full bg-black/[0.05] dark:bg-white/[0.08] hover:bg-[#7F3922]/20 text-zinc-700 dark:text-zinc-200 hover:text-[#F95721] flex items-center justify-center transition active:scale-95 shrink-0"
           >
             <Plus className="w-5 h-5 stroke-[2.5]" />
           </button>
         </div>
 
         {/* 2. SEARCH BAR: Full-width rounded pill, gray background, search icon */}
-        <div className="relative mb-3">
+        <div className="relative mb-3 w-full min-w-0">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
           <input
             type="text"
             placeholder="Search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-black/[0.05] dark:bg-[#1C1D1F] border border-black/[0.06] dark:border-white/[0.06] rounded-full pl-9 pr-8 py-2 text-sm text-[#111110] dark:text-white placeholder-zinc-400 focus:outline-none focus:border-[#7F3922]/60 transition"
+            className="w-full min-w-0 bg-black/[0.05] dark:bg-[#1C1D1F] border border-black/[0.06] dark:border-white/[0.06] rounded-full pl-9 pr-8 py-2 text-sm text-[#111110] dark:text-white placeholder-zinc-400 focus:outline-none focus:border-[#7F3922]/60 transition box-border"
           />
           {searchQuery && (
             <button
@@ -490,7 +490,7 @@ export function CommsDirectory({
         </div>
 
         {/* 3. FILTER CHIPS (Horizontal Scroll): All · Unread (N) · Channels · DMs · Pinned */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 w-full min-w-0 max-w-full">
           <button
             type="button"
             onClick={() => setFilterTab("all")}
@@ -554,7 +554,7 @@ export function CommsDirectory({
       </div>
 
       {/* 4. CHAT ROSTER (UNIFIED SCROLLABLE LIST) */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700/30">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden w-full min-w-0 max-w-full scrollbar-thin scrollbar-thumb-zinc-700/30">
         {totalVisible === 0 ? (
           /* EMPTY STATE */
           <div className="h-full flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-200">

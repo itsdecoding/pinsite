@@ -273,7 +273,7 @@ export function MessageComposer({
   const hasContent = text.trim().length > 0 || pendingAttachments.length > 0;
 
   return (
-    <div className="relative bg-white dark:bg-[#111213] border-t border-black/[0.06] dark:border-white/[0.08] p-2 sm:p-3 select-none">
+    <div className="relative w-full min-w-0 max-w-full bg-white dark:bg-[#111213] border-t border-black/[0.06] dark:border-white/[0.08] p-2 sm:p-3 select-none">
       {/* Hidden File Input */}
       <input
         ref={fileInputRef}
@@ -287,7 +287,7 @@ export function MessageComposer({
       {showEmojiPicker && (
         <div
           ref={emojiPickerRef}
-          className="absolute bottom-full mb-2 left-2 z-50 shadow-2xl rounded-2xl overflow-hidden border border-black/10 dark:border-white/10 animate-in fade-in zoom-in-95 duration-150"
+          className="absolute bottom-full mb-2 left-2 max-w-[calc(100vw-1rem)] z-50 shadow-2xl rounded-2xl overflow-hidden border border-black/10 dark:border-white/10 animate-in fade-in zoom-in-95 duration-150"
         >
           <EmojiPicker
             onEmojiClick={handleEmojiSelect}
@@ -414,7 +414,7 @@ export function MessageComposer({
         </div>
 
         {/* Center Textarea */}
-        <div className="flex-1 bg-black/[0.03] dark:bg-[#1E1F20] border border-black/[0.06] dark:border-white/[0.06] rounded-2xl px-3.5 py-2 focus-within:border-[#7F3922]/60 transition min-h-[40px] flex items-center">
+        <div className="flex-1 min-w-0 bg-black/[0.03] dark:bg-[#1E1F20] border border-black/[0.06] dark:border-white/[0.06] rounded-2xl px-3.5 py-2 focus-within:border-[#7F3922]/60 transition min-h-[40px] flex items-center">
           <textarea
             ref={textareaRef}
             value={text}

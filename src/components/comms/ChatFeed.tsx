@@ -139,7 +139,7 @@ export function ChatFeed({
 
   return (
     <div
-      className={`h-full flex flex-col bg-[#F7F5F0] dark:bg-[#0B0C0D] border-x border-black/[0.08] dark:border-white/[0.08] overflow-hidden select-none relative ${className}`}
+      className={`h-full w-full min-w-0 max-w-full flex flex-col bg-[#F7F5F0] dark:bg-[#0B0C0D] border-x-0 lg:border-x border-black/[0.08] dark:border-white/[0.08] overflow-hidden select-none relative ${className}`}
     >
       {/* WhatsApp Header: Clean, quiet, no fake badges */}
       <div className="px-3.5 py-2.5 sm:py-3 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between gap-3 bg-white/70 dark:bg-[#141516] backdrop-blur-md z-10">
