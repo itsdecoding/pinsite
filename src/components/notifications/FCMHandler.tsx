@@ -81,11 +81,11 @@ export function FCMHandler() {
       if (currentToken) {
         registeredTokenRef.current = currentToken;
 
-        // Determine device type
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-          navigator.userAgent
-        );
-        const deviceType = isMobile ? "mobile" : "web";
+        // Determine device type matching backend constraints ('mobile_ios', 'mobile_android', 'desktop', 'unknown')
+        const ua = navigator.userAgent.toLowerCase();
+        const isIOS = /iphone|ipad|ipod/.test(ua);
+        const isAndroid = /android/.test(ua);
+        const deviceType = isIOS ? "mobile_ios" : isAndroid ? "mobile_android" : "desktop";
 
         // Save token to server
         const supabase = createClient();

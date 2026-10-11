@@ -55,13 +55,26 @@ export async function POST(req: NextRequest) {
     const trimmedToken = token.trim();
     const admin = getAdminClient();
 
+    // Normalize device_type to match DB check constraint: ('mobile_ios', 'mobile_android', 'desktop', 'unknown')
+    let normalizedDeviceType: "mobile_ios" | "mobile_android" | "desktop" | "unknown" = "unknown";
+    const ua = (user_agent || req.headers.get("user-agent") || "").toLowerCase();
+    const dt = String(device_type || "").toLowerCase();
+
+    if (dt === "mobile_ios" || dt === "ios" || ua.includes("iphone") || ua.includes("ipad")) {
+      normalizedDeviceType = "mobile_ios";
+    } else if (dt === "mobile_android" || dt === "android" || ua.includes("android")) {
+      normalizedDeviceType = "mobile_android";
+    } else if (dt === "desktop" || dt === "web" || dt === "browser" || ua.includes("windows") || ua.includes("macintosh") || ua.includes("linux")) {
+      normalizedDeviceType = "desktop";
+    }
+
     const { error } = await admin.from("fcm_tokens").upsert(
       {
         user_id: user.id,
         token: trimmedToken,
-        device_type: device_type || "web",
+        device_type: normalizedDeviceType,
         user_agent: user_agent || req.headers.get("user-agent") || null,
-        last_seen_at: new Date().toISOString(),
+        last_used_at: new Date().toISOString(),
       },
       { onConflict: "token" }
     );

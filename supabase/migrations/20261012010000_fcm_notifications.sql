@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS public.fcm_tokens (
   device_type TEXT DEFAULT 'web',
   user_agent TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  last_used_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Index for speedy token lookup per user
