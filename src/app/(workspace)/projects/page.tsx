@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   FolderKanban,
   CheckCircle,
@@ -14,6 +14,9 @@ import {
   CheckCircle2,
   ArrowRight,
   X,
+  Trash2,
+  ChevronDown,
+  Search,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { EntityComments } from "@/components/comms/EntityComments";
@@ -47,11 +50,38 @@ const COLUMNS: { id: Task["status"]; label: string; color: string }[] = [
   { id: "done", label: "Done", color: "bg-emerald-500" },
 ];
 
+function getTaskType(title: string, desc?: string | null): "DELIVERABLE" | "BUG" | "FEATURE" {
+  const text = `${title} ${desc || ""}`.toLowerCase();
+  if (text.includes("bug") || text.includes("fix") || text.includes("issue") || text.includes("error")) {
+    return "BUG";
+  }
+  if (text.includes("feature") || text.includes("add") || text.includes("build") || text.includes("create")) {
+    return "FEATURE";
+  }
+  return "DELIVERABLE";
+}
+
+function getTypeBadgeStyle(type: "DELIVERABLE" | "BUG" | "FEATURE") {
+  switch (type) {
+    case "BUG":
+      return "bg-rose-500/10 text-rose-500 dark:text-rose-400 border-rose-500/20";
+    case "FEATURE":
+      return "bg-sky-500/10 text-sky-500 dark:text-sky-400 border-sky-500/20";
+    case "DELIVERABLE":
+    default:
+      return "bg-[#F95721]/10 text-[#F95721] border-[#F95721]/20";
+  }
+}
+
 export default function ProjectsKanbanPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [developers, setDevelopers] = useState<Developer[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+
+  // Column tab navigation & search (Content OS reference)
+  const [activeColumn, setActiveColumn] = useState<Task["status"]>("todo");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // New Task Modal state
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
@@ -59,6 +89,7 @@ export default function ProjectsKanbanPage() {
   const [newClientName, setNewClientName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newStatus, setNewStatus] = useState<Task["status"]>("todo");
+  const [newType, setNewType] = useState<"DELIVERABLE" | "FEATURE" | "BUG">("DELIVERABLE");
   const [newDueDate, setNewDueDate] = useState("");
   const [newDevId, setNewDevId] = useState("");
   const [isCreatingTask, setIsCreatingTask] = useState(false);
@@ -114,18 +145,49 @@ export default function ProjectsKanbanPage() {
     }
   }
 
+  async function handleDeleteTask(taskId: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this task?")) return;
+
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    if (activeTask?.id === taskId) {
+      setActiveTask(null);
+    }
+
+    try {
+      const res = await fetch(`/api/tasks?id=${taskId}`, { method: "DELETE" });
+      if (!res.ok) {
+        await supabase
+          .from("tasks")
+          .update({ deleted_at: new Date().toISOString() })
+          .eq("id", taskId);
+      }
+    } catch (err: any) {
+      console.warn("Failed to delete task:", err);
+      loadTasks();
+    }
+  }
+
   async function handleCreateTask(e: React.FormEvent) {
     e.preventDefault();
     if (!newTitle.trim()) return;
 
     setIsCreatingTask(true);
     setCreateTaskError(null);
+
+    let finalTitle = newTitle.trim();
+    if (newType === "BUG" && !finalTitle.toLowerCase().includes("bug")) {
+      finalTitle = `[Bug] ${finalTitle}`;
+    } else if (newType === "FEATURE" && !finalTitle.toLowerCase().includes("feature")) {
+      finalTitle = `[Feature] ${finalTitle}`;
+    }
+
     try {
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: newTitle.trim(),
+          title: finalTitle,
           client_name: newClientName.trim() || "General Project",
           description: newDescription.trim() || null,
           status: newStatus,
@@ -147,6 +209,7 @@ export default function ProjectsKanbanPage() {
       setNewClientName("");
       setNewDescription("");
       setNewStatus("todo");
+      setNewType("DELIVERABLE");
       setNewDueDate("");
       setNewDevId("");
       setIsNewTaskModalOpen(false);
@@ -155,6 +218,103 @@ export default function ProjectsKanbanPage() {
     } finally {
       setIsCreatingTask(false);
     }
+  }
+
+  const filteredTasks = useMemo(() => {
+    if (!searchQuery.trim()) return tasks;
+    const q = searchQuery.toLowerCase();
+    return tasks.filter(
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        (t.projects?.client_name && t.projects.client_name.toLowerCase().includes(q)) ||
+        (t.description && t.description.toLowerCase().includes(q))
+    );
+  }, [tasks, searchQuery]);
+
+  const filteredMobileTasks = useMemo(() => {
+    return filteredTasks.filter((t) => t.status === activeColumn);
+  }, [filteredTasks, activeColumn]);
+
+  function renderTaskCard(task: Task) {
+    const type = getTaskType(task.title, task.description);
+    return (
+      <div
+        key={task.id}
+        onClick={() => openTaskDetail(task)}
+        className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] hover:border-[#F95721]/50 rounded-2xl p-4 shadow-sm transition-all cursor-pointer space-y-2.5 group"
+      >
+        {/* Card Top: Type badge, Client badge, Delete icon */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <span
+              className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-md border ${getTypeBadgeStyle(
+                type
+              )}`}
+            >
+              {type}
+            </span>
+            {task.projects?.client_name && (
+              <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/5 text-zinc-600 dark:text-zinc-400 border border-black/5 dark:border-white/5 truncate max-w-[130px]">
+                {task.projects.client_name}
+              </span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => handleDeleteTask(task.id, e)}
+            title="Delete task"
+            className="p-1 -mr-1 -mt-1 text-zinc-400 hover:text-rose-500 rounded-lg transition shrink-0"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Task Title (Bold, max 2 lines with ellipsis) */}
+        <h4 className="text-[14px] sm:text-[15px] font-bold text-[#111110] dark:text-[#F5F3EF] leading-snug line-clamp-2 group-hover:text-[#F95721] transition-colors">
+          {task.title}
+        </h4>
+
+        {/* Card Meta & Status Dropdown */}
+        <div className="flex items-center justify-between pt-1">
+          <div className="flex items-center gap-2 text-[11px] text-[#6E6B66] dark:text-[#8A8680] font-mono">
+            <span className="flex items-center gap-1">
+              <Calendar className="w-3 h-3 text-zinc-400" />
+              {task.due_date
+                ? new Date(task.due_date).toLocaleDateString([], {
+                    month: "short",
+                    day: "numeric",
+                  })
+                : "No date"}
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3 text-[#F95721]" />
+              {task.hours_logged || 0}h
+            </span>
+          </div>
+
+          {/* Status dropdown bottom-right */}
+          <div className="relative">
+            <select
+              value={task.status}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) =>
+                handleStatusChange(task.id, e.target.value as Task["status"])
+              }
+              className="appearance-none text-xs font-semibold pl-3 pr-7 py-1 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-zinc-800 dark:text-zinc-200 outline-none focus:border-[#F95721] cursor-pointer"
+            >
+              <option value="todo">To Do</option>
+              <option value="in_progress">In Progress</option>
+              <option value="review">Review</option>
+              <option value="blocked">Blocked</option>
+              <option value="done">Done</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-zinc-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   useEffect(() => {
@@ -259,36 +419,92 @@ export default function ProjectsKanbanPage() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924] pt-2">
+      {/* Header (Clean, large, bold title without marketing copy; small + button on mobile) */}
+      <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924] pt-1">
         <div>
-          <span className="text-[11px] font-mono tracking-widest uppercase text-[#F95721] font-semibold">
-            DEVELOPMENT KANBAN
-          </span>
-          <h1 className="text-3xl sm:text-4xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-1">
-            Engineered for velocity.
+          <h1 className="text-2xl sm:text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
+            Projects
           </h1>
-          <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1">
-            Task execution board for your development squad and client deliverables.
-          </p>
         </div>
 
+        {/* Small + button on mobile, standard on desktop */}
         <button
           onClick={() => {
             setCreateTaskError(null);
             setIsNewTaskModalOpen(true);
           }}
-          className="py-2.5 px-5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs shadow-sm flex items-center gap-2 transition-all active:scale-[0.98] shrink-0"
+          title="New Task"
+          className="w-9 h-9 sm:w-auto sm:px-4 sm:py-2 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0"
         >
           <Plus className="w-4 h-4 stroke-[2.5]" />
-          <span>New Task</span>
+          <span className="hidden sm:inline">New Task</span>
         </button>
       </div>
 
-      {/* 5-Column Kanban Board */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 overflow-x-auto pb-6">
+      {/* Mobile Board (Content OS Reference) */}
+      <div className="space-y-4 md:hidden">
+        {/* Search Cards Input */}
+        <div className="relative w-full">
+          <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search cards..."
+            className="w-full text-xs pl-9 pr-3.5 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl text-[#111110] dark:text-[#F5F3EF] placeholder-zinc-400 outline-none focus:border-[#F95721] transition-colors"
+          />
+        </div>
+
+        {/* Horizontal Scrollable Column Tab Bar: [ To Do (N) ] [ In Progress (N) ] ... */}
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-1 -mx-4 px-4">
+          {COLUMNS.map((col) => {
+            const count = tasks.filter((t) => t.status === col.id).length;
+            const isActive = activeColumn === col.id;
+            return (
+              <button
+                key={col.id}
+                type="button"
+                onClick={() => setActiveColumn(col.id)}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shrink-0 ${
+                  isActive
+                    ? "bg-[#F95721] text-white shadow-sm"
+                    : "bg-black/5 dark:bg-white/5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border border-black/5 dark:border-white/5"
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    isActive ? "bg-white" : col.color
+                  }`}
+                />
+                <span>{col.label}</span>
+                <span
+                  className={`text-[11px] font-mono ${
+                    isActive ? "text-white/90" : "text-zinc-400 dark:text-zinc-500"
+                  }`}
+                >
+                  ({count})
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Mobile Active Column Cards Feed */}
+        <div className="space-y-3 pt-1">
+          {filteredMobileTasks.length === 0 ? (
+            <div className="py-16 text-center text-xs text-zinc-400 dark:text-zinc-500 font-medium">
+              No tasks in {COLUMNS.find((c) => c.id === activeColumn)?.label || "this column"}
+            </div>
+          ) : (
+            filteredMobileTasks.map((task) => renderTaskCard(task))
+          )}
+        </div>
+      </div>
+
+      {/* Desktop 5-Column Kanban Board */}
+      <div className="hidden md:grid md:grid-cols-5 gap-4 overflow-x-auto pb-6">
         {COLUMNS.map((col) => {
-          const colTasks = tasks.filter((t) => t.status === col.id);
+          const colTasks = filteredTasks.filter((t) => t.status === col.id);
 
           return (
             <div
@@ -311,51 +527,11 @@ export default function ProjectsKanbanPage() {
               {/* Task Cards */}
               <div className="flex-1 overflow-y-auto space-y-3 pr-1">
                 {colTasks.length === 0 ? (
-                  <div className="text-center py-8 text-[11px] text-[#6E6B66] dark:text-[#8A8680] border border-dashed border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl">
-                    Empty column
+                  <div className="text-center py-12 text-xs text-[#6E6B66] dark:text-[#8A8680]">
+                    No tasks in {col.label}
                   </div>
                 ) : (
-                  colTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      onClick={() => openTaskDetail(task)}
-                      className="bg-black/5 dark:bg-white/5 hover:border-[#F95721]/50 border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl p-4 shadow-sm transition-all cursor-pointer space-y-3 group"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-[10px] font-mono uppercase tracking-wider text-[#F95721] font-semibold truncate">
-                          {task.projects?.client_name || "Deliverable"}
-                        </span>
-                        <span className="text-[10px] font-mono text-[#6E6B66] dark:text-[#8A8680] flex items-center gap-1 shrink-0">
-                          <Clock className="w-3 h-3 text-[#F95721]" />
-                          {task.hours_logged || 0}h
-                        </span>
-                      </div>
-
-                      <p className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF] leading-snug group-hover:text-[#F95721] transition-colors">
-                        {task.title}
-                      </p>
-
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-[10px] font-mono text-[#6E6B66] dark:text-[#8A8680] flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {task.due_date ? new Date(task.due_date).toLocaleDateString([], { month: "short", day: "numeric" }) : "No date"}
-                        </span>
-
-                        <select
-                          value={task.status}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => handleStatusChange(task.id, e.target.value as Task["status"])}
-                          className="text-[10px] bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-full px-2 py-0.5 text-[#111110] dark:text-[#F5F3EF] outline-none"
-                        >
-                          <option value="todo">To Do</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="review">Review</option>
-                          <option value="blocked">Blocked</option>
-                          <option value="done">Done</option>
-                        </select>
-                      </div>
-                    </div>
-                  ))
+                  colTasks.map((task) => renderTaskCard(task))
                 )}
               </div>
             </div>
@@ -551,10 +727,27 @@ export default function ProjectsKanbanPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-mono font-semibold uppercase text-[#6E6B66] dark:text-[#8A8680] mb-1.5">
-                    Initial Column Status
+                    Task Type
+                  </label>
+                  <select
+                    value={newType}
+                    onChange={(e) =>
+                      setNewType(e.target.value as "DELIVERABLE" | "FEATURE" | "BUG")
+                    }
+                    className="w-full text-xs px-3 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none transition-colors"
+                  >
+                    <option value="DELIVERABLE">Deliverable</option>
+                    <option value="FEATURE">Feature</option>
+                    <option value="BUG">Bug</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-mono font-semibold uppercase text-[#6E6B66] dark:text-[#8A8680] mb-1.5">
+                    Initial Status
                   </label>
                   <select
                     value={newStatus}

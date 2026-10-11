@@ -121,3 +121,50 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+    const serverSupabase = createServerClient();
+    let {
+      data: { user },
+    } = await serverSupabase.auth.getUser();
+
+    const admin = createAdminClient(supabaseUrl, supabaseServiceKey);
+
+    if (!user) {
+      const authHeader = req.headers.get("authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.replace("Bearer ", "").trim();
+        const { data: jwtData } = await admin.auth.getUser(token);
+        user = jwtData.user;
+      }
+    }
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized: Active session required" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const taskId = searchParams.get("id");
+
+    if (!taskId) {
+      return NextResponse.json({ error: "Task ID is required" }, { status: 400 });
+    }
+
+    const { error } = await admin
+      .from("tasks")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", taskId);
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error("Task deletion error:", err);
+    return NextResponse.json({ error: err.message || "Failed to delete task" }, { status: 500 });
+  }
+}
+
