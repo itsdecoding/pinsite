@@ -249,7 +249,7 @@ export function MobileBottomNav() {
       {/* WhatsApp / Agency OS Fixed Mobile Bottom Nav */}
       <nav
         aria-label="Mobile Navigation"
-        className="fixed bottom-0 inset-x-0 lg:hidden z-40 bg-white/90 dark:bg-[#111213]/95 backdrop-blur-2xl border-t border-black/[0.08] dark:border-white/[0.12] shadow-[0_-10px_25px_rgba(0,0,0,0.2)] pb-[env(safe-area-inset-bottom)] px-3 py-1.5 transition-all"
+        className="fixed bottom-0 inset-x-0 lg:hidden z-40 bg-white/90 dark:bg-[#111213]/95 backdrop-blur-2xl border-t border-black/[0.08] dark:border-white/[0.12] shadow-[0_-10px_25px_rgba(0,0,0,0.2)] pb-[env(safe-area-inset-bottom)] px-1 py-1.5 transition-all"
       >
         <div className="grid grid-cols-4 max-w-lg mx-auto w-full">
           {navItems.map((item) => {
@@ -273,7 +273,7 @@ export function MobileBottomNav() {
                   key={item.id}
                   type="button"
                   onClick={() => setShowProfileSheet(true)}
-                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition active:scale-95 ${
+                  className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-2xl transition active:scale-95 ${
                     showProfileSheet
                       ? "text-[#F95721] font-semibold"
                       : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
@@ -288,7 +288,7 @@ export function MobileBottomNav() {
                   >
                     <Icon className="w-5 h-5" />
                   </div>
-                  <span className="text-[10px] tracking-tight leading-none mt-0.5">
+                  <span className="text-[10px] tracking-tight leading-none mt-0.5 whitespace-nowrap">
                     {item.label}
                   </span>
                 </button>
@@ -304,7 +304,7 @@ export function MobileBottomNav() {
                     window.dispatchEvent(new CustomEvent("reset-comms-view"));
                   }
                 }}
-                className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition active:scale-95 ${
+                className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-2xl transition active:scale-95 ${
                   isActive
                     ? "text-[#F95721] font-semibold"
                     : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
@@ -324,7 +324,7 @@ export function MobileBottomNav() {
                     </span>
                   )}
                 </div>
-                <span className="text-[10px] tracking-tight leading-none mt-0.5">
+                <span className="text-[10px] tracking-tight leading-none mt-0.5 whitespace-nowrap">
                   {item.label}
                 </span>
               </Link>

@@ -50,8 +50,11 @@ const COLUMNS: { id: Task["status"]; label: string; color: string }[] = [
   { id: "done", label: "Done", color: "bg-emerald-500" },
 ];
 
-function getTaskType(title: string, desc?: string | null): "DELIVERABLE" | "BUG" | "FEATURE" {
+function getTaskType(title: string, desc?: string | null): "DELIVERABLE" | "BUG" | "FEATURE" | "DESIGN" {
   const text = `${title} ${desc || ""}`.toLowerCase();
+  if (text.includes("design") || text.includes("ui") || text.includes("ux") || text.includes("figma") || text.includes("mockup")) {
+    return "DESIGN";
+  }
   if (text.includes("bug") || text.includes("fix") || text.includes("issue") || text.includes("error")) {
     return "BUG";
   }
@@ -61,12 +64,14 @@ function getTaskType(title: string, desc?: string | null): "DELIVERABLE" | "BUG"
   return "DELIVERABLE";
 }
 
-function getTypeBadgeStyle(type: "DELIVERABLE" | "BUG" | "FEATURE") {
+function getTypeBadgeStyle(type: "DELIVERABLE" | "BUG" | "FEATURE" | "DESIGN") {
   switch (type) {
     case "BUG":
       return "bg-rose-500/10 text-rose-500 dark:text-rose-400 border-rose-500/20";
     case "FEATURE":
       return "bg-sky-500/10 text-sky-500 dark:text-sky-400 border-sky-500/20";
+    case "DESIGN":
+      return "bg-purple-500/10 text-purple-500 dark:text-purple-400 border-purple-500/20";
     case "DELIVERABLE":
     default:
       return "bg-[#F95721]/10 text-[#F95721] border-[#F95721]/20";
@@ -79,9 +84,12 @@ export default function ProjectsKanbanPage() {
   const [loading, setLoading] = useState(true);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
-  // Column tab navigation & search (Content OS reference)
+  // Column tab navigation, search, filters & view mode (Content OS reference)
   const [activeColumn, setActiveColumn] = useState<Task["status"]>("todo");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedClient, setSelectedClient] = useState<string>("all");
+  const [selectedType, setSelectedType] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<"board" | "list">("board");
 
   // New Task Modal state
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
@@ -89,7 +97,7 @@ export default function ProjectsKanbanPage() {
   const [newClientName, setNewClientName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newStatus, setNewStatus] = useState<Task["status"]>("todo");
-  const [newType, setNewType] = useState<"DELIVERABLE" | "FEATURE" | "BUG">("DELIVERABLE");
+  const [newType, setNewType] = useState<"DELIVERABLE" | "FEATURE" | "BUG" | "DESIGN">("DELIVERABLE");
   const [newDueDate, setNewDueDate] = useState("");
   const [newDevId, setNewDevId] = useState("");
   const [isCreatingTask, setIsCreatingTask] = useState(false);
@@ -180,6 +188,8 @@ export default function ProjectsKanbanPage() {
       finalTitle = `[Bug] ${finalTitle}`;
     } else if (newType === "FEATURE" && !finalTitle.toLowerCase().includes("feature")) {
       finalTitle = `[Feature] ${finalTitle}`;
+    } else if (newType === "DESIGN" && !finalTitle.toLowerCase().includes("design")) {
+      finalTitle = `[Design] ${finalTitle}`;
     }
 
     try {
@@ -220,16 +230,35 @@ export default function ProjectsKanbanPage() {
     }
   }
 
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    tasks.forEach((t) => {
+      if (t.projects?.client_name) {
+        set.add(t.projects.client_name);
+      }
+    });
+    return Array.from(set).sort();
+  }, [tasks]);
+
   const filteredTasks = useMemo(() => {
-    if (!searchQuery.trim()) return tasks;
-    const q = searchQuery.toLowerCase();
-    return tasks.filter(
-      (t) =>
-        t.title.toLowerCase().includes(q) ||
-        (t.projects?.client_name && t.projects.client_name.toLowerCase().includes(q)) ||
-        (t.description && t.description.toLowerCase().includes(q))
-    );
-  }, [tasks, searchQuery]);
+    let list = tasks;
+    if (selectedClient !== "all") {
+      list = list.filter((t) => t.projects?.client_name === selectedClient);
+    }
+    if (selectedType !== "all") {
+      list = list.filter((t) => getTaskType(t.title, t.description) === selectedType);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          (t.projects?.client_name && t.projects.client_name.toLowerCase().includes(q)) ||
+          (t.description && t.description.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [tasks, selectedClient, selectedType, searchQuery]);
 
   const filteredMobileTasks = useMemo(() => {
     return filteredTasks.filter((t) => t.status === activeColumn);
@@ -418,125 +447,354 @@ export default function ProjectsKanbanPage() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Header (Clean, large, bold title without marketing copy; small + button on mobile) */}
-      <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924] pt-1">
+    <div className="px-4 sm:px-0 space-y-6">
+      {/* ======================================================== */}
+      {/* MOBILE HEADER & CONTROLS (Content OS 5-Tier Structure)  */}
+      {/* ======================================================== */}
+      <div className="space-y-3.5 md:hidden pt-1">
+        {/* Tier 1 & 2: Small uppercase context label + Big bold title */}
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
+          <span className="text-[11px] font-mono font-bold tracking-[0.16em] uppercase text-[#F95721] block">
+            DEVELOPMENT
+          </span>
+          <h1 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-0.5">
             Projects
           </h1>
         </div>
 
-        {/* Small + button on mobile, standard on desktop */}
+        {/* Tier 3: View toggle pills [ Board | List ] + Search cards input */}
+        <div className="flex items-center gap-2">
+          {/* View toggle pills */}
+          <div className="flex items-center p-1 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl shrink-0">
+            <button
+              type="button"
+              onClick={() => setViewMode("board")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                viewMode === "board"
+                  ? "bg-white dark:bg-[#1C1A17] text-[#111110] dark:text-[#F5F3EF] shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+              }`}
+            >
+              Board
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                viewMode === "list"
+                  ? "bg-white dark:bg-[#1C1A17] text-[#111110] dark:text-[#F5F3EF] shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+              }`}
+            >
+              List
+            </button>
+          </div>
+
+          {/* Search bar */}
+          <div className="relative flex-1 min-w-0">
+            <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search cards..."
+              className="w-full text-xs pl-9 pr-3.5 py-2 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl text-[#111110] dark:text-[#F5F3EF] placeholder-zinc-400 outline-none focus:border-[#F95721] transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* Tier 4: Filter Dropdowns: [ All Clients ▾ ] [ All Types ▾ ] */}
+        <div className="grid grid-cols-2 gap-2">
+          {/* Client Filter */}
+          <div className="relative">
+            <select
+              value={selectedClient}
+              onChange={(e) => setSelectedClient(e.target.value)}
+              className="w-full appearance-none text-xs font-semibold pl-3.5 pr-8 py-2 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[#111110] dark:text-[#F5F3EF] outline-none focus:border-[#F95721] cursor-pointer truncate"
+            >
+              <option value="all">All Clients</option>
+              {clientOptions.map((client) => (
+                <option key={client} value={client}>
+                  {client}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-zinc-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+
+          {/* Type Filter */}
+          <div className="relative">
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              className="w-full appearance-none text-xs font-semibold pl-3.5 pr-8 py-2 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[#111110] dark:text-[#F5F3EF] outline-none focus:border-[#F95721] cursor-pointer"
+            >
+              <option value="all">All Types</option>
+              <option value="DELIVERABLE">Deliverable</option>
+              <option value="DESIGN">Design</option>
+              <option value="FEATURE">Feature</option>
+              <option value="BUG">Bug</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-zinc-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+        </div>
+
+        {/* Tier 5: Prominent Full-Width Button: + New Project */}
         <button
+          type="button"
           onClick={() => {
             setCreateTaskError(null);
             setIsNewTaskModalOpen(true);
           }}
-          title="New Task"
-          className="w-9 h-9 sm:w-auto sm:px-4 sm:py-2 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0"
+          className="w-full py-2.5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-2xl font-bold text-xs shadow-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
         >
           <Plus className="w-4 h-4 stroke-[2.5]" />
-          <span className="hidden sm:inline">New Task</span>
+          <span>New Project</span>
         </button>
-      </div>
 
-      {/* Mobile Board (Content OS Reference) */}
-      <div className="space-y-4 md:hidden">
-        {/* Search Cards Input */}
-        <div className="relative w-full">
-          <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search cards..."
-            className="w-full text-xs pl-9 pr-3.5 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl text-[#111110] dark:text-[#F5F3EF] placeholder-zinc-400 outline-none focus:border-[#F95721] transition-colors"
-          />
-        </div>
-
-        {/* Horizontal Scrollable Column Tab Bar: [ To Do (N) ] [ In Progress (N) ] ... */}
-        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-1 -mx-4 px-4">
-          {COLUMNS.map((col) => {
-            const count = tasks.filter((t) => t.status === col.id).length;
-            const isActive = activeColumn === col.id;
-            return (
-              <button
-                key={col.id}
-                type="button"
-                onClick={() => setActiveColumn(col.id)}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shrink-0 ${
-                  isActive
-                    ? "bg-[#F95721] text-white shadow-sm"
-                    : "bg-black/5 dark:bg-white/5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border border-black/5 dark:border-white/5"
-                }`}
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    isActive ? "bg-white" : col.color
-                  }`}
-                />
-                <span>{col.label}</span>
-                <span
-                  className={`text-[11px] font-mono ${
-                    isActive ? "text-white/90" : "text-zinc-400 dark:text-zinc-500"
-                  }`}
-                >
-                  ({count})
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Mobile Active Column Cards Feed */}
-        <div className="space-y-3 pt-1">
-          {filteredMobileTasks.length === 0 ? (
-            <div className="py-16 text-center text-xs text-zinc-400 dark:text-zinc-500 font-medium">
-              No tasks in {COLUMNS.find((c) => c.id === activeColumn)?.label || "this column"}
+        {/* Tab Row (Horizontal Scroll, active orange filled pill) */}
+        {viewMode === "board" && (
+          <div className="relative -mx-4 px-4 pt-1">
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-1 pr-6">
+              {COLUMNS.map((col) => {
+                const count = filteredTasks.filter((t) => t.status === col.id).length;
+                const isActive = activeColumn === col.id;
+                return (
+                  <button
+                    key={col.id}
+                    type="button"
+                    onClick={() => setActiveColumn(col.id)}
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shrink-0 ${
+                      isActive
+                        ? "bg-[#F95721] text-white shadow-sm font-bold"
+                        : "bg-black/5 dark:bg-white/5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border border-black/5 dark:border-white/5"
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        isActive ? "bg-white" : col.color
+                      }`}
+                    />
+                    <span>{col.label}</span>
+                    <span
+                      className={`text-[11px] font-mono ${
+                        isActive ? "text-white/90" : "text-zinc-400 dark:text-zinc-500"
+                      }`}
+                    >
+                      ({count})
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+          </div>
+        )}
+
+        {/* Mobile Content Area */}
+        <div className="pt-1">
+          {viewMode === "board" ? (
+            /* Board View: Active Column Cards or Vertically Centered Empty State */
+            filteredMobileTasks.length === 0 ? (
+              <div className="min-h-[280px] flex flex-col items-center justify-center text-center p-6 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 flex items-center justify-center text-zinc-400 dark:text-zinc-500">
+                  <FolderKanban className="w-6 h-6 stroke-[1.5]" />
+                </div>
+                <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500">
+                  No projects in {COLUMNS.find((c) => c.id === activeColumn)?.label || "this column"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewStatus(activeColumn);
+                    setCreateTaskError(null);
+                    setIsNewTaskModalOpen(true);
+                  }}
+                  className="text-xs font-semibold text-[#F95721] hover:underline flex items-center gap-1 pt-0.5"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add project
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredMobileTasks.map((task) => renderTaskCard(task))}
+              </div>
+            )
           ) : (
-            filteredMobileTasks.map((task) => renderTaskCard(task))
+            /* List View */
+            filteredTasks.length === 0 ? (
+              <div className="min-h-[280px] flex flex-col items-center justify-center text-center p-6 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 flex items-center justify-center text-zinc-400 dark:text-zinc-500">
+                  <FolderKanban className="w-6 h-6 stroke-[1.5]" />
+                </div>
+                <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500">
+                  No projects match your filters
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {filteredTasks.map((task) => renderTaskCard(task))}
+              </div>
+            )
           )}
         </div>
       </div>
 
-      {/* Desktop 5-Column Kanban Board */}
-      <div className="hidden md:grid md:grid-cols-5 gap-4 overflow-x-auto pb-6">
-        {COLUMNS.map((col) => {
-          const colTasks = filteredTasks.filter((t) => t.status === col.id);
+      {/* ======================================================== */}
+      {/* DESKTOP VIEW (md:block)                                  */}
+      {/* ======================================================== */}
+      <div className="hidden md:block space-y-6">
+        {/* Desktop Header */}
+        <div className="flex items-center justify-between pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924] pt-1">
+          <div>
+            <span className="text-[11px] font-mono font-bold tracking-[0.16em] uppercase text-[#F95721] block">
+              DEVELOPMENT
+            </span>
+            <h1 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-0.5">
+              Projects
+            </h1>
+          </div>
 
-          return (
-            <div
-              key={col.id}
-              className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-4 flex flex-col min-w-[240px] max-h-[750px] shadow-sm"
-            >
-              {/* Column Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#2D2924] mb-3">
-                <div className="flex items-center gap-2">
-                  <span className={`w-2.5 h-2.5 rounded-full ${col.color}`} />
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#111110] dark:text-[#F5F3EF] font-mono">
-                    {col.label}
-                  </span>
-                </div>
-                <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/5 text-[#6E6B66] dark:text-[#8A8680]">
-                  {colTasks.length}
-                </span>
-              </div>
-
-              {/* Task Cards */}
-              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                {colTasks.length === 0 ? (
-                  <div className="text-center py-12 text-xs text-[#6E6B66] dark:text-[#8A8680]">
-                    No tasks in {col.label}
-                  </div>
-                ) : (
-                  colTasks.map((task) => renderTaskCard(task))
-                )}
-              </div>
+          <div className="flex items-center gap-3">
+            {/* View toggle */}
+            <div className="flex items-center p-1 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl">
+              <button
+                type="button"
+                onClick={() => setViewMode("board")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  viewMode === "board"
+                    ? "bg-white dark:bg-[#1C1A17] text-[#111110] dark:text-[#F5F3EF] shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                }`}
+              >
+                Board
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  viewMode === "list"
+                    ? "bg-white dark:bg-[#1C1A17] text-[#111110] dark:text-[#F5F3EF] shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                }`}
+              >
+                List
+              </button>
             </div>
-          );
-        })}
+
+            <button
+              onClick={() => {
+                setCreateTaskError(null);
+                setIsNewTaskModalOpen(true);
+              }}
+              className="px-4 py-2 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>New Task</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Desktop Controls (Search & Filters) */}
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search cards..."
+              className="w-full text-xs pl-9 pr-3.5 py-2 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl text-[#111110] dark:text-[#F5F3EF] placeholder-zinc-400 outline-none focus:border-[#F95721] transition-colors"
+            />
+          </div>
+
+          <div className="relative w-44">
+            <select
+              value={selectedClient}
+              onChange={(e) => setSelectedClient(e.target.value)}
+              className="w-full appearance-none text-xs font-semibold pl-3.5 pr-8 py-2 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[#111110] dark:text-[#F5F3EF] outline-none focus:border-[#F95721] cursor-pointer truncate"
+            >
+              <option value="all">All Clients</option>
+              {clientOptions.map((client) => (
+                <option key={client} value={client}>
+                  {client}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-zinc-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+
+          <div className="relative w-40">
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              className="w-full appearance-none text-xs font-semibold pl-3.5 pr-8 py-2 rounded-2xl bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[#111110] dark:text-[#F5F3EF] outline-none focus:border-[#F95721] cursor-pointer"
+            >
+              <option value="all">All Types</option>
+              <option value="DELIVERABLE">Deliverable</option>
+              <option value="DESIGN">Design</option>
+              <option value="FEATURE">Feature</option>
+              <option value="BUG">Bug</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-zinc-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+        </div>
+
+        {/* Desktop View Mode switcher */}
+        {viewMode === "board" ? (
+          /* Desktop 5-Column Kanban Board */
+          <div className="grid grid-cols-5 gap-4 overflow-x-auto pb-6">
+            {COLUMNS.map((col) => {
+              const colTasks = filteredTasks.filter((t) => t.status === col.id);
+
+              return (
+                <div
+                  key={col.id}
+                  className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-4 flex flex-col min-w-[220px] max-h-[750px] shadow-sm"
+                >
+                  {/* Column Header */}
+                  <div className="flex items-center justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#2D2924] mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2.5 h-2.5 rounded-full ${col.color}`} />
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#111110] dark:text-[#F5F3EF] font-mono">
+                        {col.label}
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/5 text-[#6E6B66] dark:text-[#8A8680]">
+                      {colTasks.length}
+                    </span>
+                  </div>
+
+                  {/* Task Cards */}
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                    {colTasks.length === 0 ? (
+                      <div className="text-center py-12 text-xs text-[#6E6B66] dark:text-[#8A8680]">
+                        No tasks in {col.label}
+                      </div>
+                    ) : (
+                      colTasks.map((task) => renderTaskCard(task))
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* Desktop List View */
+          <div className="space-y-3 max-w-4xl">
+            {filteredTasks.length === 0 ? (
+              <div className="min-h-[280px] flex flex-col items-center justify-center text-center p-6 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 flex items-center justify-center text-zinc-400 dark:text-zinc-500">
+                  <FolderKanban className="w-6 h-6 stroke-[1.5]" />
+                </div>
+                <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500">
+                  No projects match your filters
+                </p>
+              </div>
+            ) : (
+              filteredTasks.map((task) => renderTaskCard(task))
+            )}
+          </div>
+        )}
       </div>
 
       {/* Task Detail & Time Logging Drawer */}
@@ -735,11 +993,12 @@ export default function ProjectsKanbanPage() {
                   <select
                     value={newType}
                     onChange={(e) =>
-                      setNewType(e.target.value as "DELIVERABLE" | "FEATURE" | "BUG")
+                      setNewType(e.target.value as "DELIVERABLE" | "FEATURE" | "BUG" | "DESIGN")
                     }
                     className="w-full text-xs px-3 py-2.5 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] focus:border-[#F95721] rounded-2xl text-[#111110] dark:text-[#F5F3EF] outline-none transition-colors"
                   >
                     <option value="DELIVERABLE">Deliverable</option>
+                    <option value="DESIGN">Design</option>
                     <option value="FEATURE">Feature</option>
                     <option value="BUG">Bug</option>
                   </select>
