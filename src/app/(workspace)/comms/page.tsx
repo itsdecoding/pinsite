@@ -37,12 +37,21 @@ function CommsHubContainer() {
     broadcastTyping,
   } = useCommsState();
 
-  // If a deep-link is present on mount, jump directly to chat view on mobile
+  // Listen for reset events (e.g. tapping Comms in mobile bottom nav)
   useEffect(() => {
-    if (searchParams.get("dm") || searchParams.get("channel")) {
-      setMobileView("chat");
-    }
-  }, [searchParams]);
+    const handleResetView = () => {
+      setMobileView("list");
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("channel");
+        url.searchParams.delete("dm");
+        window.history.replaceState({}, "", url.toString());
+      }
+    };
+
+    window.addEventListener("reset-comms-view", handleResetView);
+    return () => window.removeEventListener("reset-comms-view", handleResetView);
+  }, []);
 
   const handleSelectChannel = (channelId: string) => {
     selectChannel(channelId);
@@ -56,6 +65,12 @@ function CommsHubContainer() {
 
   const handleBack = () => {
     setMobileView("list");
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("channel");
+      url.searchParams.delete("dm");
+      window.history.replaceState({}, "", url.toString());
+    }
   };
 
   if (loading) {

@@ -281,6 +281,11 @@ export function MobileBottomNav() {
               <Link
                 key={item.id}
                 href={item.href}
+                onClick={() => {
+                  if (item.id === "comms" && typeof window !== "undefined") {
+                    window.dispatchEvent(new CustomEvent("reset-comms-view"));
+                  }
+                }}
                 className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition active:scale-95 ${
                   isActive
                     ? "text-[#F95721] font-semibold"
