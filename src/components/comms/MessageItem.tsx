@@ -146,23 +146,30 @@ export function MessageItem({
   const shouldRenderText =
     isEditing || (message.body && (!isAutoPlaceholderText || imageAttachments.length === 0));
 
+  const hasOnlyImages =
+    imageAttachments.length > 0 &&
+    !shouldRenderText &&
+    fileAttachments.length === 0 &&
+    !replyInfo &&
+    !isEditing;
+
   const renderImageGrid = () => {
     if (imageAttachments.length === 0) return null;
 
     const count = imageAttachments.length;
 
-    // 1 Image: Max single preview
+    // 1 Image: Prominent single preview
     if (count === 1) {
       return (
         <div
-          className="relative rounded-xl overflow-hidden max-w-[280px] sm:max-w-[340px] cursor-pointer group bg-black/10 dark:bg-black/30 mb-1"
+          className="relative rounded-xl overflow-hidden w-[240px] sm:w-[300px] max-w-full cursor-pointer group bg-black/10 dark:bg-black/30 mb-1"
           onClick={() => setLightboxIndex(0)}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageAttachments[0].url}
             alt={imageAttachments[0].name || "Attachment"}
-            className="w-full max-h-[340px] object-cover rounded-xl group-hover:opacity-95 transition"
+            className="w-full max-h-[300px] sm:max-h-[340px] object-cover rounded-xl group-hover:opacity-95 transition"
             onError={(e) => {
               (e.currentTarget as HTMLElement).style.display = "none";
             }}
@@ -174,7 +181,7 @@ export function MessageItem({
     // 2 Images: Side-by-side columns (refer reference image 4)
     if (count === 2) {
       return (
-        <div className="grid grid-cols-2 gap-1 rounded-xl overflow-hidden max-w-[320px] sm:max-w-[360px] aspect-[4/3] sm:aspect-[16/11] mb-1">
+        <div className="grid grid-cols-2 gap-1 rounded-xl overflow-hidden w-[260px] sm:w-[320px] max-w-full h-[185px] sm:h-[225px] mb-1">
           {imageAttachments.map((att, idx) => (
             <div
               key={idx}
@@ -199,7 +206,7 @@ export function MessageItem({
     // 3 Images: 1 large on left, 2 stacked on right
     if (count === 3) {
       return (
-        <div className="grid grid-cols-2 grid-rows-2 gap-1 rounded-xl overflow-hidden max-w-[320px] sm:max-w-[360px] aspect-square mb-1">
+        <div className="grid grid-cols-2 grid-rows-2 gap-1 rounded-xl overflow-hidden w-[260px] sm:w-[320px] max-w-full h-[210px] sm:h-[250px] mb-1">
           <div
             className="row-span-2 relative w-full h-full overflow-hidden cursor-pointer group bg-black/15 dark:bg-black/30"
             onClick={() => setLightboxIndex(0)}
@@ -251,7 +258,7 @@ export function MessageItem({
     const extraCount = count - 4;
 
     return (
-      <div className="grid grid-cols-2 grid-rows-2 gap-1 rounded-xl overflow-hidden max-w-[320px] sm:max-w-[360px] aspect-square mb-1">
+      <div className="grid grid-cols-2 grid-rows-2 gap-1 rounded-xl overflow-hidden w-[260px] sm:w-[320px] max-w-full aspect-square mb-1">
         {displayList.map((att, idx) => (
           <div
             key={idx}
@@ -297,7 +304,11 @@ export function MessageItem({
 
       {/* WhatsApp Message Bubble (NO outer box, right-aligned for self, left for others) */}
       <div
-        className={`relative max-w-[85%] sm:max-w-[70%] md:max-w-[65%] px-3 py-2 rounded-2xl shadow-sm text-xs leading-relaxed transition ${
+        className={`relative ${
+          hasOnlyImages
+            ? "max-w-[90%] sm:max-w-[75%] md:max-w-[70%] p-1.5 sm:p-2"
+            : "max-w-[85%] sm:max-w-[70%] md:max-w-[65%] px-3 py-2"
+        } rounded-2xl shadow-sm text-xs leading-relaxed transition ${
           isCurrentUser
             ? "bg-[#7F3922]/25 dark:bg-[#7F3922]/35 border border-[#7F3922]/40 text-[#111110] dark:text-[#F5F3EF] rounded-tr-sm"
             : "bg-zinc-200/90 dark:bg-[#1E1F20] border border-black/[0.04] dark:border-white/[0.06] text-[#111110] dark:text-[#E4E2DF] rounded-tl-sm"
@@ -305,7 +316,11 @@ export function MessageItem({
       >
         {/* Channel Sender Name (shown only once per consecutive group, not on own messages) */}
         {!isCurrentUser && isChannel && showSenderHeader && (
-          <div className="text-[11px] font-bold text-[#F95721] mb-1 select-none">
+          <div
+            className={`text-[11px] font-bold text-[#F95721] mb-1 select-none ${
+              hasOnlyImages ? "px-1 pt-0.5" : ""
+            }`}
+          >
             {senderName}
           </div>
         )}
@@ -396,7 +411,13 @@ export function MessageItem({
         ) : null}
 
         {/* WhatsApp Timestamp & Read Receipts inside Bubble, Bottom-Right */}
-        <div className="flex items-center justify-end gap-1 float-right ml-3 mt-1 select-none">
+        <div
+          className={`${
+            hasOnlyImages
+              ? "flex items-center justify-end gap-1 pt-0.5 px-1 select-none"
+              : "flex items-center justify-end gap-1 float-right ml-3 mt-1 select-none"
+          }`}
+        >
           <span className="text-[10px] text-zinc-400 dark:text-zinc-400 font-mono leading-none">
             {formatTime(message.created_at)}
           </span>
@@ -418,6 +439,7 @@ export function MessageItem({
             </span>
           )}
         </div>
+
 
         {/* Floating Quick Action Button on Hover (Reply, Copy, Options) */}
         {!isEditing && (
