@@ -299,7 +299,7 @@ export function useCommsState() {
   }, [supabase, refreshConversations]);
 
   // 3. Selection Handlers
-  const selectChannel = useCallback((channelId: string) => {
+  const selectChannel = useCallback((channelId: string, updateUrl: boolean = true) => {
     const targetKey = `ch_${channelId}`;
     activeTargetRef.current = targetKey;
     setActiveView("channel");
@@ -313,11 +313,13 @@ export function useCommsState() {
       prev.map((c) => (c.id === channelId ? { ...c, unread_count: 0 } : c))
     );
 
-    // Update URL query parameter cleanly without reload
-    const url = new URL(window.location.href);
-    url.searchParams.set("channel", channelId);
-    url.searchParams.delete("dm");
-    window.history.replaceState({}, "", url.toString());
+    // Update URL query parameter cleanly without reload (if requested)
+    if (updateUrl && typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("channel", channelId);
+      url.searchParams.delete("dm");
+      window.history.replaceState({}, "", url.toString());
+    }
 
     if (messagesCacheRef.current[targetKey]) {
       setMessages(messagesCacheRef.current[targetKey]);
@@ -424,9 +426,15 @@ export function useCommsState() {
       }
     }
 
-    // Default fallback: select first channel if neither channel nor DM is selected
+    // Default fallback: select #general (or first non-alert channel) if neither channel nor DM is selected
     if (channels.length > 0) {
-      selectChannel(channels[0].id);
+      const defaultCh =
+        channels.find((c) => c.name.toLowerCase() === "general") ||
+        channels.find(
+          (c) => !["alerts", "alert", "system", "management"].includes(c.name.toLowerCase())
+        ) ||
+        channels[0];
+      selectChannel(defaultCh.id, false);
     }
   }, [loading, currentUserId, searchParams, channels, teamMembers, selectDm, selectChannel, resolveProfile]);
 
