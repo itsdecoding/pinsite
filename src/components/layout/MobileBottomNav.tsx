@@ -36,14 +36,12 @@ export function MobileBottomNav() {
 
     async function loadUnreadCount() {
       try {
-        const { count } = await supabase
-          .from("notifications")
-          .select("*", { count: "exact", head: true })
-          .eq("user_id", user!.id)
-          .is("read_at", null);
-
-        if (isMounted && typeof count === "number") {
-          setUnreadCommsCount(count);
+        const res = await fetch("/api/messages/unread");
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted && typeof data.unread_count === "number") {
+            setUnreadCommsCount(data.unread_count);
+          }
         }
       } catch (e) {
         // Ignore
@@ -52,8 +50,27 @@ export function MobileBottomNav() {
 
     loadUnreadCount();
 
+    // Listen to live comms unread updates dispatched from CommsDirectory
+    const handleCommsUnread = (e: any) => {
+      if (typeof e.detail?.count === "number" && isMounted) {
+        setUnreadCommsCount(e.detail.count);
+      }
+    };
+    window.addEventListener("comms-unread-updated", handleCommsUnread);
+
     const ch = supabase
       .channel(`mobile-unread-badge-${user.id}-${Math.random().toString(36).substring(2, 7)}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "dm_messages",
+        },
+        () => {
+          loadUnreadCount();
+        }
+      )
       .on(
         "postgres_changes",
         {
@@ -70,6 +87,7 @@ export function MobileBottomNav() {
 
     return () => {
       isMounted = false;
+      window.removeEventListener("comms-unread-updated", handleCommsUnread);
       supabase.removeChannel(ch);
     };
   }, [user?.id, supabase]);

@@ -248,6 +248,17 @@ export function CommsDirectory({
     return allChats.reduce((acc, chat) => acc + chat.unreadCount, 0);
   }, [allChats]);
 
+  // Sync unread badge with bottom navigation
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("comms-unread-updated", {
+          detail: { count: totalUnreadCount },
+        })
+      );
+    }
+  }, [totalUnreadCount]);
+
   // Filter and sort unified chats
   const { pinnedChats, unpinnedChats } = useMemo(() => {
     let result = allChats;
