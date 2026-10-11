@@ -15,7 +15,11 @@ interface NotificationItem {
   created_at: string;
 }
 
-export function NotificationBell() {
+export function NotificationBell({
+  dropdownAlign = "up",
+}: {
+  dropdownAlign?: "up" | "down";
+} = {}) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -130,7 +134,13 @@ export function NotificationBell() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 lg:left-full lg:right-auto lg:ml-2 bottom-full lg:bottom-0 mb-2 lg:mb-0 w-80 sm:w-96 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-island dark:shadow-islandDark z-[500] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div
+          className={`absolute right-0 ${
+            dropdownAlign === "down"
+              ? "top-full mt-2"
+              : "lg:left-full lg:right-auto lg:ml-2 bottom-full lg:bottom-0 mb-2 lg:mb-0"
+          } w-80 sm:w-96 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-island dark:shadow-islandDark z-[500] overflow-hidden animate-in fade-in zoom-in-95 duration-150`}
+        >
           <div className="flex items-center justify-between px-5 py-4 border-b border-[#ECE8E1] dark:border-[#2D2924]">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">

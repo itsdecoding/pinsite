@@ -2,6 +2,7 @@ import React from "react";
 import { FloatingSidebar } from "@/components/layout/FloatingSidebar";
 import { CommandBar } from "@/components/layout/CommandBar";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
+import { MobileTopBar } from "@/components/layout/MobileTopBar";
 import { UserSessionProvider } from "@/contexts/UserSessionContext";
 
 export default function WorkspaceLayout({
@@ -19,11 +20,14 @@ export default function WorkspaceLayout({
         {/* Floating Island Sidebar (Desktop) */}
         <FloatingSidebar />
 
-        {/* Mobile Bottom Navigation Bar (< lg) */}
+        {/* Mobile Bottom Navigation Bar & Drawer (< lg) */}
         <MobileBottomNav />
 
         {/* Main Canvas Area (pl-72 gives 288px clearance for the 256px floating sidebar + 32px breathing room) */}
         <div className="flex-1 min-w-0 w-full max-w-full lg:pl-72 flex flex-col min-h-screen overflow-x-hidden">
+          {/* Mobile Top Bar for Manager & Admin (< lg) */}
+          <MobileTopBar />
+
           <main className="flex-1 min-w-0 max-w-6xl w-full mx-auto px-0 sm:px-6 lg:px-8 pt-0 sm:pt-6 pb-20 lg:pb-12 overflow-x-hidden">
             {/* Top Command Palette ⌘K */}
             <CommandBar />

@@ -12,6 +12,9 @@ import {
   LogOut,
   X,
   Users,
+  UploadCloud,
+  Bell,
+  Sparkles,
 } from "lucide-react";
 import { useUserSession } from "@/contexts/UserSessionContext";
 import { createClient } from "@/lib/supabase/client";
@@ -22,12 +25,27 @@ export function MobileBottomNav() {
   const router = useRouter();
   const { user, profile } = useUserSession();
   const [mounted, setMounted] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showProfileSheet, setShowProfileSheet] = useState(false);
   const [unreadCommsCount, setUnreadCommsCount] = useState(0);
   const supabase = React.useMemo(() => createClient(), []);
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Listen to custom events dispatched from MobileTopBar
+  useEffect(() => {
+    const handleOpenDrawer = () => setIsDrawerOpen(true);
+    const handleOpenProfile = () => setShowProfileSheet(true);
+
+    window.addEventListener("open-mobile-drawer", handleOpenDrawer);
+    window.addEventListener("open-mobile-profile", handleOpenProfile);
+
+    return () => {
+      window.removeEventListener("open-mobile-drawer", handleOpenDrawer);
+      window.removeEventListener("open-mobile-profile", handleOpenProfile);
+    };
   }, []);
 
   useEffect(() => {
@@ -92,32 +110,35 @@ export function MobileBottomNav() {
     };
   }, [user?.id, supabase]);
 
-  const inferredRole = React.useMemo(() => {
-    if (pathname.includes("/projects")) return "developer";
-    if (pathname.includes("/queue")) return "caller";
-    if (pathname.includes("/manager") || pathname.includes("/dashboard")) return "admin";
-    return null;
-  }, [pathname]);
-
   const cachedRole = React.useMemo(() => {
     if (typeof window !== "undefined") {
       try {
         return (
           localStorage.getItem("agency_user_role") ||
-          (document.cookie.match(/agency_cached_role=([^;]+)/)?.[1] ?? null)
+          (document.cookie.match(/agency_cached_role=([^;]+)/)?.[1] ?? null) ||
+          (document.cookie.match(/agency_demo_role=([^;]+)/)?.[1] ?? null)
         );
       } catch {}
     }
     return null;
   }, []);
 
-  const role =
-    profile?.role ||
-    cachedRole ||
-    inferredRole ||
-    (user?.user_metadata?.role as string) ||
-    (user?.app_metadata?.role as string) ||
-    "developer";
+  const role = React.useMemo(() => {
+    const rawRole =
+      profile?.role ||
+      cachedRole ||
+      (user?.user_metadata?.role as string) ||
+      (user?.app_metadata?.role as string);
+
+    if (rawRole) return rawRole.toLowerCase();
+    if (pathname.includes("/manager") || pathname.includes("/dashboard")) return "admin";
+    if (pathname.includes("/queue")) return "caller";
+    if (pathname.includes("/projects")) return "developer";
+    return "admin";
+  }, [profile?.role, cachedRole, user, pathname]);
+
+  const isManagerOrAdmin = role === "admin" || role === "manager" || role === "owner";
+  const isCaller = role === "caller";
 
   const handleLogout = async () => {
     try {
@@ -127,23 +148,150 @@ export function MobileBottomNav() {
     }
     document.cookie = "agency_demo_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     setShowProfileSheet(false);
+    setIsDrawerOpen(false);
     router.push("/studio/login");
   };
 
-  const navItems = React.useMemo(() => {
-    const isCaller = role === "caller";
-    const primaryLabel = isCaller ? "Queue" : "Projects";
-    const primaryHref = isCaller ? "/studio/queue" : "/studio/projects";
-    const PrimaryIcon = isCaller ? PhoneCall : FolderKanban;
-    const isManagerOrAdmin = role === "admin" || role === "manager";
-
+  // Drawer items for Manager / Admin (all 6 items)
+  const drawerItems = React.useMemo(() => {
     return [
       {
-        id: "primary",
-        label: primaryLabel,
-        href: primaryHref,
-        icon: PrimaryIcon,
+        id: "dashboard",
+        label: "Dashboard",
+        href: "/studio/dashboard",
+        icon: LayoutDashboard,
+        isActive: pathname.startsWith("/studio/dashboard") || pathname === "/dashboard",
+      },
+      {
+        id: "queue",
+        label: "Dial Queue",
+        href: "/studio/queue",
+        icon: PhoneCall,
+        isActive: pathname.startsWith("/studio/queue") || pathname === "/queue",
+      },
+      {
+        id: "projects",
+        label: "Projects",
+        href: "/studio/projects",
+        icon: FolderKanban,
+        isActive: pathname.startsWith("/studio/projects") || pathname === "/projects",
+      },
+      {
+        id: "comms",
+        label: "Comms & DMs",
+        href: "/studio/comms",
+        icon: MessageSquare,
+        badge: unreadCommsCount,
+        isActive: pathname.startsWith("/studio/comms") || pathname === "/comms",
+      },
+      {
+        id: "team",
+        label: "Team Center",
+        href: "/studio/manager/team",
+        icon: Users,
+        isActive:
+          (pathname.startsWith("/studio/manager") || pathname.startsWith("/manager")) &&
+          !pathname.includes("/ingestion"),
+      },
+      {
+        id: "ingestion",
+        label: "Import Leads",
+        href: "/studio/manager/ingestion",
+        icon: UploadCloud,
+        isActive: pathname.startsWith("/studio/manager/ingestion") || pathname === "/manager/ingestion",
+      },
+    ];
+  }, [pathname, unreadCommsCount]);
+
+  // Bottom nav 4 shortcuts mapped strictly per role
+  const navItems = React.useMemo(() => {
+    if (isManagerOrAdmin) {
+      return [
+        {
+          id: "team",
+          label: "Team Center",
+          href: "/studio/manager/team",
+          icon: Users,
+          isAction: false,
+          isActive:
+            (pathname.startsWith("/studio/manager") || pathname.startsWith("/manager")) &&
+            !pathname.includes("/ingestion"),
+        },
+        {
+          id: "queue",
+          label: "Dial Queue",
+          href: "/studio/queue",
+          icon: PhoneCall,
+          isAction: false,
+          isActive: pathname.startsWith("/studio/queue") || pathname === "/queue",
+        },
+        {
+          id: "comms",
+          label: "Comms",
+          href: "/studio/comms",
+          icon: MessageSquare,
+          isAction: false,
+          badge: unreadCommsCount,
+          isActive: pathname.startsWith("/studio/comms") || pathname === "/comms",
+        },
+        {
+          id: "profile",
+          label: "Profile",
+          href: "#profile",
+          icon: User,
+          isAction: true,
+          isActive: showProfileSheet,
+        },
+      ];
+    }
+
+    if (isCaller) {
+      return [
+        {
+          id: "queue",
+          label: "Queue",
+          href: "/studio/queue",
+          icon: PhoneCall,
+          isAction: false,
+          isActive: pathname.startsWith("/studio/queue") || pathname === "/queue",
+        },
+        {
+          id: "comms",
+          label: "Comms",
+          href: "/studio/comms",
+          icon: MessageSquare,
+          isAction: false,
+          badge: unreadCommsCount,
+          isActive: pathname.startsWith("/studio/comms") || pathname === "/comms",
+        },
+        {
+          id: "today",
+          label: "Today",
+          href: "/studio/queue",
+          icon: LayoutDashboard,
+          isAction: false,
+          isActive: false,
+        },
+        {
+          id: "profile",
+          label: "Profile",
+          href: "#profile",
+          icon: User,
+          isAction: true,
+          isActive: showProfileSheet,
+        },
+      ];
+    }
+
+    // Default Developer nav
+    return [
+      {
+        id: "projects",
+        label: "Projects",
+        href: "/studio/projects",
+        icon: FolderKanban,
         isAction: false,
+        isActive: pathname.startsWith("/studio/projects") || pathname === "/projects",
       },
       {
         id: "comms",
@@ -151,13 +299,16 @@ export function MobileBottomNav() {
         href: "/studio/comms",
         icon: MessageSquare,
         isAction: false,
+        badge: unreadCommsCount,
+        isActive: pathname.startsWith("/studio/comms") || pathname === "/comms",
       },
       {
         id: "today",
         label: "Today",
-        href: isManagerOrAdmin ? "/studio/dashboard" : primaryHref,
+        href: "/studio/projects",
         icon: LayoutDashboard,
         isAction: false,
+        isActive: false,
       },
       {
         id: "profile",
@@ -165,9 +316,10 @@ export function MobileBottomNav() {
         href: "#profile",
         icon: User,
         isAction: true,
+        isActive: showProfileSheet,
       },
     ];
-  }, [role]);
+  }, [isManagerOrAdmin, isCaller, pathname, showProfileSheet, unreadCommsCount]);
 
   // Prevent SSR hydration duplication on client mount
   if (!mounted) {
@@ -176,7 +328,125 @@ export function MobileBottomNav() {
 
   return (
     <>
-      {/* Mobile Profile Bottom Sheet */}
+      {/* ======================================================== */}
+      {/* MANAGER / ADMIN SIDE NAVIGATION DRAWER (Opens via ☰)     */}
+      {/* ======================================================== */}
+      {isManagerOrAdmin && isDrawerOpen && (
+        <div
+          role="dialog"
+          aria-label="Navigation Drawer"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm lg:hidden flex animate-in fade-in duration-200"
+          onClick={() => setIsDrawerOpen(false)}
+        >
+          <div
+            className="w-72 max-w-[85vw] h-full bg-white dark:bg-[#141516] border-r border-black/[0.1] dark:border-white/[0.12] p-5 shadow-2xl flex flex-col justify-between animate-in slide-in-from-left duration-250"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Drawer Top: User Profile Header + Close button */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-4 border-b border-black/[0.08] dark:border-white/[0.08]">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-full bg-[#7F3922]/20 border border-[#7F3922]/40 text-[#F95721] font-bold text-sm flex items-center justify-center shrink-0">
+                    {(profile?.full_name || user?.email || "U").charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF] truncate">
+                      {profile?.full_name || "Muzammil"}
+                    </h3>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 capitalize">
+                      Agency OS • <span className="font-semibold text-[#F95721]">{role}</span>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDrawerOpen(false)}
+                  className="p-1.5 rounded-full text-zinc-400 hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/10 shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Drawer Links: All 6 primary items */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono tracking-widest uppercase text-zinc-400 dark:text-zinc-500 font-bold px-3 block pb-1">
+                  NAVIGATION
+                </span>
+                {drawerItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = item.isActive;
+                  return (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      onClick={() => {
+                        setIsDrawerOpen(false);
+                        if (item.id === "comms" && typeof window !== "undefined") {
+                          window.dispatchEvent(new CustomEvent("reset-comms-view"));
+                        }
+                      }}
+                      className={`flex items-center justify-between px-3.5 py-2.5 transition active:scale-[0.98] ${
+                        isActive
+                          ? "bg-[#F95721]/15 text-[#F95721] font-bold border-l-3 border-[#F95721] rounded-r-2xl rounded-l-xs shadow-xs"
+                          : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-black/5 dark:hover:bg-white/5 rounded-2xl font-medium"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-[#F95721]" : "text-zinc-400 dark:text-zinc-500"}`} />
+                        <span className="text-xs truncate">{item.label}</span>
+                      </div>
+                      {typeof item.badge === "number" && item.badge > 0 && (
+                        <span className="min-w-[18px] h-4 px-1.5 rounded-full bg-[#F95721] text-white text-[10px] font-bold flex items-center justify-center shrink-0">
+                          {item.badge > 99 ? "99+" : item.badge}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Drawer Bottom: Theme, Notifications, Sign Out */}
+            <div className="pt-4 border-t border-black/[0.08] dark:border-white/[0.08] space-y-2">
+              <div className="flex items-center justify-between p-2.5 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04]">
+                <span className="text-xs text-zinc-600 dark:text-zinc-300 font-medium">
+                  Theme Appearance
+                </span>
+                <ThemeToggle />
+              </div>
+
+              <Link
+                href="/studio/comms"
+                onClick={() => setIsDrawerOpen(false)}
+                className="flex items-center justify-between p-2.5 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 transition"
+              >
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-[#F95721]" />
+                  <span>Notifications</span>
+                </div>
+                {unreadCommsCount > 0 && (
+                  <span className="min-w-[18px] h-4 px-1.5 rounded-full bg-[#F95721] text-white text-[10px] font-bold flex items-center justify-center">
+                    {unreadCommsCount}
+                  </span>
+                )}
+              </Link>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center gap-2 p-2.5 rounded-2xl bg-rose-500/10 text-rose-500 dark:text-rose-400 font-semibold text-xs hover:bg-rose-500/20 transition active:scale-98"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MOBILE PROFILE BOTTOM SHEET                              */}
+      {/* ======================================================== */}
       {showProfileSheet && (
         <div
           role="dialog"
@@ -219,7 +489,7 @@ export function MobileBottomNav() {
                 <ThemeToggle />
               </div>
 
-              {(role === "manager" || role === "admin") && (
+              {isManagerOrAdmin && (
                 <Link
                   href="/studio/manager/team"
                   onClick={() => setShowProfileSheet(false)}
@@ -246,7 +516,9 @@ export function MobileBottomNav() {
         </div>
       )}
 
-      {/* WhatsApp / Agency OS Fixed Mobile Bottom Nav */}
+      {/* ======================================================== */}
+      {/* MOBILE BOTTOM NAVIGATION BAR (< lg, 4 Shortcuts)        */}
+      {/* ======================================================== */}
       <nav
         aria-label="Mobile Navigation"
         className="fixed bottom-0 inset-x-0 lg:hidden z-40 bg-white/90 dark:bg-[#111213]/95 backdrop-blur-2xl border-t border-black/[0.08] dark:border-white/[0.12] shadow-[0_-10px_25px_rgba(0,0,0,0.2)] pb-[env(safe-area-inset-bottom)] px-1 py-1.5 transition-all"
@@ -254,18 +526,7 @@ export function MobileBottomNav() {
         <div className="grid grid-cols-4 max-w-lg mx-auto w-full">
           {navItems.map((item) => {
             const Icon = item.icon;
-            let isActive = false;
-
-            if (item.id === "comms") {
-              isActive = pathname.startsWith("/studio/comms") || pathname.startsWith("/comms");
-            } else if (item.id === "today") {
-              isActive = pathname.startsWith("/studio/dashboard") || pathname.startsWith("/dashboard");
-            } else if (item.id === "primary") {
-              isActive =
-                (pathname.startsWith(item.href) || pathname.startsWith(item.href.replace(/^\/studio/, ""))) &&
-                !pathname.startsWith("/studio/dashboard") &&
-                !pathname.startsWith("/dashboard");
-            }
+            const isActive = item.isActive;
 
             if (item.isAction) {
               return (
@@ -274,14 +535,14 @@ export function MobileBottomNav() {
                   type="button"
                   onClick={() => setShowProfileSheet(true)}
                   className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-2xl transition active:scale-95 ${
-                    showProfileSheet
+                    isActive
                       ? "text-[#F95721] font-semibold"
                       : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
                   }`}
                 >
                   <div
                     className={`p-1.5 rounded-xl transition ${
-                      showProfileSheet
+                      isActive
                         ? "bg-[#7F3922]/15 text-[#F95721]"
                         : "bg-transparent text-current"
                     }`}
@@ -318,9 +579,9 @@ export function MobileBottomNav() {
                   }`}
                 >
                   <Icon className="w-5 h-5" />
-                  {item.id === "comms" && unreadCommsCount > 0 && (
-                    <span className="absolute -top-0.5 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center shadow-sm">
-                      {unreadCommsCount > 99 ? "99+" : unreadCommsCount}
+                  {typeof item.badge === "number" && item.badge > 0 && (
+                    <span className="absolute -top-0.5 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center shadow-xs">
+                      {item.badge > 99 ? "99+" : item.badge}
                     </span>
                   )}
                 </div>
