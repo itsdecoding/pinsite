@@ -36,6 +36,7 @@ import {
   ShieldCheck,
   MessageSquare,
   Maximize2,
+  MoreHorizontal,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CallerCockpitOverlay } from "@/components/queue/CallerCockpitOverlay";
@@ -400,6 +401,58 @@ export default function ManagerTeamPage() {
 
     return list;
   }, [callers, searchQuery, statusFilter, roleFilter, sortBy]);
+
+  // Mobile horizontal snap carousel state & refs
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [mobileMenuCallerId, setMobileMenuCallerId] = useState<string | null>(null);
+
+  // Scroll to specific card on dot tap
+  const scrollToCard = useCallback((index: number) => {
+    setActiveCardIndex(index);
+    const cardEl = cardRefs.current[index];
+    if (cardEl) {
+      cardEl.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+    } else if (carouselRef.current) {
+      const cardWidth = carouselRef.current.offsetWidth * 0.85 + 12;
+      carouselRef.current.scrollTo({ left: index * cardWidth, behavior: "smooth" });
+    }
+  }, []);
+
+  // Update active index as user scrolls carousel
+  const handleCarouselScroll = useCallback(() => {
+    if (!carouselRef.current) return;
+    const container = carouselRef.current;
+    const scrollLeft = container.scrollLeft;
+    const firstCard = cardRefs.current[0];
+    const cardWidth = firstCard ? firstCard.offsetWidth + 12 : container.offsetWidth * 0.85 + 12;
+    const newIndex = Math.round(scrollLeft / cardWidth);
+    setActiveCardIndex(Math.min(filteredCallers.length - 1, Math.max(0, newIndex)));
+  }, [filteredCallers.length]);
+
+  // Reset carousel to first card when role filter changes
+  useEffect(() => {
+    setActiveCardIndex(0);
+    setMobileMenuCallerId(null);
+    cardRefs.current = [];
+    if (carouselRef.current) {
+      carouselRef.current.scrollTo({ left: 0, behavior: "smooth" });
+    }
+  }, [roleFilter]);
+
+  // Close mobile ⋯ menu on click outside
+  useEffect(() => {
+    function handleMenuClickOutside(event: MouseEvent) {
+      if (mobileMenuCallerId) {
+        setMobileMenuCallerId(null);
+      }
+    }
+    if (mobileMenuCallerId) {
+      document.addEventListener("mousedown", handleMenuClickOutside);
+      return () => document.removeEventListener("mousedown", handleMenuClickOutside);
+    }
+  }, [mobileMenuCallerId]);
 
   // Reassign Modal Opener
   function openReassignModal(sourceCallerId?: string, mode: "between" | "unassigned" = "between") {
@@ -803,7 +856,8 @@ export default function ManagerTeamPage() {
       {/* ========================================================================= */}
       {/* 4. TEAM ROSTER CONTROLS (Role Filter Dropdown, Search, Sort, Status)      */}
       {/* ========================================================================= */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
+      {/* Desktop Controls */}
+      <div className="hidden md:flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
         {/* Role Filter Dropdown (Replaces static CALLERS header) */}
         <div className="relative inline-block text-left" ref={roleDropdownRef}>
           <button
@@ -922,34 +976,78 @@ export default function ManagerTeamPage() {
         </div>
       </div>
 
+      {/* Mobile Role Filter Row: [All (8)] [Callers] [Mgrs] [Devs] */}
+      <div className="flex md:hidden items-center gap-2 overflow-x-auto no-scrollbar pt-2 pb-1">
+        {[
+          { key: "all", label: `All (${roleCounts.all})` },
+          { key: "caller", label: "Callers" },
+          { key: "manager", label: "Mgrs" },
+          { key: "developer", label: "Devs" },
+        ].map((pill) => {
+          const isActive = roleFilter === pill.key;
+          return (
+            <button
+              key={pill.key}
+              type="button"
+              onClick={() => setRoleFilter(pill.key as any)}
+              className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                isActive
+                  ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110] border-transparent shadow-sm"
+                  : "bg-white dark:bg-[#131414] text-[#8A8680] border-[#ECE8E1] dark:border-white/10 hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+              }`}
+            >
+              {pill.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* ========================================================================= */}
       {/* 5. CALLER CARDS GRID — QUIET HIERARCHY, 4-STATE BREAKDOWN, NO EMOJIS      */}
       {/* ========================================================================= */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className="p-5 rounded-3xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] animate-pulse space-y-4"
-            >
+        <>
+          <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="p-5 rounded-3xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] animate-pulse space-y-4"
+              >
+                <div className="h-10 bg-black/5 dark:bg-white/5 rounded-2xl w-3/4" />
+                <div className="h-16 bg-black/5 dark:bg-white/5 rounded-2xl" />
+                <div className="h-8 bg-black/5 dark:bg-white/5 rounded-xl" />
+              </div>
+            ))}
+          </div>
+          <div className="flex md:hidden overflow-hidden gap-3 -mx-4 px-4 py-2">
+            <div className="w-[85vw] max-w-[340px] shrink-0 p-5 rounded-3xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-[#262420] animate-pulse space-y-4">
               <div className="h-10 bg-black/5 dark:bg-white/5 rounded-2xl w-3/4" />
               <div className="h-16 bg-black/5 dark:bg-white/5 rounded-2xl" />
               <div className="h-8 bg-black/5 dark:bg-white/5 rounded-xl" />
             </div>
-          ))}
-        </div>
+          </div>
+        </>
       ) : filteredCallers.length === 0 ? (
-        <div className="text-center py-16 px-4 bg-white dark:bg-[#131414] rounded-3xl border border-[#ECE8E1] dark:border-white/20 space-y-3">
-          <Users className="w-10 h-10 text-[#8A8680] mx-auto opacity-50" />
-          <h3 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
-            No team members match current filters
-          </h3>
-          <p className="text-xs text-[#8A8680]">
-            Try adjusting your search query, role filter, or status filter.
-          </p>
-        </div>
+        <>
+          <div className="hidden md:block text-center py-16 px-4 bg-white dark:bg-[#131414] rounded-3xl border border-[#ECE8E1] dark:border-white/20 space-y-3">
+            <Users className="w-10 h-10 text-[#8A8680] mx-auto opacity-50" />
+            <h3 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
+              No team members match current filters
+            </h3>
+            <p className="text-xs text-[#8A8680]">
+              Try adjusting your search query, role filter, or status filter.
+            </p>
+          </div>
+          <div className="block md:hidden text-center py-12 px-4 bg-white dark:bg-[#131414] rounded-3xl border border-[#ECE8E1] dark:border-white/20 space-y-2">
+            <Users className="w-8 h-8 text-[#8A8680] mx-auto opacity-50" />
+            <p className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
+              No callers match this filter
+            </p>
+          </div>
+        </>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <>
+          <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredCallers.map((caller) => {
             const initials = caller.full_name
               .split(" ")
@@ -1244,7 +1342,282 @@ export default function ManagerTeamPage() {
               </div>
             );
           })}
-        </div>
+          </div>
+
+          {/* Mobile Horizontal Snap-Scroll Carousel */}
+          <div className="block md:hidden">
+            <div
+              ref={carouselRef}
+              onScroll={handleCarouselScroll}
+              style={{ scrollSnapType: "x mandatory" }}
+              className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar gap-3 -mx-4 px-4 py-2"
+            >
+              {filteredCallers.map((caller, index) => {
+                const initials = caller.full_name
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .toUpperCase()
+                  .slice(0, 2);
+
+                const isCaller = caller.role === "caller";
+                const isDeveloper = caller.role === "developer";
+                const isManagerOrAdmin = caller.role === "manager" || caller.role === "admin";
+                const hasOverdue = isCaller && (caller.pipeline?.overdue_callbacks || 0) > 0;
+                const hasZeroDials = isCaller && caller.dials_today === 0 && caller.active;
+                const hasAttention = hasOverdue || hasZeroDials;
+
+                return (
+                  <div
+                    key={caller.id}
+                    ref={(el) => {
+                      cardRefs.current[index] = el;
+                    }}
+                    style={{ scrollSnapAlign: "start" }}
+                    onClick={() => {
+                      if (isCaller) {
+                        setOverlayCaller(caller);
+                      }
+                    }}
+                    className={`w-[85vw] max-w-[340px] shrink-0 snap-start p-4 rounded-3xl bg-white dark:bg-[#131414] border transition-all flex flex-col justify-between cursor-pointer ${
+                      hasAttention
+                        ? "border-[#ECE8E1] dark:border-white/20 border-l-4 border-l-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.08)]"
+                        : "border-[#ECE8E1] dark:border-white/20"
+                    }`}
+                  >
+                    <div>
+                      {/* Card Header: Avatar + Name + Online Dot + Role Badge */}
+                      <div className="flex items-start justify-between gap-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div
+                            className={`w-9 h-9 rounded-xl border flex items-center justify-center font-bold text-xs shrink-0 ${
+                              isDeveloper
+                                ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/30"
+                                : isManagerOrAdmin
+                                ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30"
+                                : "bg-black/5 dark:bg-white/5 border-[#ECE8E1] dark:border-white/20 text-[#9F5639]"
+                            }`}
+                          >
+                            {initials}
+                          </div>
+
+                          <div className="min-w-0">
+                            <h3 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF] truncate">
+                              {caller.full_name}
+                            </h3>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span
+                                className={`w-2 h-2 rounded-full shrink-0 ${
+                                  caller.is_online ? "bg-emerald-500" : "bg-zinc-600"
+                                }`}
+                              />
+                              <span className="text-[11px] text-[#8A8680] font-medium">
+                                {caller.is_online ? "Online" : "Offline"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Role badge */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {caller.require_password_change && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                              Temp
+                            </span>
+                          )}
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-mono uppercase border ${
+                              isDeveloper
+                                ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20 font-bold"
+                                : isManagerOrAdmin
+                                ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 font-bold"
+                                : "bg-black/5 dark:bg-white/5 border-[#ECE8E1] dark:border-[#262420] text-[#8A8680] font-bold"
+                            }`}
+                          >
+                            {caller.role}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card Body */}
+                      {isCaller ? (
+                        <div className="mt-3.5 space-y-3">
+                          {/* Pipeline Numbers: 12 · 2 · 0 · 0 */}
+                          <div className="grid grid-cols-4 gap-1 p-2.5 rounded-2xl bg-black/[0.03] dark:bg-black/40 border border-[#ECE8E1]/80 dark:border-white/10 text-center">
+                            <div>
+                              <div className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
+                                {caller.pipeline?.dial_now ?? 0}
+                              </div>
+                              <div className="text-[10px] text-[#8A8680] font-mono uppercase mt-0.5">
+                                Dial
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
+                                {caller.pipeline?.callbacks ?? 0}
+                                {hasOverdue && (
+                                  <span className="ml-1 text-[10px] text-amber-500 font-bold">
+                                    ⚠️
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-[#8A8680] font-mono uppercase mt-0.5">
+                                CB
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF]">
+                                {caller.pipeline?.waiting ?? 0}
+                              </div>
+                              <div className="text-[10px] text-[#8A8680] font-mono uppercase mt-0.5">
+                                Wait
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                                {caller.dials_today}
+                              </div>
+                              <div className="text-[10px] text-[#8A8680] font-mono uppercase mt-0.5">
+                                Done
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Shift stats */}
+                          <div className="text-xs text-[#8A8680] font-mono flex items-center justify-between">
+                            <span className="text-[#111110] dark:text-[#F5F3EF] font-medium truncate">
+                              {caller.dials_today} dials &bull; {caller.connects_today} connects &bull; {formatDuration(caller.talk_time_seconds)} talk
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Managers / Devs: one-line description */
+                        <div className="mt-3.5 p-3 rounded-2xl bg-black/[0.03] dark:bg-black/40 border border-[#ECE8E1]/80 dark:border-white/10">
+                          <p className="text-xs text-[#8A8680] leading-relaxed">
+                            {isDeveloper
+                              ? "Dedicated to application code, sprint deliverables, and platform infrastructure."
+                              : "Full oversight of cold calling pipeline, lead distribution, and team operations."}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Mobile Card Bottom: [Reassign] or [Message] + ⋯ menu */}
+                    <div
+                      className="mt-4 pt-3 border-t border-[#ECE8E1] dark:border-white/10 flex items-center gap-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {isCaller ? (
+                        <button
+                          type="button"
+                          onClick={() => openReassignModal(caller.id)}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold border border-[#ECE8E1] dark:border-white/10 transition-colors"
+                        >
+                          <PhoneForwarded className="w-3.5 h-3.5 text-[#8A8680]" />
+                          <span>Reassign</span>
+                        </button>
+                      ) : (
+                        <Link
+                          href="/comms"
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold border border-[#ECE8E1] dark:border-white/10 transition-colors"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 text-[#8A8680]" />
+                          <span>Message</span>
+                        </Link>
+                      )}
+
+                      {/* ⋯ Menu */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMobileMenuCallerId(
+                              mobileMenuCallerId === caller.id ? null : caller.id
+                            );
+                          }}
+                          className={`p-2 rounded-xl border transition-colors ${
+                            mobileMenuCallerId === caller.id
+                              ? "bg-[#111110] dark:bg-[#F5F3EF] text-white dark:text-[#111110] border-transparent"
+                              : "bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] border-[#ECE8E1] dark:border-white/10"
+                          }`}
+                          title="More options"
+                          aria-label="More options"
+                        >
+                          <MoreHorizontal className="w-4 h-4" />
+                        </button>
+
+                        {mobileMenuCallerId === caller.id && (
+                          <div
+                            className="absolute right-0 bottom-full mb-2 w-44 rounded-2xl bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-white/20 shadow-2xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                setMobileMenuCallerId(null);
+                                handleOpenRoleModal(caller, e);
+                              }}
+                              className="w-full text-left px-3.5 py-2 text-xs text-[#111110] dark:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-2 transition-colors font-medium"
+                            >
+                              <UserCog className="w-3.5 h-3.5 text-[#8A8680]" />
+                              <span>Change Role</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                setMobileMenuCallerId(null);
+                                handleOpenResetModal(caller, e);
+                              }}
+                              className="w-full text-left px-3.5 py-2 text-xs text-amber-600 dark:text-amber-400 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-2 transition-colors font-medium"
+                            >
+                              <KeyRound className="w-3.5 h-3.5 text-amber-500" />
+                              <span>Reset Password</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Carousel Position Indicators: Dots + "1 of 8" */}
+            <div className="mt-3.5 flex flex-col items-center gap-1.5">
+              <div className="flex items-center gap-2 flex-wrap justify-center py-1">
+                {filteredCallers.map((c, idx) => {
+                  const isActive = idx === activeCardIndex;
+                  const isCallerMember = c.role === "caller";
+                  const cAttention =
+                    isCallerMember &&
+                    (((c.pipeline?.overdue_callbacks || 0) > 0) || (c.dials_today === 0 && c.active));
+
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => scrollToCard(idx)}
+                      aria-label={`Jump to ${c.full_name}`}
+                      className={`transition-all rounded-full ${
+                        isActive
+                          ? cAttention
+                            ? "w-5 h-2 bg-amber-500"
+                            : "w-5 h-2 bg-[#111110] dark:bg-[#F5F3EF]"
+                          : cAttention
+                          ? "w-2 h-2 bg-amber-500/70 hover:bg-amber-500"
+                          : "w-2 h-2 bg-[#8A8680]/30 hover:bg-[#8A8680]/60"
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+              <span className="text-[11px] font-mono text-[#8A8680]">
+                {Math.min(activeCardIndex + 1, filteredCallers.length)} of {filteredCallers.length}
+              </span>
+            </div>
+          </div>
+        </>
       )}
 
       {/* ========================================================================= */}

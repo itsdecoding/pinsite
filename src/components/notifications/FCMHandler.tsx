@@ -158,17 +158,22 @@ export function FCMHandler() {
         const body = payload.notification?.body || payload.data?.body || "";
         const url = payload.data?.url || payload.fcmOptions?.link || "/studio/comms";
 
-        // If page is hidden in background, trigger a system notification if permitted
-        if (document.visibilityState === "hidden" && Notification.permission === "granted") {
-          try {
-            new Notification(title, {
-              body,
-              icon: "/favicon.ico",
-              data: { url },
+        // Always trigger an OS system tray notification via Service Worker (works on Android Chrome & desktop)
+        if (typeof window !== "undefined" && "serviceWorker" in navigator && Notification.permission === "granted") {
+          navigator.serviceWorker.ready
+            .then((reg) => {
+              reg.showNotification(title, {
+                body,
+                icon: "/icon.png",
+                badge: "/icon.png",
+                tag: "pinsite-alert",
+                renotify: true,
+                data: { url },
+              } as NotificationOptions & { renotify?: boolean });
+            })
+            .catch((err) => {
+              console.warn("Failed to show foreground notification:", err);
             });
-          } catch {
-            // Notification constructor may fail on some mobile platforms
-          }
         }
 
         // Show elegant in-app toast

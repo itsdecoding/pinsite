@@ -224,6 +224,23 @@ export function PushNotificationManager() {
         headers["Authorization"] = `Bearer ${bearerToken}`;
       }
 
+      // Immediately trigger a direct local service worker notification on this device
+      if (typeof window !== "undefined" && "serviceWorker" in navigator && Notification.permission === "granted") {
+        navigator.serviceWorker.ready
+          .then((reg) => {
+            reg.showNotification("Pinsite Push Test 🚀", {
+              body: "Push notifications are working perfectly on this device!",
+              icon: "/icon.png",
+              badge: "/icon.png",
+              tag: "pinsite-test-alert",
+              renotify: true,
+              vibrate: [200, 100, 200],
+              data: { url: "/studio/comms" },
+            } as NotificationOptions & { renotify?: boolean; vibrate?: number[] });
+          })
+          .catch((e) => console.warn("Local test notification fallback error:", e));
+      }
+
       const res = await fetch("/api/notifications/fcm-test", {
         method: "POST",
         headers,

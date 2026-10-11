@@ -1,0 +1,18 @@
+{
+  "name": "Pinsite OS",
+  "short_name": "Pinsite",
+  "description": "Pinsite High-Velocity Agency Operations Command System",
+  "start_url": "/studio/comms",
+  "display": "standalone",
+  "background_color": "#111213",
+  "theme_color": "#F95721",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "gcm_sender_id": "103953800507"
+}

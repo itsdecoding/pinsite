@@ -5,41 +5,45 @@
 importScripts("https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js");
 
-// Initialize the Firebase app in the service worker by passing in the messagingSenderId.
-// Read config if passed via query params or self
+// Initialize Firebase with fallback defaults ensuring valid API key (capital O in 7QOc)
 const urlParams = new URLSearchParams(self.location.search);
-const apiKey = urlParams.get("apiKey");
-const projectId = urlParams.get("projectId");
-const messagingSenderId = urlParams.get("messagingSenderId");
-const appId = urlParams.get("appId");
+let apiKey = urlParams.get("apiKey") || "AIzaSyDczdM33tbYk1EsKrRYq3xvB9TxRDo7QOc";
+if (apiKey.endsWith("7Q0c")) {
+  apiKey = apiKey.slice(0, -4) + "7QOc";
+}
 
-if (apiKey && projectId) {
-  try {
-    firebase.initializeApp({
-      apiKey,
-      projectId,
-      messagingSenderId,
-      appId,
-    });
-    const messaging = firebase.messaging();
+const projectId = urlParams.get("projectId") || "pinsite-b915a";
+const messagingSenderId = urlParams.get("messagingSenderId") || "224548658735";
+const appId = urlParams.get("appId") || "1:224548658735:web:02ed8e40ff2d584f94b0da";
 
-    messaging.onBackgroundMessage((payload) => {
-      const notificationTitle = payload.notification?.title || payload.data?.title || "Pinsite Alert";
-      const notificationOptions = {
-        body: payload.notification?.body || payload.data?.body || "",
-        icon: payload.notification?.icon || "/favicon.ico",
-        badge: "/favicon.ico",
-        vibrate: [200, 100, 200],
-        data: {
-          url: payload.data?.url || payload.fcmOptions?.link || "/studio/comms",
-        },
-      };
+try {
+  firebase.initializeApp({
+    apiKey,
+    projectId,
+    messagingSenderId,
+    appId,
+  });
 
-      self.registration.showNotification(notificationTitle, notificationOptions);
-    });
-  } catch (e) {
-    console.warn("[SW] Firebase compat initialization warning:", e);
-  }
+  const messaging = firebase.messaging();
+
+  messaging.onBackgroundMessage((payload) => {
+    const notificationTitle = payload.notification?.title || payload.data?.title || "Pinsite Alert";
+    const notificationOptions = {
+      body: payload.notification?.body || payload.data?.body || "",
+      icon: "/icon.png",
+      badge: "/icon.png",
+      tag: "pinsite-alert",
+      renotify: true,
+      vibrate: [200, 100, 200],
+      data: {
+        url: payload.data?.url || payload.fcmOptions?.link || "/studio/comms",
+      },
+    };
+
+    return self.registration.showNotification(notificationTitle, notificationOptions);
+  });
+} catch (e) {
+  console.warn("[SW] Firebase compat initialization warning:", e);
 }
 
 // Fallback direct Push API listener for robust delivery across all browsers
@@ -48,14 +52,16 @@ self.addEventListener("push", (event) => {
 
   try {
     const payload = event.data.json();
-    const title = payload.notification?.title || payload.data?.title || "Pinsite Alert";
+    const title = payload.notification?.title || payload.data?.title || payload.title || "Pinsite Alert";
     const options = {
-      body: payload.notification?.body || payload.data?.body || "",
-      icon: payload.notification?.icon || "/favicon.ico",
-      badge: "/favicon.ico",
+      body: payload.notification?.body || payload.data?.body || payload.body || "",
+      icon: "/icon.png",
+      badge: "/icon.png",
+      tag: "pinsite-alert",
+      renotify: true,
       vibrate: [200, 100, 200],
       data: {
-        url: payload.data?.url || payload.data?.link || "/studio/comms",
+        url: payload.data?.url || payload.data?.link || payload.fcmOptions?.link || "/studio/comms",
       },
     };
 
@@ -65,7 +71,10 @@ self.addEventListener("push", (event) => {
     event.waitUntil(
       self.registration.showNotification("Pinsite Alert", {
         body: text,
-        icon: "/favicon.ico",
+        icon: "/icon.png",
+        badge: "/icon.png",
+        tag: "pinsite-alert",
+        renotify: true,
         data: { url: "/studio/comms" },
       })
     );

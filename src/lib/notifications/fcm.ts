@@ -86,8 +86,10 @@ export async function sendFCMNotificationToUser(
       notification: {
         title: payload.title,
         body: payload.body,
-        icon: "/favicon.ico",
-        badge: "/favicon.ico",
+        icon: "/icon.png",
+        badge: "/icon.png",
+        renotify: true,
+        tag: "pinsite-alert",
         vibrate: [200, 100, 200],
         data: {
           url: targetUrl,

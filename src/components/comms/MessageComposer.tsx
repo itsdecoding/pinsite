@@ -469,8 +469,8 @@ export function MessageComposer({
           {hasContent || isUploading ? (
             <button
               type="button"
-              onPointerDown={(e) => {
-                // Prevent textarea blur on mobile touch so keyboard doesn't collapse before send!
+              onMouseDown={(e) => {
+                // Prevent textarea blur on desktop mouse click so keyboard focus is kept
                 e.preventDefault();
               }}
               onClick={(e) => {
@@ -479,7 +479,7 @@ export function MessageComposer({
               }}
               disabled={isSending || isUploading || disabled}
               title="Send message"
-              className="w-10 h-10 sm:w-9 sm:h-9 rounded-full bg-[#F95721] hover:bg-[#E04815] text-white flex items-center justify-center shadow-md active:scale-90 transition disabled:opacity-50 touch-manipulation"
+              className="w-10 h-10 sm:w-9 sm:h-9 rounded-full bg-[#F95721] hover:bg-[#E04815] text-white flex items-center justify-center shadow-md active:scale-90 transition disabled:opacity-50 touch-manipulation cursor-pointer"
             >
               {isSending || isUploading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
