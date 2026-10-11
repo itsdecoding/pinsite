@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import { sendFCMNotificationToUser } from "@/lib/notifications/fcm";
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -242,7 +243,7 @@ export async function POST(req: NextRequest) {
 
       if (dmError) throw dmError;
 
-      // Dispatch in-app notification to the other participant
+      // Dispatch in-app notification & FCM Push to the other participant
       try {
         const recipientId = userALower === currentUserIdLower ? thread.user_b : thread.user_a;
         const { data: senderProf } = await admin
@@ -251,13 +252,28 @@ export async function POST(req: NextRequest) {
           .eq("id", user.id)
           .maybeSingle();
 
+        const senderName = senderProf?.full_name || "A teammate";
+        const bodySnippet = messageBody.trim().slice(0, 150);
+
         await admin.from("notifications").insert({
           user_id: recipientId,
           type: "dm",
-          title: `New DM from ${senderProf?.full_name || "a teammate"}`,
-          body: messageBody.trim().slice(0, 150),
+          title: `New DM from ${senderName}`,
+          body: bodySnippet,
           link: `/studio/comms?dm=${user.id}`,
         });
+
+        // Trigger background / mobile / desktop push via FCM
+        sendFCMNotificationToUser(recipientId, {
+          title: `New message from ${senderName}`,
+          body: bodySnippet,
+          link: `/studio/comms?dm=${user.id}`,
+          data: {
+            type: "dm",
+            senderId: user.id,
+            threadId: thread_id,
+          },
+        }).catch((err) => console.warn("Failed to dispatch FCM DM push:", err));
       } catch (notifErr) {
         console.warn("Failed to dispatch DM notification:", notifErr);
       }
@@ -339,16 +355,30 @@ export async function POST(req: NextRequest) {
 
             const chName = channel?.name || "a channel";
             const senderName = senderProf?.full_name || "A teammate";
+            const bodySnippet = messageBody.trim().slice(0, 150);
 
             const notificationsToInsert = mentionedProfiles.map((p) => ({
               user_id: p.id,
               type: "mention",
               title: `${senderName} mentioned you in #${chName}`,
-              body: messageBody.trim().slice(0, 150),
+              body: bodySnippet,
               link: `/studio/comms?channel=${channel_id}`,
             }));
 
             await admin.from("notifications").insert(notificationsToInsert);
+
+            // Trigger background / mobile / desktop push via FCM
+            const recipientUserIds = mentionedProfiles.map((p) => p.id);
+            sendFCMNotificationToUser(recipientUserIds, {
+              title: `${senderName} mentioned you in #${chName}`,
+              body: bodySnippet,
+              link: `/studio/comms?channel=${channel_id}`,
+              data: {
+                type: "mention",
+                channelId: channel_id,
+                senderId: user.id,
+              },
+            }).catch((err) => console.warn("Failed to dispatch FCM mentions push:", err));
           }
         }
       } catch (notifErr) {

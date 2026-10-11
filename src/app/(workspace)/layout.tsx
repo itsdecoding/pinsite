@@ -4,6 +4,7 @@ import { CommandBar } from "@/components/layout/CommandBar";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { MobileTopBar } from "@/components/layout/MobileTopBar";
 import { UserSessionProvider } from "@/contexts/UserSessionContext";
+import { FCMHandler } from "@/components/notifications/FCMHandler";
 
 export default function WorkspaceLayout({
   children,
@@ -12,6 +13,7 @@ export default function WorkspaceLayout({
 }) {
   return (
     <UserSessionProvider>
+      <FCMHandler />
       <div className="min-h-screen w-full max-w-[100vw] bg-[#F7F5F0] dark:bg-[#0E0E0E] text-[#111110] dark:text-[#D4D2D0] flex transition-colors relative overflow-x-hidden">
         {/* Ambient optical background auras to give real frosted glass depth and refraction */}
         <div className="pointer-events-none fixed top-0 left-0 w-[500px] h-[500px] bg-gradient-to-br from-[#7F3922]/15 via-[#7F3922]/5 to-transparent blur-[120px] -z-10" />
