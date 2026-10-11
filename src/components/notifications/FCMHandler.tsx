@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, X, ArrowRight, MessageSquare } from "lucide-react";
 import { useUserSession } from "@/contexts/UserSessionContext";
-import { getFirebaseMessagingInstance } from "@/lib/firebase/client";
+import { getFirebaseMessagingInstance, getSanitizedFirebaseApiKey } from "@/lib/firebase/client";
 import { getToken, onMessage } from "firebase/messaging";
 import { createClient } from "@/lib/supabase/client";
 import { PushNotificationManager } from "./PushNotificationManager";
@@ -55,11 +55,11 @@ export function FCMHandler() {
     try {
       setIsRegistering(true);
 
-      const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
-      const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-      const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-      const messagingSenderId = process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID;
-      const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID;
+      const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || "BMcuzfB-rVtNrWkgqyXpI2KBqYBqBMFyeNdn_JsR06z_T6bTJJdYO-uJ9csWwBukmGLcTKHBMDNCNKEtLI0XZNs";
+      const apiKey = getSanitizedFirebaseApiKey();
+      const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "pinsite-b915a";
+      const messagingSenderId = process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "224548658735";
+      const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:224548658735:web:02ed8e40ff2d584f94b0da";
 
       // Register or update service worker with config parameters
       const swUrl = `/firebase-messaging-sw.js?apiKey=${encodeURIComponent(apiKey || "")}&projectId=${encodeURIComponent(projectId || "")}&messagingSenderId=${encodeURIComponent(messagingSenderId || "")}&appId=${encodeURIComponent(appId || "")}`;

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   X,
@@ -175,8 +175,23 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const resolveTab = useCallback((param: string | null): PipelineTab => {
+    if (param === "callbacks" || param === "callback") return "callbacks";
+    if (param === "waiting") return "waiting";
+    if (param === "done" || param === "done_today") return "done";
+    return "dial_now";
+  }, []);
+
   const [caller, setCaller] = useState<CallerProfile | null>(null);
-  const [activeTab, setActiveTab] = useState<PipelineTab>("dial_now");
+  const [activeTab, setActiveTab] = useState<PipelineTab>(resolveTab(tabParam));
+
+  useEffect(() => {
+    if (tabParam) {
+      setActiveTab(resolveTab(tabParam));
+    }
+  }, [tabParam, resolveTab]);
 
   // Partitioned buckets
   const [readyLeads, setReadyLeads] = useState<Lead[]>([]);

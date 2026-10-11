@@ -323,7 +323,23 @@ export function CallerCockpit({
   const [activeBottomNav, setActiveBottomNav] = useState<"queue" | "comms" | "today" | "profile">("queue");
 
   // Pipeline tab: 'dialNow' | 'callbacks' | 'waiting' | 'done'
-  const [pipelineTab, setPipelineTab] = useState<"dialNow" | "callbacks" | "waiting" | "done">("dialNow");
+  const tabParam = searchParams.get("tab");
+  const resolveTab = useCallback((param: string | null): "dialNow" | "callbacks" | "waiting" | "done" => {
+    if (param === "callbacks" || param === "callback") return "callbacks";
+    if (param === "waiting") return "waiting";
+    if (param === "done" || param === "done_today") return "done";
+    return "dialNow";
+  }, []);
+
+  const [pipelineTab, setPipelineTab] = useState<"dialNow" | "callbacks" | "waiting" | "done">(
+    resolveTab(tabParam)
+  );
+
+  useEffect(() => {
+    if (tabParam) {
+      setPipelineTab(resolveTab(tabParam));
+    }
+  }, [tabParam, resolveTab]);
 
   // Leads state
   const [dialNowLeads, setDialNowLeads] = useState<Lead[]>([]);

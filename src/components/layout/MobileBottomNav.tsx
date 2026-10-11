@@ -142,6 +142,10 @@ export function MobileBottomNav() {
 
   const isManagerOrAdmin = role === "admin" || role === "manager" || role === "owner";
   const isCaller = role === "caller";
+  const isDashboardPage =
+    pathname === "/dashboard" ||
+    pathname.startsWith("/studio/dashboard") ||
+    pathname.startsWith("/dashboard");
 
   const handleLogout = async () => {
     try {
@@ -596,21 +600,53 @@ export function MobileBottomNav() {
       {/* ======================================================== */}
       {/* MOBILE BOTTOM NAVIGATION BAR (< lg, 4 Shortcuts)        */}
       {/* ======================================================== */}
-      <nav
-        aria-label="Mobile Navigation"
-        className="fixed bottom-0 inset-x-0 lg:hidden z-40 bg-white/90 dark:bg-[#111213]/95 backdrop-blur-2xl border-t border-black/[0.08] dark:border-white/[0.12] shadow-[0_-10px_25px_rgba(0,0,0,0.2)] pb-[env(safe-area-inset-bottom)] px-1 py-1.5 transition-all"
-      >
-        <div className="grid grid-cols-4 max-w-lg mx-auto w-full">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = item.isActive;
+      {!isDashboardPage && (
+        <nav
+          aria-label="Mobile Navigation"
+          className="fixed bottom-0 inset-x-0 lg:hidden z-40 bg-white/90 dark:bg-[#111213]/95 backdrop-blur-2xl border-t border-black/[0.08] dark:border-white/[0.12] shadow-[0_-10px_25px_rgba(0,0,0,0.2)] pb-[env(safe-area-inset-bottom)] px-1 py-1.5 transition-all"
+        >
+          <div className="grid grid-cols-4 max-w-lg mx-auto w-full">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = item.isActive;
 
-            if (item.isAction) {
+              if (item.isAction) {
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setShowProfileSheet(true)}
+                    className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-2xl transition active:scale-95 ${
+                      isActive
+                        ? "text-[#F95721] font-semibold"
+                        : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                    }`}
+                  >
+                    <div
+                      className={`p-1.5 rounded-xl transition ${
+                        isActive
+                          ? "bg-[#7F3922]/15 text-[#F95721]"
+                          : "bg-transparent text-current"
+                      }`}
+                    >
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <span className="text-[10px] tracking-tight leading-none mt-0.5 whitespace-nowrap">
+                      {item.label}
+                    </span>
+                  </button>
+                );
+              }
+
               return (
-                <button
+                <Link
                   key={item.id}
-                  type="button"
-                  onClick={() => setShowProfileSheet(true)}
+                  href={item.href}
+                  onClick={() => {
+                    if (item.id === "comms" && typeof window !== "undefined") {
+                      window.dispatchEvent(new CustomEvent("reset-comms-view"));
+                    }
+                  }}
                   className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-2xl transition active:scale-95 ${
                     isActive
                       ? "text-[#F95721] font-semibold"
@@ -618,58 +654,28 @@ export function MobileBottomNav() {
                   }`}
                 >
                   <div
-                    className={`p-1.5 rounded-xl transition ${
+                    className={`p-1.5 rounded-xl transition relative ${
                       isActive
                         ? "bg-[#7F3922]/15 text-[#F95721]"
                         : "bg-transparent text-current"
                     }`}
                   >
                     <Icon className="w-5 h-5" />
+                    {typeof item.badge === "number" && item.badge > 0 && (
+                      <span className="absolute -top-0.5 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center shadow-xs">
+                        {item.badge > 99 ? "99+" : item.badge}
+                      </span>
+                    )}
                   </div>
                   <span className="text-[10px] tracking-tight leading-none mt-0.5 whitespace-nowrap">
                     {item.label}
                   </span>
-                </button>
+                </Link>
               );
-            }
-
-            return (
-              <Link
-                key={item.id}
-                href={item.href}
-                onClick={() => {
-                  if (item.id === "comms" && typeof window !== "undefined") {
-                    window.dispatchEvent(new CustomEvent("reset-comms-view"));
-                  }
-                }}
-                className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-2xl transition active:scale-95 ${
-                  isActive
-                    ? "text-[#F95721] font-semibold"
-                    : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-                }`}
-              >
-                <div
-                  className={`p-1.5 rounded-xl transition relative ${
-                    isActive
-                      ? "bg-[#7F3922]/15 text-[#F95721]"
-                      : "bg-transparent text-current"
-                  }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  {typeof item.badge === "number" && item.badge > 0 && (
-                    <span className="absolute -top-0.5 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center shadow-xs">
-                      {item.badge > 99 ? "99+" : item.badge}
-                    </span>
-                  )}
-                </div>
-                <span className="text-[10px] tracking-tight leading-none mt-0.5 whitespace-nowrap">
-                  {item.label}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+            })}
+          </div>
+        </nav>
+      )}
     </>
   );
 }
