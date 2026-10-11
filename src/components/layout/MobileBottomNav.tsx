@@ -74,11 +74,32 @@ export function MobileBottomNav() {
     };
   }, [user?.id, supabase]);
 
+  const inferredRole = React.useMemo(() => {
+    if (pathname.includes("/projects")) return "developer";
+    if (pathname.includes("/queue")) return "caller";
+    if (pathname.includes("/manager") || pathname.includes("/dashboard")) return "admin";
+    return null;
+  }, [pathname]);
+
+  const cachedRole = React.useMemo(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return (
+          localStorage.getItem("agency_user_role") ||
+          (document.cookie.match(/agency_cached_role=([^;]+)/)?.[1] ?? null)
+        );
+      } catch {}
+    }
+    return null;
+  }, []);
+
   const role =
     profile?.role ||
+    cachedRole ||
+    inferredRole ||
     (user?.user_metadata?.role as string) ||
     (user?.app_metadata?.role as string) ||
-    "caller";
+    "developer";
 
   const handleLogout = async () => {
     try {

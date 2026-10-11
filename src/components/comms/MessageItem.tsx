@@ -179,6 +179,9 @@ export function MessageItem({
                       alt={att.name || "Attachment"}
                       className="w-full max-h-60 object-cover rounded-xl cursor-pointer hover:opacity-95 transition"
                       onClick={() => window.open(att.url, "_blank")}
+                      onError={(e) => {
+                        (e.currentTarget as HTMLElement).style.display = "none";
+                      }}
                     />
                   </div>
                 );

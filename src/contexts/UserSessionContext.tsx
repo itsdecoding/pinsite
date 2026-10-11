@@ -37,9 +37,38 @@ const UserSessionContext = createContext<UserSessionContextType>(defaultContext)
 
 export function UserSessionProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("agency_cached_profile");
+        if (cached) return JSON.parse(cached);
+      } catch (e) {
+        // Ignore JSON parse error
+      }
+    }
+    return null;
+  });
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
+
+  const persistProfile = useCallback((newProfile: UserProfile | null) => {
+    setProfile(newProfile);
+    if (typeof window !== "undefined") {
+      try {
+        if (newProfile) {
+          localStorage.setItem("agency_cached_profile", JSON.stringify(newProfile));
+          localStorage.setItem("agency_user_role", newProfile.role);
+          document.cookie = `agency_cached_role=${newProfile.role}; path=/; max-age=31536000; SameSite=Lax`;
+        } else {
+          localStorage.removeItem("agency_cached_profile");
+          localStorage.removeItem("agency_user_role");
+          document.cookie = "agency_cached_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        }
+      } catch (e) {
+        // Ignore storage error
+      }
+    }
+  }, []);
 
   const fetchSessionAndProfile = useCallback(async () => {
     try {
@@ -49,7 +78,7 @@ export function UserSessionProvider({ children }: { children: React.ReactNode })
 
       if (!authUser) {
         setUser(null);
-        setProfile(null);
+        persistProfile(null);
         setLoading(false);
         return;
       }
@@ -66,7 +95,7 @@ export function UserSessionProvider({ children }: { children: React.ReactNode })
         "Operator";
 
       if (metaRole) {
-        setProfile({
+        persistProfile({
           id: authUser.id,
           full_name: metaName,
           role: metaRole,
@@ -82,14 +111,14 @@ export function UserSessionProvider({ children }: { children: React.ReactNode })
         .maybeSingle();
 
       if (profileData) {
-        setProfile({
+        persistProfile({
           id: profileData.id,
           full_name: profileData.full_name || metaName,
           role: profileData.role || metaRole || "admin",
           email: authUser.email,
         });
       } else if (!metaRole) {
-        setProfile({
+        persistProfile({
           id: authUser.id,
           full_name: metaName,
           role: "admin",
@@ -101,7 +130,7 @@ export function UserSessionProvider({ children }: { children: React.ReactNode })
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, persistProfile]);
 
   useEffect(() => {
     fetchSessionAndProfile();
@@ -111,7 +140,7 @@ export function UserSessionProvider({ children }: { children: React.ReactNode })
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_OUT") {
         setUser(null);
-        setProfile(null);
+        persistProfile(null);
       } else if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
         if (session?.user) {
           fetchSessionAndProfile();
@@ -122,7 +151,7 @@ export function UserSessionProvider({ children }: { children: React.ReactNode })
     return () => {
       subscription.unsubscribe();
     };
-  }, [fetchSessionAndProfile, supabase]);
+  }, [fetchSessionAndProfile, supabase, persistProfile]);
 
   const value = useMemo(
     () => ({

@@ -49,6 +49,7 @@ export function MessageComposer({
 }: MessageComposerProps) {
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<MessageAttachment[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -212,7 +213,7 @@ export function MessageComposer({
 
   const handleSend = async () => {
     const hasAttachments = pendingAttachments.length > 0;
-    if ((!text.trim() && !hasAttachments) || isSending || disabled) return;
+    if ((!text.trim() && !hasAttachments) || isSending || isUploading || disabled) return;
 
     const messageToSend = text.trim();
     const attachmentsToSend = [...pendingAttachments];
@@ -238,25 +239,38 @@ export function MessageComposer({
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newAttachments: MessageAttachment[] = [];
+    setIsUploading(true);
+    const formData = new FormData();
     Array.from(files).forEach((file) => {
-      const isImg = file.type.startsWith("image/");
-      const blobUrl = URL.createObjectURL(file);
-      const sizeStr = `${(file.size / 1024).toFixed(1)} KB`;
-      newAttachments.push({
-        type: isImg ? "image" : "file",
-        url: blobUrl,
-        name: file.name,
-        size: sizeStr,
-      });
+      formData.append("file", file);
     });
 
-    setPendingAttachments((prev) => [...prev, ...newAttachments]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    try {
+      const res = await fetch("/api/messages/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to upload attachments");
+      }
+
+      const data = await res.json();
+      if (Array.isArray(data.attachments)) {
+        setPendingAttachments((prev) => [...prev, ...data.attachments]);
+      }
+    } catch (err: any) {
+      console.error("Attachment upload error:", err);
+      alert(err.message || "Failed to upload attachment. Please try again.");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const handleToggleVoice = () => {
@@ -355,7 +369,7 @@ export function MessageComposer({
       )}
 
       {/* Attachment Previews in Composer */}
-      {pendingAttachments.length > 0 && (
+      {(pendingAttachments.length > 0 || isUploading) && (
         <div className="mb-2 flex items-center gap-2 overflow-x-auto p-1">
           {pendingAttachments.map((att, idx) => (
             <div
@@ -386,6 +400,13 @@ export function MessageComposer({
               </button>
             </div>
           ))}
+
+          {isUploading && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#7F3922]/15 text-[#F95721] text-xs font-medium shrink-0 animate-pulse border border-[#7F3922]/30">
+              <Loader2 className="w-4 h-4 animate-spin text-[#F95721]" />
+              <span>Uploading...</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -429,15 +450,15 @@ export function MessageComposer({
 
         {/* Right Icon: Voice Memo when empty, Circular Send button when text is entered */}
         <div className="pb-0.5">
-          {hasContent ? (
+          {hasContent || isUploading ? (
             <button
               type="button"
               onClick={handleSend}
-              disabled={isSending || disabled}
+              disabled={isSending || isUploading || disabled}
               title="Send message"
               className="w-9 h-9 rounded-full bg-[#7F3922] hover:bg-[#F95721] text-white flex items-center justify-center shadow-md active:scale-95 transition disabled:opacity-50"
             >
-              {isSending ? (
+              {isSending || isUploading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <Send className="w-4 h-4 ml-0.5" />
