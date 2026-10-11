@@ -15,10 +15,12 @@ import {
   UploadCloud,
   Bell,
   Sparkles,
+  Plus,
 } from "lucide-react";
 import { useUserSession } from "@/contexts/UserSessionContext";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { NotificationBell } from "@/components/comms/NotificationBell";
 
 export function MobileBottomNav() {
   const pathname = usePathname();
@@ -329,118 +331,167 @@ export function MobileBottomNav() {
   return (
     <>
       {/* ======================================================== */}
-      {/* MANAGER / ADMIN SIDE NAVIGATION DRAWER (Opens via ☰)     */}
+      {/* MOBILE FLOATING ISLAND SIDEBAR DRAWER (Opens via ☰)      */}
       {/* ======================================================== */}
-      {isManagerOrAdmin && isDrawerOpen && (
+      {isDrawerOpen && (
         <div
           role="dialog"
           aria-label="Navigation Drawer"
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm lg:hidden flex animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm lg:hidden p-3 sm:p-4 flex items-start animate-in fade-in duration-200"
           onClick={() => setIsDrawerOpen(false)}
         >
-          <div
-            className="w-72 max-w-[85vw] h-full bg-white dark:bg-[#141516] border-r border-black/[0.1] dark:border-white/[0.12] p-5 shadow-2xl flex flex-col justify-between animate-in slide-in-from-left duration-250"
+          <aside
+            className="w-64 max-w-[85vw] h-[calc(100dvh-1.5rem)] rounded-3xl bg-white/90 dark:bg-white/[0.04] backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.14] shadow-[0_20px_50px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.25)] flex flex-col justify-between p-4 transition-all overflow-hidden relative group animate-in slide-in-from-left duration-250"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Drawer Top: User Profile Header + Close button */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between pb-4 border-b border-black/[0.08] dark:border-white/[0.08]">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-full bg-[#7F3922]/20 border border-[#7F3922]/40 text-[#F95721] font-bold text-sm flex items-center justify-center shrink-0">
-                    {(profile?.full_name || user?.email || "U").charAt(0).toUpperCase()}
+            {/* Specular glass reflection at top */}
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-white/[0.08] to-transparent" />
+            {/* Internal ambient aura */}
+            <div className="pointer-events-none absolute -top-10 -left-10 w-36 h-36 bg-white/[0.03] rounded-full blur-2xl" />
+            <div className="pointer-events-none absolute -bottom-10 -right-10 w-36 h-36 bg-[#7F3922]/15 rounded-full blur-2xl" />
+
+            {/* Top Section */}
+            <div className="space-y-4 relative z-10">
+              {/* Workspace Brand Pill with Close button */}
+              <div className="flex items-center justify-between px-1 py-1">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-6 h-6 flex items-center justify-center font-bold text-xs text-[#9F5639] shrink-0 font-mono">
+                    {profile?.full_name ? profile.full_name[0].toUpperCase() : "M"}
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-[#111110] dark:text-[#F5F3EF] truncate">
-                      {profile?.full_name || "Muzammil"}
-                    </h3>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 capitalize">
-                      Agency OS • <span className="font-semibold text-[#F95721]">{role}</span>
+                    <h2 className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF] truncate tracking-tight uppercase font-mono">
+                      {profile?.full_name?.replace(/\(owner\)/i, "(Admin)") || "MUZAMMIL (ADMIN)"}
+                    </h2>
+                    <p className="text-[10px] text-[#6E6B66] dark:text-[#8A8680] truncate font-medium">
+                      Agency OS • <span className="capitalize">{role}</span>
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsDrawerOpen(false)}
-                  className="p-1.5 rounded-full text-zinc-400 hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/10 shrink-0"
+                  className="p-1 rounded-full text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/10 shrink-0 ml-1"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Drawer Links: All 6 primary items */}
-              <div className="space-y-1">
-                <span className="text-[10px] font-mono tracking-widest uppercase text-zinc-400 dark:text-zinc-500 font-bold px-3 block pb-1">
-                  NAVIGATION
-                </span>
-                {drawerItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = item.isActive;
-                  return (
-                    <Link
-                      key={item.id}
-                      href={item.href}
-                      onClick={() => {
-                        setIsDrawerOpen(false);
-                        if (item.id === "comms" && typeof window !== "undefined") {
-                          window.dispatchEvent(new CustomEvent("reset-comms-view"));
-                        }
-                      }}
-                      className={`flex items-center justify-between px-3.5 py-2.5 transition active:scale-[0.98] ${
-                        isActive
-                          ? "bg-[#F95721]/15 text-[#F95721] font-bold border-l-3 border-[#F95721] rounded-r-2xl rounded-l-xs shadow-xs"
-                          : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-black/5 dark:hover:bg-white/5 rounded-2xl font-medium"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-[#F95721]" : "text-zinc-400 dark:text-zinc-500"}`} />
-                        <span className="text-xs truncate">{item.label}</span>
-                      </div>
-                      {typeof item.badge === "number" && item.badge > 0 && (
-                        <span className="min-w-[18px] h-4 px-1.5 rounded-full bg-[#F95721] text-white text-[10px] font-bold flex items-center justify-center shrink-0">
-                          {item.badge > 99 ? "99+" : item.badge}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Drawer Bottom: Theme, Notifications, Sign Out */}
-            <div className="pt-4 border-t border-black/[0.08] dark:border-white/[0.08] space-y-2">
-              <div className="flex items-center justify-between p-2.5 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04]">
-                <span className="text-xs text-zinc-600 dark:text-zinc-300 font-medium">
-                  Theme Appearance
-                </span>
-                <ThemeToggle />
-              </div>
-
+              {/* Primary Action Pill (+ Import Leads / + Start Dialing / + New Task) */}
               <Link
-                href="/studio/comms"
+                href={role === "caller" ? "/studio/queue" : role === "developer" ? "/studio/projects" : "/studio/manager/ingestion"}
                 onClick={() => setIsDrawerOpen(false)}
-                className="flex items-center justify-between p-2.5 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 transition"
+                className="relative w-full py-2.5 px-3 bg-gradient-to-b from-[#8E4128]/95 to-[#6E2E1A]/95 hover:from-[#9E4A2F] hover:to-[#7E351F] border border-[#D97755]/50 text-white rounded-full font-semibold text-xs shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_4px_14px_rgba(127,57,34,0.35)] flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] overflow-hidden"
               >
-                <div className="flex items-center gap-2">
-                  <Bell className="w-4 h-4 text-[#F95721]" />
-                  <span>Notifications</span>
-                </div>
-                {unreadCommsCount > 0 && (
-                  <span className="min-w-[18px] h-4 px-1.5 rounded-full bg-[#F95721] text-white text-[10px] font-bold flex items-center justify-center">
-                    {unreadCommsCount}
-                  </span>
-                )}
+                <span className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent rounded-t-full" />
+                <Plus className="w-3.5 h-3.5 stroke-[2.5] relative z-10" />
+                <span className="relative z-10">
+                  {role === "caller" ? "Start Dialing" : role === "developer" ? "New Task" : "Import Leads"}
+                </span>
               </Link>
 
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="w-full flex items-center justify-center gap-2 p-2.5 rounded-2xl bg-rose-500/10 text-rose-500 dark:text-rose-400 font-semibold text-xs hover:bg-rose-500/20 transition active:scale-98"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Sign Out</span>
-              </button>
+              {/* Vertical Nav Stack */}
+              <nav className="space-y-1 pt-2">
+                {[
+                  {
+                    label: "Dashboard",
+                    href: "/studio/dashboard",
+                    icon: LayoutDashboard,
+                    roles: ["manager", "admin"],
+                    isActive: pathname.startsWith("/studio/dashboard") || pathname === "/dashboard",
+                  },
+                  {
+                    label: "Dial Queue",
+                    href: "/studio/queue",
+                    icon: PhoneCall,
+                    roles: ["caller", "manager", "admin"],
+                    isActive: pathname.startsWith("/studio/queue") || pathname === "/queue",
+                  },
+                  {
+                    label: "Projects",
+                    href: "/studio/projects",
+                    icon: FolderKanban,
+                    roles: ["developer", "manager", "admin"],
+                    isActive: pathname.startsWith("/studio/projects") || pathname === "/projects",
+                  },
+                  {
+                    label: "Comms & DMs",
+                    href: "/studio/comms",
+                    icon: MessageSquare,
+                    roles: ["caller", "developer", "manager", "admin"],
+                    isActive: pathname.startsWith("/studio/comms") || pathname === "/comms",
+                  },
+                  {
+                    label: "Team Center",
+                    href: "/studio/manager/team",
+                    icon: Users,
+                    roles: ["manager", "admin"],
+                    isActive:
+                      (pathname.startsWith("/studio/manager") || pathname.startsWith("/manager")) &&
+                      !pathname.includes("/ingestion"),
+                  },
+                ]
+                  .filter((item) => item.roles.includes(role))
+                  .map((item) => {
+                    const Icon = item.icon;
+                    const isActive = item.isActive;
+
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => {
+                          setIsDrawerOpen(false);
+                          if (item.href.includes("/comms") && typeof window !== "undefined") {
+                            window.dispatchEvent(new CustomEvent("reset-comms-view"));
+                          }
+                        }}
+                        className={`relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs transition-all overflow-hidden ${
+                          isActive
+                            ? "bg-gradient-to-b from-[#8E4128]/90 to-[#6E2E1A]/90 border border-[#D97755]/50 text-white font-semibold shadow-[inset_0_1px_1px_rgba(255,255,255,0.35),0_4px_12px_rgba(127,57,34,0.3)]"
+                            : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:bg-black/5 dark:hover:bg-white/[0.05] font-medium"
+                        }`}
+                      >
+                        {isActive && (
+                          <span className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent rounded-t-xl" />
+                        )}
+                        <div className="flex items-center gap-3 min-w-0 relative z-10">
+                          <Icon
+                            className={`w-4 h-4 shrink-0 ${
+                              isActive ? "text-white stroke-[2.2]" : "text-[#6E6B66] dark:text-[#8A8680]"
+                            }`}
+                          />
+                          <span className="truncate">{item.label}</span>
+                        </div>
+                        {item.href.includes("/comms") && unreadCommsCount > 0 && (
+                          <span
+                            className={`min-w-[18px] h-4 px-1.5 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 relative z-10 ${
+                              isActive ? "bg-white text-[#8E4128]" : "bg-[#F95721] text-white"
+                            }`}
+                          >
+                            {unreadCommsCount > 99 ? "99+" : unreadCommsCount}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+              </nav>
             </div>
-          </div>
+
+            {/* Bottom Controls */}
+            <div className="pt-4 border-t border-[#ECE8E1]/80 dark:border-white/10 space-y-2 relative z-10">
+              <div className="flex items-center justify-between px-1">
+                <ThemeToggle />
+                <NotificationBell dropdownAlign="down" />
+                <button
+                  onClick={handleLogout}
+                  title="Sign out"
+                  className="p-2 rounded-xl text-[#6E6B66] dark:text-[#8A8680] hover:text-rose-500 hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </aside>
         </div>
       )}
 
