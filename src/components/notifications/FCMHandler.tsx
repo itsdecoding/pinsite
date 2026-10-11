@@ -6,6 +6,7 @@ import { Bell, X, ArrowRight, MessageSquare } from "lucide-react";
 import { useUserSession } from "@/contexts/UserSessionContext";
 import { getFirebaseMessagingInstance } from "@/lib/firebase/client";
 import { getToken, onMessage } from "firebase/messaging";
+import { createClient } from "@/lib/supabase/client";
 
 interface ForegroundToast {
   id: string;
@@ -87,9 +88,17 @@ export function FCMHandler() {
         const deviceType = isMobile ? "mobile" : "web";
 
         // Save token to server
+        const supabase = createClient();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+
         await fetch("/api/notifications/fcm-token", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({
             token: currentToken,
             device_type: deviceType,

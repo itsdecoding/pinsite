@@ -74,6 +74,27 @@ export function useCommsState() {
   const { user: sessionUser, profile: sessionProfile } = useUserSession();
   const supabase = useMemo(() => createClient(), []);
 
+  // Authenticated fetch wrapper passing Bearer access_token
+  const authFetch = useCallback(
+    async (url: string, options: RequestInit = {}) => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        const headers = new Headers(options.headers || {});
+        if (token && !headers.has("Authorization")) {
+          headers.set("Authorization", `Bearer ${token}`);
+        }
+        return fetch(url, {
+          ...options,
+          headers,
+        });
+      } catch {
+        return fetch(url, options);
+      }
+    },
+    [supabase]
+  );
+
   // Core state - initialized immediately from UserSessionContext to eliminate async race condition
   const [currentUserId, setCurrentUserId] = useState<string>(sessionUser?.id || "");
   const [currentUserProfile, setCurrentUserProfile] = useState<PublicProfile | null>(
@@ -169,7 +190,7 @@ export function useCommsState() {
   // 1. Fetch Conversations from API
   const refreshConversations = useCallback(async () => {
     try {
-      const res = await fetch("/api/messages/conversations");
+      const res = await authFetch("/api/messages/conversations");
       if (res.ok) {
         const data = await res.json();
         const convList: DMConversation[] = data.conversations || [];
@@ -184,7 +205,7 @@ export function useCommsState() {
     } catch (err) {
       console.warn("Error refreshing conversations:", err);
     }
-  }, []);
+  }, [authFetch]);
 
   // 2. Initial Setup: Auth, Profiles, Channels, Conversations
   useEffect(() => {
@@ -346,14 +367,21 @@ export function useCommsState() {
       setIsMessagesLoading(true);
 
       try {
-        if (!currentUserId) {
+        let uid = currentUserId;
+        if (!uid) {
+          const { data: userData } = await supabase.auth.getUser();
+          uid = userData?.user?.id || sessionUser?.id || "";
+          if (uid) setCurrentUserId(uid);
+        }
+
+        if (!uid) {
           setIsMessagesLoading(false);
           return;
         }
-        const res = await fetch("/api/messages/thread", {
+        const res = await authFetch("/api/messages/thread", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_1: currentUserId, user_2: member.id }),
+          body: JSON.stringify({ user_1: uid, user_2: member.id }),
         });
 
         if (!res.ok) {
@@ -368,7 +396,7 @@ export function useCommsState() {
         activeTargetRef.current = targetKey;
 
         // Mark thread messages as read
-        fetch("/api/messages/conversations", {
+        authFetch("/api/messages/conversations", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ thread_id }),
@@ -450,7 +478,7 @@ export function useCommsState() {
     // Load channel messages
     async function loadChannelMessages() {
       try {
-        const res = await fetch(`/api/messages?channel_id=${activeChannelId}`);
+        const res = await authFetch(`/api/messages?channel_id=${activeChannelId}`);
         if (res.ok) {
           const data = await res.json();
           const fetched: Message[] = data.messages || [];
@@ -569,7 +597,7 @@ export function useCommsState() {
 
     async function loadDmMessages() {
       try {
-        const res = await fetch(`/api/messages?thread_id=${activeThreadId}`);
+        const res = await authFetch(`/api/messages?thread_id=${activeThreadId}`);
         if (res.ok) {
           const data = await res.json();
           const fetched: Message[] = data.messages || [];
@@ -882,17 +910,57 @@ export function useCommsState() {
   const sendMessage = useCallback(
     async (text: string, replyTo?: Message | null, attachments?: MessageAttachment[]) => {
       const hasAttachments = attachments && attachments.length > 0;
-      if ((!text.trim() && !hasAttachments) || !currentUserId) return;
+      if (!text.trim() && !hasAttachments) return;
+
+      // 1. Ensure sender ID is resolved
+      let senderId = currentUserId;
+      if (!senderId) {
+        const { data: userData } = await supabase.auth.getUser();
+        senderId = userData?.user?.id || sessionUser?.id || "";
+        if (senderId) {
+          setCurrentUserId(senderId);
+        }
+      }
+
+      if (!senderId) {
+        console.error("Cannot send message: no authenticated user found");
+        alert("Session expired or user not logged in. Please refresh.");
+        return;
+      }
+
+      // 2. If DM, ensure thread_id is resolved (auto-connect on the fly if needed)
+      let threadId = activeThreadId;
+      if (activeView === "dm" && !threadId && activeDmUser) {
+        try {
+          const tRes = await authFetch("/api/messages/thread", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_1: senderId, user_2: activeDmUser.id }),
+          });
+          if (tRes.ok) {
+            const tData = await tRes.json();
+            threadId = tData.thread_id;
+            setActiveThreadId(threadId);
+          }
+        } catch (threadErr) {
+          console.warn("Failed to auto-resolve DM thread:", threadErr);
+        }
+      }
+
+      if (activeView === "dm" && !threadId) {
+        alert("Could not connect to conversation thread. Please re-select the contact.");
+        return;
+      }
 
       const targetKey =
-        activeView === "channel" ? `ch_${activeChannelId}` : `dm_${activeThreadId}`;
+        activeView === "channel" ? `ch_${activeChannelId}` : `dm_${threadId}`;
 
       const replyTarget = replyTo || replyingToMessage;
 
       try {
         const payload: any = {
           body: text.trim() || (hasAttachments ? (attachments![0].type === "image" ? "📷 Image" : "📎 Attachment") : ""),
-          sender_id: currentUserId,
+          sender_id: senderId,
           is_dm: activeView === "dm",
           parent_message_id: replyTarget ? replyTarget.id : null,
           attachments: attachments || [],
@@ -901,10 +969,10 @@ export function useCommsState() {
         if (activeView === "channel") {
           payload.channel_id = activeChannelId;
         } else {
-          payload.thread_id = activeThreadId;
+          payload.thread_id = threadId;
         }
 
-        const res = await fetch("/api/messages", {
+        const res = await authFetch("/api/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -912,7 +980,10 @@ export function useCommsState() {
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `HTTP error ${res.status}`);
+          const errMsg = errData.error || `HTTP ${res.status}: Failed to send message`;
+          console.error("Failed to send message:", errMsg);
+          alert(errMsg);
+          throw new Error(errMsg);
         }
 
         const { message } = await res.json();
@@ -960,9 +1031,9 @@ export function useCommsState() {
           }
 
           // Update conversation list if it's a DM
-          if (activeView === "dm" && activeThreadId) {
+          if (activeView === "dm" && threadId) {
             setConversations((prev) => {
-              const matchIndex = prev.findIndex((c) => c.id === activeThreadId);
+              const matchIndex = prev.findIndex((c) => c.id === threadId);
               if (matchIndex >= 0) {
                 const updated = [...prev];
                 updated[matchIndex] = {
@@ -982,7 +1053,7 @@ export function useCommsState() {
                 );
               } else {
                 const newConv: DMConversation = {
-                  id: activeThreadId,
+                  id: threadId!,
                   participant: activeDmUser || {
                     id: "",
                     full_name: "Teammate",
@@ -1008,7 +1079,7 @@ export function useCommsState() {
         throw err;
       }
     },
-    [activeView, activeChannelId, activeThreadId, activeDmUser, currentUserId, currentUserProfile, replyingToMessage, refreshConversations]
+    [activeView, activeChannelId, activeThreadId, activeDmUser, currentUserId, sessionUser, currentUserProfile, replyingToMessage, refreshConversations, authFetch, supabase]
   );
 
   // 11. Edit Message
@@ -1017,7 +1088,7 @@ export function useCommsState() {
       if (!newBody.trim()) return;
 
       try {
-        const res = await fetch("/api/messages", {
+        const res = await authFetch("/api/messages", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1049,14 +1120,14 @@ export function useCommsState() {
         throw err;
       }
     },
-    [activeView, activeChannelId, activeThreadId]
+    [activeView, activeChannelId, activeThreadId, authFetch]
   );
 
   // 12. Delete Message
   const deleteMessage = useCallback(
     async (messageId: string) => {
       try {
-        const res = await fetch("/api/messages", {
+        const res = await authFetch("/api/messages", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1083,7 +1154,7 @@ export function useCommsState() {
         throw err;
       }
     },
-    [activeView, activeChannelId, activeThreadId]
+    [activeView, activeChannelId, activeThreadId, authFetch]
   );
 
   // Extract currently active channel object
