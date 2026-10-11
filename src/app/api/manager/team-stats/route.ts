@@ -61,56 +61,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const rangeParam = searchParams.get("range") || "today"; // "today" | "24h"
 
-    // 1. Fetch profiles for team members (excluding system bot and workspace owner)
-    const { data: profData, error: profileErr } = await admin
-      .from("profiles")
-      .select("id, full_name, role, phone, is_available, active, require_password_change, temp_password_issued_at, created_at")
-      .is("deleted_at", null)
-      .neq("id", "00000000-0000-0000-0000-000000000001")
-      .neq("id", "a87c7c79-6c4c-4787-8132-8cff8f7a1e74")
-      .order("active", { ascending: false })
-      .order("full_name", { ascending: true });
-
-    if (profileErr) {
-      throw profileErr;
-    }
-
-    const targetCallers = profData || [];
-
-    // 2. Map real email addresses from invites and auth
-    const emailMap = new Map<string, string>();
-
-    // A. Query invites table (maps accepted_by -> email)
-    const { data: invitesData } = await admin
-      .from("invites")
-      .select("accepted_by, email")
-      .not("accepted_by", "is", null);
-
-    if (invitesData) {
-      for (const inv of invitesData) {
-        if (inv.accepted_by && inv.email) {
-          emailMap.set(inv.accepted_by, inv.email.toLowerCase().trim());
-        }
-      }
-    }
-
-    // B. For any caller not found in invites, fetch auth email directly via getUserById
-    await Promise.allSettled(
-      targetCallers.map(async (caller) => {
-        if (!emailMap.has(caller.id)) {
-          try {
-            const { data: userData } = await admin.auth.admin.getUserById(caller.id);
-            if (userData?.user?.email) {
-              emailMap.set(caller.id, userData.user.email.toLowerCase().trim());
-            }
-          } catch {
-            // Ignore individual fetch errors
-          }
-        }
-      })
-    );
-
-    // 3. Compute time boundaries (IST: Asia/Kolkata, UTC+5:30)
+    // 1. Compute time boundaries (IST: Asia/Kolkata, UTC+5:30)
     const now = new Date();
     let filterStartIso: string;
     let rangeLabel: string;
@@ -131,34 +82,86 @@ export async function GET(req: NextRequest) {
       rangeLabel = "Today (IST)";
     }
 
-    // 4. Fetch calls in range
-    const { data: callsData, error: callsErr } = await admin
-      .from("calls")
-      .select("id, lead_id, caller_id, outcome, duration_seconds, called_at, callback_at, notes")
-      .gte("called_at", filterStartIso);
+    // 2. Parallelize all 5 primary data queries: profiles, invites, calls, activeLeads, quarantine
+    const [
+      { data: profData, error: profileErr },
+      { data: invitesData },
+      { data: callsData, error: callsErr },
+      { data: activeLeads, error: leadsErr },
+      { count: quarantineCount },
+    ] = await Promise.all([
+      admin
+        .from("profiles")
+        .select("id, full_name, role, phone, is_available, active, require_password_change, temp_password_issued_at, created_at")
+        .is("deleted_at", null)
+        .neq("id", "00000000-0000-0000-0000-000000000001")
+        .neq("id", "a87c7c79-6c4c-4787-8132-8cff8f7a1e74")
+        .order("active", { ascending: false })
+        .order("full_name", { ascending: true }),
 
+      admin
+        .from("invites")
+        .select("accepted_by, email")
+        .not("accepted_by", "is", null),
+
+      admin
+        .from("calls")
+        .select("id, lead_id, caller_id, outcome, duration_seconds, called_at, callback_at, notes")
+        .gte("called_at", filterStartIso),
+
+      admin
+        .from("leads")
+        .select("id, assigned_to, status, next_callback_at, cooldown_until")
+        .is("deleted_at", null)
+        .not("assigned_to", "is", null)
+        .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")'),
+
+      admin
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "not_interested")
+        .is("deleted_at", null),
+    ]);
+
+    if (profileErr) {
+      throw profileErr;
+    }
     if (callsErr) {
       throw callsErr;
     }
-
-    // 5. Fetch currently assigned active leads (with callback and cooldown info)
-    const { data: activeLeads, error: leadsErr } = await admin
-      .from("leads")
-      .select("id, assigned_to, status, next_callback_at, cooldown_until")
-      .is("deleted_at", null)
-      .not("assigned_to", "is", null)
-      .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")');
-
     if (leadsErr) {
       throw leadsErr;
     }
 
-    // 6. Fetch count of leads in quarantine for navigation tab badge
-    const { count: quarantineCount } = await admin
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "not_interested")
-      .is("deleted_at", null);
+    const targetCallers = profData || [];
+
+    // 3. Map real email addresses from invites and auth
+    const emailMap = new Map<string, string>();
+
+    if (invitesData) {
+      for (const inv of invitesData) {
+        if (inv.accepted_by && inv.email) {
+          emailMap.set(inv.accepted_by, inv.email.toLowerCase().trim());
+        }
+      }
+    }
+
+    // For any caller not found in invites, fetch auth email directly via getUserById
+    const callersNeedingEmail = targetCallers.filter((c) => !emailMap.has(c.id));
+    if (callersNeedingEmail.length > 0) {
+      await Promise.allSettled(
+        callersNeedingEmail.map(async (caller) => {
+          try {
+            const { data: userData } = await admin.auth.admin.getUserById(caller.id);
+            if (userData?.user?.email) {
+              emailMap.set(caller.id, userData.user.email.toLowerCase().trim());
+            }
+          } catch {
+            // Ignore individual fetch errors
+          }
+        })
+      );
+    }
 
     // 7. Aggregate metrics per caller
     const callsList = callsData || [];

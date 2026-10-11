@@ -214,51 +214,58 @@ export function useCommsState() {
     async function init() {
       setLoading(true);
       try {
-        // Resolve current authenticated user
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        const activeUserId = sessionUser?.id;
 
-        const activeUser = user || sessionUser;
-
-        if (activeUser && mounted) {
-          setCurrentUserId(activeUser.id);
-          const { data: myProfile } = await supabase
-            .from("profiles")
-            .select("id, full_name, role")
-            .eq("id", activeUser.id)
-            .maybeSingle();
-
-          const resolvedProfile = myProfile || sessionProfile;
-          if (resolvedProfile && mounted) {
-            const prof = {
-              id: resolvedProfile.id,
-              full_name: resolvedProfile.full_name,
-              role: resolvedProfile.role,
-            };
-            setCurrentUserProfile(prof);
-            profileCacheRef.current[activeUser.id] = prof;
-          }
+        // Background auth resolution if sessionUser not immediately ready
+        if (!activeUserId) {
+          supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user && mounted) {
+              setCurrentUserId(user.id);
+              if (!sessionProfile) {
+                supabase
+                  .from("profiles")
+                  .select("id, full_name, role")
+                  .eq("id", user.id)
+                  .maybeSingle()
+                  .then(({ data: myProfile }) => {
+                    if (myProfile && mounted) {
+                      const prof = {
+                        id: myProfile.id,
+                        full_name: myProfile.full_name,
+                        role: myProfile.role,
+                      };
+                      setCurrentUserProfile(prof);
+                      profileCacheRef.current[user.id] = prof;
+                    }
+                  });
+              }
+            }
+          }).catch(() => {});
         }
 
-        // Fetch team members
-        const { data: profiles } = await supabase
-          .from("profiles_public")
-          .select("id, full_name, role")
-          .order("full_name", { ascending: true });
+        // Run team members, channels, and conversations concurrently in parallel
+        const [
+          { data: profiles },
+          { data: channelData },
+        ] = await Promise.all([
+          supabase
+            .from("profiles_public")
+            .select("id, full_name, role")
+            .order("full_name", { ascending: true }),
+          supabase
+            .from("channels")
+            .select("*")
+            .order("name", { ascending: true }),
+          refreshConversations(),
+        ]);
 
         if (profiles && mounted) {
           profiles.forEach((p) => {
             profileCacheRef.current[p.id] = p;
           });
-          setTeamMembers(user ? profiles.filter((p) => p.id !== user.id) : profiles);
+          const currentId = activeUserId || currentUserId;
+          setTeamMembers(currentId ? profiles.filter((p) => p.id !== currentId) : profiles);
         }
-
-        // Fetch channels
-        const { data: channelData } = await supabase
-          .from("channels")
-          .select("*")
-          .order("name", { ascending: true });
 
         const resolvedChannels: Channel[] = (channelData || []).map((c: any) => ({
           ...c,
@@ -266,7 +273,7 @@ export function useCommsState() {
           last_message: null,
         }));
 
-        // Fetch latest message for each channel
+        // Fetch latest preview message for channels (bounded limit)
         if (resolvedChannels.length > 0) {
           const channelIds = resolvedChannels.map((c) => c.id);
           const { data: recentMsgs } = await supabase
@@ -280,7 +287,8 @@ export function useCommsState() {
             `)
             .in("channel_id", channelIds)
             .is("deleted_at", null)
-            .order("created_at", { ascending: false });
+            .order("created_at", { ascending: false })
+            .limit(50);
 
           if (recentMsgs && recentMsgs.length > 0) {
             const latestMap: Record<string, any> = {};
@@ -302,9 +310,6 @@ export function useCommsState() {
         if (mounted) {
           setChannels(resolvedChannels);
         }
-
-        // Fetch DM Conversations
-        await refreshConversations();
       } catch (err) {
         console.error("Failed to initialize comms state:", err);
       } finally {

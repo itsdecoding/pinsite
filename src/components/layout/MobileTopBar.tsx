@@ -10,9 +10,14 @@ export function MobileTopBar() {
   const pathname = usePathname();
   const { user, profile } = useUserSession();
   const [mounted, setMounted] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
     setMounted(true);
+    const checkDesktop = () => setIsDesktop(window.innerWidth >= 1024);
+    checkDesktop();
+    window.addEventListener("resize", checkDesktop);
+    return () => window.removeEventListener("resize", checkDesktop);
   }, []);
 
   const cachedRole = React.useMemo(() => {
@@ -56,7 +61,7 @@ export function MobileTopBar() {
     return "Team Center";
   }, [pathname]);
 
-  if (!mounted || !isManagerOrAdmin) {
+  if (!mounted || !isManagerOrAdmin || isDesktop) {
     return null;
   }
 
