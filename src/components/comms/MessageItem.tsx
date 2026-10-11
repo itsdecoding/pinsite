@@ -12,6 +12,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Message } from "./useCommsState";
+import { ImageLightbox } from "./ImageLightbox";
 
 interface MessageItemProps {
   message: Message;
@@ -47,6 +48,7 @@ export function MessageItem({
   const [editText, setEditText] = useState(message.body);
   const [isSaving, setIsSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const senderName = isCurrentUser
     ? "You"
@@ -133,12 +135,166 @@ export function MessageItem({
       }
     : null;
 
+  const imageAttachments = message.attachments?.filter((att) => att.type === "image") || [];
+  const fileAttachments = message.attachments?.filter((att) => att.type !== "image") || [];
+
+  const isAutoPlaceholderText =
+    message.body === "📷 Image" ||
+    message.body === "📎 Attachment" ||
+    /^📷 Image(\s*\(\d+\))?$/i.test(message.body);
+
+  const shouldRenderText =
+    isEditing || (message.body && (!isAutoPlaceholderText || imageAttachments.length === 0));
+
+  const renderImageGrid = () => {
+    if (imageAttachments.length === 0) return null;
+
+    const count = imageAttachments.length;
+
+    // 1 Image: Max single preview
+    if (count === 1) {
+      return (
+        <div
+          className="relative rounded-xl overflow-hidden max-w-[280px] sm:max-w-[340px] cursor-pointer group bg-black/10 dark:bg-black/30 mb-1"
+          onClick={() => setLightboxIndex(0)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageAttachments[0].url}
+            alt={imageAttachments[0].name || "Attachment"}
+            className="w-full max-h-[340px] object-cover rounded-xl group-hover:opacity-95 transition"
+            onError={(e) => {
+              (e.currentTarget as HTMLElement).style.display = "none";
+            }}
+          />
+        </div>
+      );
+    }
+
+    // 2 Images: Side-by-side columns (refer reference image 4)
+    if (count === 2) {
+      return (
+        <div className="grid grid-cols-2 gap-1 rounded-xl overflow-hidden max-w-[320px] sm:max-w-[360px] aspect-[4/3] sm:aspect-[16/11] mb-1">
+          {imageAttachments.map((att, idx) => (
+            <div
+              key={idx}
+              className="relative w-full h-full overflow-hidden cursor-pointer group bg-black/15 dark:bg-black/30"
+              onClick={() => setLightboxIndex(idx)}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={att.url}
+                alt={att.name || "Attachment"}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                onError={(e) => {
+                  (e.currentTarget as HTMLElement).style.display = "none";
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // 3 Images: 1 large on left, 2 stacked on right
+    if (count === 3) {
+      return (
+        <div className="grid grid-cols-2 grid-rows-2 gap-1 rounded-xl overflow-hidden max-w-[320px] sm:max-w-[360px] aspect-square mb-1">
+          <div
+            className="row-span-2 relative w-full h-full overflow-hidden cursor-pointer group bg-black/15 dark:bg-black/30"
+            onClick={() => setLightboxIndex(0)}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageAttachments[0].url}
+              alt={imageAttachments[0].name || "Attachment"}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+              onError={(e) => {
+                (e.currentTarget as HTMLElement).style.display = "none";
+              }}
+            />
+          </div>
+          <div
+            className="relative w-full h-full overflow-hidden cursor-pointer group bg-black/15 dark:bg-black/30"
+            onClick={() => setLightboxIndex(1)}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageAttachments[1].url}
+              alt={imageAttachments[1].name || "Attachment"}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+              onError={(e) => {
+                (e.currentTarget as HTMLElement).style.display = "none";
+              }}
+            />
+          </div>
+          <div
+            className="relative w-full h-full overflow-hidden cursor-pointer group bg-black/15 dark:bg-black/30"
+            onClick={() => setLightboxIndex(2)}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageAttachments[2].url}
+              alt={imageAttachments[2].name || "Attachment"}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+              onError={(e) => {
+                (e.currentTarget as HTMLElement).style.display = "none";
+              }}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // 4 or more images: 2x2 square frame (refer reference image 3) with +N overlay if > 4
+    const displayList = imageAttachments.slice(0, 4);
+    const extraCount = count - 4;
+
+    return (
+      <div className="grid grid-cols-2 grid-rows-2 gap-1 rounded-xl overflow-hidden max-w-[320px] sm:max-w-[360px] aspect-square mb-1">
+        {displayList.map((att, idx) => (
+          <div
+            key={idx}
+            className="relative w-full h-full overflow-hidden cursor-pointer group bg-black/15 dark:bg-black/30"
+            onClick={() => setLightboxIndex(idx)}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={att.url}
+              alt={att.name || "Attachment"}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+              onError={(e) => {
+                (e.currentTarget as HTMLElement).style.display = "none";
+              }}
+            />
+            {idx === 3 && extraCount > 0 && (
+              <div className="absolute inset-0 bg-black/65 flex items-center justify-center text-white text-xl sm:text-2xl font-bold backdrop-blur-[1px] hover:bg-black/75 transition">
+                +{extraCount + 1}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div
       className={`group relative flex w-full my-0.5 select-text ${
         isCurrentUser ? "justify-end" : "justify-start"
       }`}
     >
+      {/* WhatsApp In-App Image Lightbox Modal */}
+      {lightboxIndex !== null && (
+        <ImageLightbox
+          isOpen={lightboxIndex !== null}
+          images={imageAttachments}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          senderName={senderName}
+        />
+      )}
+
       {/* WhatsApp Message Bubble (NO outer box, right-aligned for self, left for others) */}
       <div
         className={`relative max-w-[85%] sm:max-w-[70%] md:max-w-[65%] px-3 py-2 rounded-2xl shadow-sm text-xs leading-relaxed transition ${
@@ -166,45 +322,30 @@ export function MessageItem({
           </div>
         )}
 
-        {/* Attachment Previews */}
-        {message.attachments && message.attachments.length > 0 && (
+        {/* WhatsApp Multi-Image Grid Frame */}
+        {renderImageGrid()}
+
+        {/* Non-image File Attachments */}
+        {fileAttachments.length > 0 && (
           <div className="mb-2 space-y-1.5">
-            {message.attachments.map((att, idx) => {
-              if (att.type === "image") {
-                return (
-                  <div key={idx} className="relative rounded-xl overflow-hidden max-w-sm">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={att.url}
-                      alt={att.name || "Attachment"}
-                      className="w-full max-h-60 object-cover rounded-xl cursor-pointer hover:opacity-95 transition"
-                      onClick={() => window.open(att.url, "_blank")}
-                      onError={(e) => {
-                        (e.currentTarget as HTMLElement).style.display = "none";
-                      }}
-                    />
-                  </div>
-                );
-              }
-              return (
-                <a
-                  key={idx}
-                  href={att.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 p-2 rounded-xl bg-black/[0.05] dark:bg-white/[0.06] hover:bg-black/[0.08] dark:hover:bg-white/[0.09] transition"
-                >
-                  <FileText className="w-5 h-5 text-[#F95721] shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-medium truncate">{att.name}</p>
-                    {att.size && (
-                      <p className="text-[9px] text-zinc-400 font-mono">{att.size}</p>
-                    )}
-                  </div>
-                  <ExternalLink className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                </a>
-              );
-            })}
+            {fileAttachments.map((att, idx) => (
+              <a
+                key={idx}
+                href={att.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 p-2 rounded-xl bg-black/[0.05] dark:bg-white/[0.06] hover:bg-black/[0.08] dark:hover:bg-white/[0.09] transition"
+              >
+                <FileText className="w-5 h-5 text-[#F95721] shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium truncate">{att.name}</p>
+                  {att.size && (
+                    <p className="text-[9px] text-zinc-400 font-mono">{att.size}</p>
+                  )}
+                </div>
+                <ExternalLink className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+              </a>
+            ))}
           </div>
         )}
 
@@ -248,11 +389,11 @@ export function MessageItem({
               </button>
             </div>
           </div>
-        ) : (
-          <div className="inline break-words whitespace-pre-wrap">
+        ) : shouldRenderText ? (
+          <div className="inline break-words whitespace-pre-wrap mt-0.5">
             {renderFormattedBody(message.body)}
           </div>
-        )}
+        ) : null}
 
         {/* WhatsApp Timestamp & Read Receipts inside Bubble, Bottom-Right */}
         <div className="flex items-center justify-end gap-1 float-right ml-3 mt-1 select-none">
