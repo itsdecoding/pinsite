@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
     // 4. Fetch calls in range
     const { data: callsData, error: callsErr } = await admin
       .from("calls")
-      .select("id, caller_id, outcome, duration_seconds, called_at, callback_at, notes")
+      .select("id, lead_id, caller_id, outcome, duration_seconds, called_at, callback_at, notes")
       .gte("called_at", filterStartIso);
 
     if (callsErr) {
@@ -353,6 +353,44 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // 8. Fetch last 5 events for Live Activity (most recent first)
+    let liveCalls = [...callsList]
+      .sort((a, b) => new Date(b.called_at).getTime() - new Date(a.called_at).getTime())
+      .slice(0, 5);
+
+    if (liveCalls.length < 5) {
+      const { data: latestOverall } = await admin
+        .from("calls")
+        .select("id, lead_id, caller_id, outcome, duration_seconds, called_at, callback_at, notes")
+        .order("called_at", { ascending: false })
+        .limit(5);
+
+      if (latestOverall && latestOverall.length > 0) {
+        liveCalls = latestOverall;
+      }
+    }
+
+    const liveLeadIds = Array.from(new Set(liveCalls.map((c: any) => c.lead_id).filter(Boolean)));
+    const liveLeadsMap = new Map<string, string>();
+    if (liveLeadIds.length > 0) {
+      const { data: leadRows } = await admin
+        .from("leads")
+        .select("id, name")
+        .in("id", liveLeadIds);
+      (leadRows || []).forEach((l: any) => liveLeadsMap.set(l.id, l.name));
+    }
+
+    const liveActivity = liveCalls.map((c: any) => {
+      const caller = targetCallers.find((tc) => tc.id === c.caller_id);
+      return {
+        id: c.id,
+        caller_name: caller?.full_name || "Caller",
+        outcome: c.outcome,
+        business: liveLeadsMap.get(c.lead_id) || "Lead",
+        called_at: c.called_at,
+      };
+    });
+
     return NextResponse.json({
       callers: callerStats,
       summary: {
@@ -375,6 +413,7 @@ export async function GET(req: NextRequest) {
         },
         needs_attention: needsAttention,
       },
+      live_activity: liveActivity,
       quarantine_count: quarantineCount || 0,
       range: rangeParam,
       range_label: rangeLabel,

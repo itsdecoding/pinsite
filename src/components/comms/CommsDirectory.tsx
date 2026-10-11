@@ -14,6 +14,7 @@ import {
   Users,
 } from "lucide-react";
 import { Channel, PublicProfile, DMConversation } from "./useCommsState";
+import { NotificationToggleButton } from "@/components/notifications/PushNotificationManager";
 
 interface CommsDirectoryProps {
   channels: Channel[];
@@ -470,14 +471,17 @@ export function CommsDirectory({
           <h1 className="text-[34px] font-bold text-[#111110] dark:text-white tracking-tight leading-none">
             Comms
           </h1>
-          <button
-            type="button"
-            onClick={() => setIsNewDmOpen(true)}
-            title="Start new chat"
-            className="w-9 h-9 rounded-full bg-black/[0.05] dark:bg-white/[0.08] hover:bg-[#7F3922]/20 text-zinc-700 dark:text-zinc-200 hover:text-[#F95721] flex items-center justify-center transition active:scale-95 shrink-0"
-          >
-            <Plus className="w-5 h-5 stroke-[2.5]" />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <NotificationToggleButton />
+            <button
+              type="button"
+              onClick={() => setIsNewDmOpen(true)}
+              title="Start new chat"
+              className="w-9 h-9 rounded-full bg-black/[0.05] dark:bg-white/[0.08] hover:bg-[#7F3922]/20 text-zinc-700 dark:text-zinc-200 hover:text-[#F95721] flex items-center justify-center transition active:scale-95 shrink-0"
+            >
+              <Plus className="w-5 h-5 stroke-[2.5]" />
+            </button>
+          </div>
         </div>
 
         {/* 2. SEARCH BAR: Full-width rounded pill, gray background, search icon */}

@@ -136,6 +136,8 @@ export function MessageComposer({
     }, 10);
   };
 
+  const sendingRef = useRef(false);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return;
 
@@ -166,8 +168,12 @@ export function MessageComposer({
     }
 
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+      // On mobile virtual keyboards, allow regular multiline with Enter key; physical desktop keyboards trigger send
+      const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
+      if (!isMobile) {
+        e.preventDefault();
+        handleSend();
+      }
     }
   };
 
@@ -213,8 +219,9 @@ export function MessageComposer({
 
   const handleSend = async () => {
     const hasAttachments = pendingAttachments.length > 0;
-    if ((!text.trim() && !hasAttachments) || isSending || isUploading || disabled) return;
+    if ((!text.trim() && !hasAttachments) || isSending || isUploading || disabled || sendingRef.current) return;
 
+    sendingRef.current = true;
     const messageToSend = text.trim();
     const attachmentsToSend = [...pendingAttachments];
 
@@ -235,7 +242,13 @@ export function MessageComposer({
       setPendingAttachments(attachmentsToSend);
     } finally {
       setIsSending(false);
-      setTimeout(() => textareaRef.current?.focus(), 50);
+      sendingRef.current = false;
+      setTimeout(() => {
+        // Only auto-focus on desktop so keyboard doesn't aggressively bounce on mobile
+        if (typeof window !== "undefined" && window.innerWidth >= 640) {
+          textareaRef.current?.focus();
+        }
+      }, 50);
     }
   };
 
@@ -287,7 +300,7 @@ export function MessageComposer({
   const hasContent = text.trim().length > 0 || pendingAttachments.length > 0;
 
   return (
-    <div className="relative w-full min-w-0 max-w-full bg-white dark:bg-[#111213] border-t border-black/[0.06] dark:border-white/[0.08] p-2 sm:p-3 select-none">
+    <div className="relative w-full min-w-0 max-w-full bg-white dark:bg-[#111213] border-t border-black/[0.06] dark:border-white/[0.08] p-2 sm:p-3">
       {/* Hidden File Input */}
       <input
         ref={fileInputRef}
@@ -444,19 +457,29 @@ export function MessageComposer({
             placeholder={placeholder}
             disabled={disabled || isSending}
             rows={1}
-            className="w-full bg-transparent resize-none text-xs text-[#111110] dark:text-zinc-100 placeholder-zinc-400 focus:outline-none max-h-[140px] leading-relaxed scrollbar-thin scrollbar-thumb-zinc-700/30"
+            autoCapitalize="sentences"
+            autoCorrect="on"
+            spellCheck="true"
+            className="w-full bg-transparent resize-none text-[15px] sm:text-xs text-[#111110] dark:text-zinc-100 placeholder-zinc-400 focus:outline-none max-h-[140px] leading-relaxed select-text scrollbar-thin scrollbar-thumb-zinc-700/30"
           />
         </div>
 
         {/* Right Icon: Voice Memo when empty, Circular Send button when text is entered */}
-        <div className="pb-0.5">
+        <div className="pb-0.5 flex items-center gap-1 shrink-0">
           {hasContent || isUploading ? (
             <button
               type="button"
-              onClick={handleSend}
+              onPointerDown={(e) => {
+                // Prevent textarea blur on mobile touch so keyboard doesn't collapse before send!
+                e.preventDefault();
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                handleSend();
+              }}
               disabled={isSending || isUploading || disabled}
               title="Send message"
-              className="w-9 h-9 rounded-full bg-[#7F3922] hover:bg-[#F95721] text-white flex items-center justify-center shadow-md active:scale-95 transition disabled:opacity-50"
+              className="w-10 h-10 sm:w-9 sm:h-9 rounded-full bg-[#F95721] hover:bg-[#E04815] text-white flex items-center justify-center shadow-md active:scale-90 transition disabled:opacity-50 touch-manipulation"
             >
               {isSending || isUploading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -465,18 +488,29 @@ export function MessageComposer({
               )}
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={handleToggleVoice}
-              title={isRecording ? "Recording voice note..." : "Voice note"}
-              className={`w-9 h-9 rounded-full flex items-center justify-center transition active:scale-95 ${
-                isRecording
-                  ? "bg-rose-500 text-white animate-pulse"
-                  : "text-zinc-400 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
-              }`}
-            >
-              <Mic className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleToggleVoice}
+                title={isRecording ? "Recording voice note..." : "Voice note"}
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition active:scale-95 touch-manipulation ${
+                  isRecording
+                    ? "bg-rose-500 text-white animate-pulse"
+                    : "text-zinc-400 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                }`}
+              >
+                <Mic className="w-5 h-5" />
+              </button>
+              {/* Muted Send indicator on mobile so touch target is always familiar */}
+              <button
+                type="button"
+                disabled
+                title="Type a message to send"
+                className="sm:hidden w-9 h-9 rounded-full flex items-center justify-center text-zinc-300 dark:text-zinc-600 cursor-not-allowed opacity-60"
+              >
+                <Send className="w-4 h-4 ml-0.5" />
+              </button>
+            </div>
           )}
         </div>
       </div>

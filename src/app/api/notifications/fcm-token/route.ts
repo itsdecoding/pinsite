@@ -33,6 +33,35 @@ async function getAuthenticatedUser(req: NextRequest) {
   return null;
 }
 
+export async function GET(req: NextRequest) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized: Active session required" }, { status: 401 });
+    }
+
+    const admin = getAdminClient();
+    const { data: tokens, error } = await admin
+      .from("fcm_tokens")
+      .select("id, device_type, last_used_at, created_at")
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Failed to query user FCM tokens:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      registered: (tokens || []).length > 0,
+      count: (tokens || []).length,
+      devices: tokens || [],
+    });
+  } catch (err: any) {
+    console.error("GET FCM tokens error:", err);
+    return NextResponse.json({ error: err?.message || "Internal server error" }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const user = await getAuthenticatedUser(req);
@@ -107,23 +136,33 @@ export async function DELETE(req: NextRequest) {
       token = searchParams.get("token") || "";
     }
 
-    if (!token || typeof token !== "string" || !token.trim()) {
-      return NextResponse.json({ error: "FCM token is required" }, { status: 400 });
-    }
-
     const admin = getAdminClient();
-    const { error } = await admin
-      .from("fcm_tokens")
-      .delete()
-      .eq("token", token.trim())
-      .eq("user_id", user.id);
 
-    if (error) {
-      console.error("Failed to delete FCM token:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (token && token !== "all") {
+      const { error } = await admin
+        .from("fcm_tokens")
+        .delete()
+        .eq("token", token.trim())
+        .eq("user_id", user.id);
+
+      if (error) {
+        console.error("Failed to delete FCM token:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+    } else {
+      // Delete all tokens for this user
+      const { error } = await admin
+        .from("fcm_tokens")
+        .delete()
+        .eq("user_id", user.id);
+
+      if (error) {
+        console.error("Failed to delete all FCM tokens for user:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
     }
 
-    return NextResponse.json({ success: true, message: "Token removed successfully" });
+    return NextResponse.json({ success: true, message: "Notifications unregistered successfully" });
   } catch (err: any) {
     console.error("FCM token removal error:", err);
     return NextResponse.json({ error: err?.message || "Internal server error" }, { status: 500 });

@@ -53,6 +53,15 @@ function CommsHubContainer() {
     return () => window.removeEventListener("reset-comms-view", handleResetView);
   }, []);
 
+  // Sync mobile view with deep-link search parameters (e.g. from notification clicks)
+  useEffect(() => {
+    const channelParam = searchParams.get("channel");
+    const dmParam = searchParams.get("dm");
+    if (channelParam || dmParam) {
+      setMobileView("chat");
+    }
+  }, [searchParams]);
+
   const handleSelectChannel = (channelId: string) => {
     selectChannel(channelId);
     setMobileView("chat");

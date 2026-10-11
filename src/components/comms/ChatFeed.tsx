@@ -12,6 +12,7 @@ import {
 import { Channel, PublicProfile, Message, MessageAttachment } from "./useCommsState";
 import { MessageItem, cleanSenderName } from "./MessageItem";
 import { MessageComposer } from "./MessageComposer";
+import { NotificationToggleButton } from "@/components/notifications/PushNotificationManager";
 
 interface ChatFeedProps {
   activeView: "channel" | "dm";
@@ -212,6 +213,11 @@ export function ChatFeed({
               </div>
             </div>
           )}
+        </div>
+
+        {/* Right side: Push Notification Bell / Toggle */}
+        <div className="flex items-center gap-1 shrink-0">
+          <NotificationToggleButton />
         </div>
       </div>
 

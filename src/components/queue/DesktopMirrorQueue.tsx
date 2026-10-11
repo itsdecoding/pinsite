@@ -678,11 +678,6 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
                     <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-semibold bg-[#F95721]/10 text-[#F95721] border border-[#F95721]/20">
                       Attempt {currentLead.attempts_count || 1}/5
                     </span>
-                    {currentLead.score && (
-                      <span className="px-2.5 py-1 rounded-lg text-xs font-mono text-zinc-400 bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924]">
-                        Score: {currentLead.score}
-                      </span>
-                    )}
                   </div>
                 </div>
 
@@ -1049,12 +1044,6 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
                     <span className="text-[#8A8680] block text-[11px]">Niche / Area</span>
                     <span>
                       {currentLead.niche} · {currentLead.area}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[#8A8680] block text-[11px]">Lead Score</span>
-                    <span className="font-mono font-bold text-[#F95721]">
-                      {currentLead.score || 75}/100
                     </span>
                   </div>
                 </div>

@@ -566,11 +566,6 @@ export function QueueKanban({ onSelectLeadForDial, userRole = "caller" }: QueueK
                         {lead.niche} • {lead.area}
                       </p>
                     </div>
-
-                    {/* Score Badge */}
-                    <span className="shrink-0 px-2 py-0.5 rounded-md bg-[#F95721]/10 text-[#F95721] font-mono text-[10px] font-bold border border-[#F95721]/20">
-                      {lead.score} pts
-                    </span>
                   </div>
 
                   {/* Phone & Website Indicator */}

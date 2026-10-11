@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { Bell, Check, ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserSession } from "@/contexts/UserSessionContext";
+import { openPushNotificationSettings } from "@/components/notifications/PushNotificationManager";
 
 interface NotificationItem {
   id: string;
@@ -217,6 +218,22 @@ export function NotificationBell({
                 </div>
               ))
             )}
+          </div>
+
+          {/* Device Push Notifications Quick Action */}
+          <div className="p-3 border-t border-[#ECE8E1] dark:border-[#2D2924] bg-black/[0.02] dark:bg-white/[0.02] flex items-center justify-between">
+            <span className="text-[11px] text-zinc-500">Device Push Alerts</span>
+            <button
+              type="button"
+              onClick={() => {
+                setIsOpen(false);
+                openPushNotificationSettings();
+              }}
+              className="text-[11px] font-bold text-[#F95721] hover:underline flex items-center gap-1"
+            >
+              <span>Manage Push</span>
+              <span>&rarr;</span>
+            </button>
           </div>
         </div>
       )}

@@ -967,7 +967,19 @@ export function useCommsState() {
         };
 
         if (activeView === "channel") {
-          payload.channel_id = activeChannelId;
+          let chId = activeChannelId;
+          if (!chId && channels.length > 0) {
+            const fallbackCh =
+              channels.find((c) => c.name.toLowerCase() === "general") ||
+              channels[0];
+            chId = fallbackCh.id;
+            setActiveChannelId(chId);
+          }
+          if (!chId) {
+            alert("No channel selected to send message.");
+            return;
+          }
+          payload.channel_id = chId;
         } else {
           payload.thread_id = threadId;
         }

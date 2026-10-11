@@ -7,6 +7,7 @@ import { useUserSession } from "@/contexts/UserSessionContext";
 import { getFirebaseMessagingInstance } from "@/lib/firebase/client";
 import { getToken, onMessage } from "firebase/messaging";
 import { createClient } from "@/lib/supabase/client";
+import { PushNotificationManager } from "./PushNotificationManager";
 
 interface ForegroundToast {
   id: string;
@@ -281,6 +282,9 @@ export function FCMHandler() {
           </div>
         </div>
       )}
+
+      {/* 3. Global Push Notification Settings Modal */}
+      <PushNotificationManager />
     </>
   );
 }

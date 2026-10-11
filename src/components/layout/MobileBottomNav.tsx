@@ -21,6 +21,7 @@ import { useUserSession } from "@/contexts/UserSessionContext";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { NotificationBell } from "@/components/comms/NotificationBell";
+import { openPushNotificationSettings } from "@/components/notifications/PushNotificationManager";
 
 export function MobileBottomNav() {
   const pathname = usePathname();
@@ -538,6 +539,31 @@ export function MobileBottomNav() {
                   Theme Appearance
                 </span>
                 <ThemeToggle />
+              </div>
+
+              {/* Push Notifications Row */}
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04]">
+                <div className="flex items-center gap-2.5">
+                  <Bell className="w-4 h-4 text-[#F95721]" />
+                  <div>
+                    <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 block">
+                      Push Notifications
+                    </span>
+                    <span className="text-[10px] text-zinc-400">
+                      Mobile & desktop background alerts
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileSheet(false);
+                    openPushNotificationSettings();
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-[#7F3922]/15 hover:bg-[#7F3922]/25 text-[#F95721] text-xs font-semibold transition active:scale-95"
+                >
+                  Manage
+                </button>
               </div>
 
               {isManagerOrAdmin && (
