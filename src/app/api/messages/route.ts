@@ -1,51 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "@/lib/supabase/server";
 import { sendFCMNotificationToUser } from "@/lib/notifications/fcm";
+import { getAdminClient, getAuthenticatedUser } from "@/lib/supabase/admin";
 
-function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createAdminClient(supabaseUrl, supabaseServiceKey);
-}
-
-async function getAuthenticatedUser(req: NextRequest) {
-  // 1. Check cookies session
-  const serverSupabase = createServerClient();
-  const {
-    data: { user },
-  } = await serverSupabase.auth.getUser();
-
-  if (user) {
-    const admin = getAdminClient();
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    return { user, role: profile?.role || "caller" };
-  }
-
-  // 2. Check Bearer token
-  const authHeader = req.headers.get("authorization");
-  if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.replace("Bearer ", "").trim();
-    const admin = getAdminClient();
-    const { data: jwtData } = await admin.auth.getUser(token);
-    if (jwtData?.user) {
-      const { data: profile } = await admin
-        .from("profiles")
-        .select("role")
-        .eq("id", jwtData.user.id)
-        .maybeSingle();
-
-      return { user: jwtData.user, role: profile?.role || "caller" };
-    }
-  }
-
-  return null;
-}
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {

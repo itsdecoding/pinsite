@@ -1,58 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { getAdminClient, verifyManagerSession } from "@/lib/supabase/admin";
 
-function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createAdminClient(supabaseUrl, supabaseServiceKey);
-}
+export const dynamic = "force-dynamic";
 
 const VALID_ROLES = ["caller", "manager", "developer", "admin"] as const;
 type ValidRole = (typeof VALID_ROLES)[number];
 
 const OWNER_EMAIL = "muzammilpathan6047@gmail.com";
 const OWNER_PROFILE_ID = "a87c7c79-6c4c-4787-8132-8cff8f7a1e74";
-
-async function verifyManagerSession(req: NextRequest) {
-  // 1. Check cookies session
-  const serverSupabase = createServerClient();
-  const {
-    data: { user },
-  } = await serverSupabase.auth.getUser();
-
-  let activeUser = user;
-
-  // 2. Check Bearer token in header if no cookie session
-  if (!activeUser) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.replace("Bearer ", "").trim();
-      const admin = getAdminClient();
-      const { data: jwtData } = await admin.auth.getUser(token);
-      activeUser = jwtData.user;
-    }
-  }
-
-  if (!activeUser) {
-    return { error: "Unauthorized: Active session required", status: 401 };
-  }
-
-  // 3. Verify user has manager or admin privileges
-  const admin = getAdminClient();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("role, full_name")
-    .eq("id", activeUser.id)
-    .maybeSingle();
-
-  const role = profile?.role || "caller";
-  if (role !== "admin" && role !== "manager") {
-    return { error: "Forbidden: Manager or Admin role required", status: 403 };
-  }
-
-  return { user: activeUser, role, fullName: profile?.full_name || "Manager" };
-}
 
 export async function POST(req: NextRequest) {
   try {

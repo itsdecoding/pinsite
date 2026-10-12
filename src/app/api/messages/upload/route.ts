@@ -1,41 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { getAdminClient, getAuthenticatedUser } from "@/lib/supabase/admin";
 
-function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createAdminClient(supabaseUrl, supabaseServiceKey);
-}
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
     // 1. Authenticate user
-    const serverSupabase = createServerClient();
-    const {
-      data: { user },
-    } = await serverSupabase.auth.getUser();
-
-    let authenticatedUserId = user?.id;
-
-    if (!authenticatedUserId) {
-      const authHeader = req.headers.get("authorization");
-      if (authHeader?.startsWith("Bearer ")) {
-        const token = authHeader.replace("Bearer ", "").trim();
-        const admin = getAdminClient();
-        const { data: jwtData } = await admin.auth.getUser(token);
-        if (jwtData?.user) {
-          authenticatedUserId = jwtData.user.id;
-        }
-      }
-    }
-
-    if (!authenticatedUserId) {
+    const auth = await getAuthenticatedUser(req);
+    if (!auth) {
       return NextResponse.json(
         { error: "Unauthorized: Active session required to upload files" },
         { status: 401 }
       );
     }
+    const authenticatedUserId = auth.user.id;
 
     // 2. Parse FormData
     const formData = await req.formData();

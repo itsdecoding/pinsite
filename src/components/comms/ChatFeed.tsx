@@ -293,7 +293,7 @@ export function ChatFeed({
                     isChannel={activeView === "channel"}
                     onEdit={onEditMessage}
                     onDelete={onDeleteMessage}
-                    onReply={(m) => onSetReplyingToMessage(m)}
+                    onReply={onSetReplyingToMessage}
                     quotedMessage={quoted}
                   />
                 );

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import crypto from "crypto";
 
@@ -22,8 +22,6 @@ function formatLeadName(rawName: string | null | undefined): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
     const configuredApiKey = process.env.INGESTION_API_KEY;
 
     let isAuthorized = false;
@@ -36,7 +34,7 @@ export async function POST(req: NextRequest) {
       } = await serverSupabase.auth.getUser();
 
       if (user) {
-        const admin = createAdminClient(supabaseUrl, supabaseServiceKey);
+        const admin = getAdminClient();
         const { data: profile } = await admin
           .from("profiles")
           .select("role")
@@ -77,7 +75,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabase = createAdminClient(supabaseUrl, supabaseServiceKey);
+    const supabase = getAdminClient();
 
     const body = await req.json();
     const leadsRaw = Array.isArray(body) ? body : body.leads ? body.leads : [body];

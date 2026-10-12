@@ -1,44 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { getAdminClient, verifyApiSession } from "@/lib/supabase/admin";
 import crypto from "crypto";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
     // 1. Authenticate user session
-    const serverSupabase = createServerClient();
-    let {
-      data: { user },
-    } = await serverSupabase.auth.getUser();
-
-    const admin = createAdminClient(supabaseUrl, supabaseServiceKey);
-
-    if (!user) {
-      const authHeader = req.headers.get("authorization");
-      if (authHeader?.startsWith("Bearer ")) {
-        const token = authHeader.replace("Bearer ", "").trim();
-        const { data: jwtData } = await admin.auth.getUser(token);
-        user = jwtData.user;
-      }
+    const authResult = await verifyApiSession(req);
+    if ("error" in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized: Active session required" }, { status: 401 });
-    }
-
-    // 2. Verify user profile and role
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("role, full_name")
-      .eq("id", user.id)
-      .maybeSingle();
+    const { user, profile } = authResult;
 
     if (!profile) {
       return NextResponse.json({ error: "Forbidden: User profile not found" }, { status: 403 });
     }
+
+    const admin = getAdminClient();
 
     const body = await req.json();
     const {

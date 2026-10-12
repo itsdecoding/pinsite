@@ -1,46 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { getAdminClient, verifyApiSession } from "@/lib/supabase/admin";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-    // 1. Authenticate user
-    const serverSupabase = createServerClient();
-    let {
-      data: { user },
-    } = await serverSupabase.auth.getUser();
-
-    const admin = createAdminClient(supabaseUrl, supabaseServiceKey);
-
-    if (!user) {
-      const authHeader = req.headers.get("authorization");
-      if (authHeader?.startsWith("Bearer ")) {
-        const token = authHeader.replace("Bearer ", "").trim();
-        const { data: jwtData } = await admin.auth.getUser(token);
-        user = jwtData.user;
-      }
+    const authResult = await verifyApiSession(req, {
+      requiredRoles: ["admin", "manager", "developer"],
+    });
+    if ("error" in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized: Active session required" }, { status: 401 });
-    }
-
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    const role = profile?.role || "caller";
-    if (role !== "admin" && role !== "manager" && role !== "developer") {
-      return NextResponse.json(
-        { error: "Forbidden: Only developers and managers can manage project tasks" },
-        { status: 403 }
-      );
-    }
+    const { user } = authResult;
+    const admin = getAdminClient();
 
     const body = await req.json();
     const { title, client_name, description, status, due_date, dev_id } = body;
@@ -124,28 +96,13 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-    const serverSupabase = createServerClient();
-    let {
-      data: { user },
-    } = await serverSupabase.auth.getUser();
-
-    const admin = createAdminClient(supabaseUrl, supabaseServiceKey);
-
-    if (!user) {
-      const authHeader = req.headers.get("authorization");
-      if (authHeader?.startsWith("Bearer ")) {
-        const token = authHeader.replace("Bearer ", "").trim();
-        const { data: jwtData } = await admin.auth.getUser(token);
-        user = jwtData.user;
-      }
+    const authResult = await verifyApiSession(req, {
+      requiredRoles: ["admin", "manager", "developer"],
+    });
+    if ("error" in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized: Active session required" }, { status: 401 });
-    }
+    const admin = getAdminClient();
 
     const { searchParams } = new URL(req.url);
     const taskId = searchParams.get("id");

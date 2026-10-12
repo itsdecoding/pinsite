@@ -1,44 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { getAdminClient, getAuthenticatedUser } from "@/lib/supabase/admin";
 
-function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createAdminClient(supabaseUrl, supabaseServiceKey);
-}
-
-async function getAuthenticatedUser(req: NextRequest) {
-  // 1. Check cookies session
-  const serverSupabase = createServerClient();
-  const {
-    data: { user },
-  } = await serverSupabase.auth.getUser();
-
-  if (user) {
-    return user;
-  }
-
-  // 2. Check Bearer token
-  const authHeader = req.headers.get("authorization");
-  if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.replace("Bearer ", "").trim();
-    const admin = getAdminClient();
-    const { data: jwtData } = await admin.auth.getUser(token);
-    if (jwtData?.user) {
-      return jwtData.user;
-    }
-  }
-
-  return null;
-}
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
+    const auth = await getAuthenticatedUser(req);
+    if (!auth) {
       return NextResponse.json({ error: "Unauthorized: Active session required" }, { status: 401 });
     }
+    const user = auth.user;
 
     const admin = getAdminClient();
     const { data: tokens, error } = await admin
@@ -64,10 +35,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
+    const auth = await getAuthenticatedUser(req);
+    if (!auth) {
       return NextResponse.json({ error: "Unauthorized: Active session required" }, { status: 401 });
     }
+    const user = auth.user;
 
     let body: any = {};
     try {
@@ -122,10 +94,11 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
+    const auth = await getAuthenticatedUser(req);
+    if (!auth) {
       return NextResponse.json({ error: "Unauthorized: Active session required" }, { status: 401 });
     }
+    const user = auth.user;
 
     let token = "";
     try {

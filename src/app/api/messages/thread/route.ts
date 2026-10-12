@@ -1,31 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { getAdminClient, getAuthenticatedUser } from "@/lib/supabase/admin";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const admin = createAdminClient(supabaseUrl, supabaseServiceKey);
-
-    // 1. Authenticate user
-    const serverSupabase = createServerClient();
-    let {
-      data: { user },
-    } = await serverSupabase.auth.getUser();
-
-    if (!user) {
-      const authHeader = req.headers.get("authorization");
-      if (authHeader?.startsWith("Bearer ")) {
-        const token = authHeader.replace("Bearer ", "").trim();
-        const { data: jwtData } = await admin.auth.getUser(token);
-        user = jwtData.user;
-      }
-    }
-
-    if (!user) {
+    const auth = await getAuthenticatedUser(req);
+    if (!auth) {
       return NextResponse.json({ error: "Unauthorized: Active session required" }, { status: 401 });
     }
+    const user = auth.user;
+    const admin = getAdminClient();
 
     let body: any = {};
     try {

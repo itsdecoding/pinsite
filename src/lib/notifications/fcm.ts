@@ -1,12 +1,6 @@
 import { getFirebaseAdminMessaging } from "@/lib/firebase/admin";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { getAdminClient } from "@/lib/supabase/admin";
 import type { MulticastMessage, SendResponse } from "firebase-admin/messaging";
-
-function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createAdminClient(supabaseUrl, supabaseServiceKey);
-}
 
 export interface PushNotificationPayload {
   title: string;

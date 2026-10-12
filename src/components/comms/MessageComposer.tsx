@@ -12,7 +12,7 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { Theme, EmojiClickData } from "emoji-picker-react";
+import type { EmojiClickData, Theme } from "emoji-picker-react";
 import { Message, MessageAttachment, PublicProfile } from "./useCommsState";
 
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), {
@@ -318,7 +318,7 @@ export function MessageComposer({
         >
           <EmojiPicker
             onEmojiClick={handleEmojiSelect}
-            theme={resolvedTheme === "dark" ? Theme.DARK : Theme.LIGHT}
+            theme={(resolvedTheme === "dark" ? "dark" : "light") as Theme}
             searchPlaceHolder="Search emoji..."
             width={320}
             height={380}

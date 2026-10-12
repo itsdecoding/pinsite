@@ -1,52 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { getAdminClient, verifyApiSession } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createAdminClient(supabaseUrl, supabaseServiceKey);
-}
-
-async function verifyAuthSession(req: NextRequest) {
-  const serverSupabase = createServerClient();
-  let {
-    data: { user },
-  } = await serverSupabase.auth.getUser();
-
-  const admin = getAdminClient();
-
-  if (!user) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.replace("Bearer ", "").trim();
-      const { data: jwtData } = await admin.auth.getUser(token);
-      user = jwtData.user;
-    }
-  }
-
-  if (!user) {
-    return { error: "Unauthorized: Active session required", status: 401 };
-  }
-
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("id, role, full_name")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  return {
-    user,
-    role: profile?.role || "caller",
-    fullName: profile?.full_name || "Team Member",
-  };
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const authResult = await verifyAuthSession(req);
+    const authResult = await verifyApiSession(req);
     if ("error" in authResult) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }

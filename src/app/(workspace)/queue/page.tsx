@@ -2,11 +2,33 @@
 
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useUserSession } from "@/contexts/UserSessionContext";
-import { DesktopQueue } from "@/components/queue/DesktopQueue";
-import { DesktopMirrorQueue } from "@/components/queue/DesktopMirrorQueue";
-import { CallerCockpit, CallerCockpitSkeleton } from "@/components/queue/CallerCockpit";
+import { CallerCockpitSkeleton } from "@/components/queue/CallerCockpitSkeleton";
+
+const DesktopQueue = dynamic(
+  () => import("@/components/queue/DesktopQueue").then((mod) => mod.DesktopQueue),
+  {
+    loading: () => <CallerCockpitSkeleton />,
+    ssr: false,
+  }
+);
+
+const DesktopMirrorQueue = dynamic(
+  () => import("@/components/queue/DesktopQueue").then((mod) => mod.DesktopMirrorQueue),
+  {
+    loading: () => <CallerCockpitSkeleton />,
+    ssr: false,
+  }
+);
+
+const CallerCockpit = dynamic(
+  () => import("@/components/queue/CallerCockpit").then((mod) => mod.CallerCockpit),
+  {
+    loading: () => <CallerCockpitSkeleton />,
+    ssr: false,
+  }
+);
 
 function QueueEntry() {
   const [isMobile, setIsMobile] = useState<boolean | null>(null);

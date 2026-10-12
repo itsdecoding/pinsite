@@ -11,7 +11,7 @@ import {
   FileText,
   ExternalLink,
 } from "lucide-react";
-import { Message } from "./useCommsState";
+import { Message, MessageAttachment } from "./useCommsState";
 import { ImageLightbox } from "./ImageLightbox";
 
 interface MessageItemProps {
@@ -33,7 +33,7 @@ export function cleanSenderName(rawName?: string): string {
     .trim();
 }
 
-export function MessageItem({
+function MessageItemComponent({
   message,
   isCurrentUser,
   canManage,
@@ -494,3 +494,47 @@ export function MessageItem({
     </div>
   );
 }
+
+function areAttachmentsEqual(a?: MessageAttachment[], b?: MessageAttachment[]) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].url !== b[i].url || a[i].name !== b[i].name || a[i].type !== b[i].type) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export const MessageItem = React.memo(MessageItemComponent, (prev, next) => {
+  if (
+    prev.isCurrentUser !== next.isCurrentUser ||
+    prev.canManage !== next.canManage ||
+    prev.showSenderHeader !== next.showSenderHeader ||
+    prev.isChannel !== next.isChannel ||
+    prev.onEdit !== next.onEdit ||
+    prev.onDelete !== next.onDelete ||
+    prev.onReply !== next.onReply ||
+    prev.quotedMessage?.id !== next.quotedMessage?.id ||
+    prev.quotedMessage?.body !== next.quotedMessage?.body
+  ) {
+    return false;
+  }
+
+  if (prev.message === next.message) {
+    return true;
+  }
+
+  return (
+    prev.message.id === next.message.id &&
+    prev.message.body === next.message.body &&
+    prev.message.edited_at === next.message.edited_at &&
+    prev.message.deleted_at === next.message.deleted_at &&
+    prev.message.read_at === next.message.read_at &&
+    prev.message.profiles?.full_name === next.message.profiles?.full_name &&
+    prev.message.reply_to?.id === next.message.reply_to?.id &&
+    prev.message.reply_to?.body === next.message.reply_to?.body &&
+    areAttachmentsEqual(prev.message.attachments, next.message.attachments)
+  );
+});
