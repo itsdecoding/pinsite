@@ -216,42 +216,54 @@ export async function POST(req: NextRequest) {
       const niche = (lead.niche || "Dentist").trim();
       const hasWebsite = Boolean(lead.website && String(lead.website).trim().length > 0);
 
-      // Multidimensional lead opportunity scoring formula (Realistic 35-95 range)
-      let computedScore = 30;
+      // Multidimensional lead opportunity scoring formula (Realistic 55-98 range with high granularity)
+      let computedScore = 52;
       // 1. Contact viability: mobile (+91 9/8/7/6) gets higher priority over general landline
       const isMobile = /^\+91[6-9]\d{9}$/.test(normalizedPhone);
-      if (isMobile) computedScore += 15;
-      else if (rawPhone && rawPhone.trim().length >= 10) computedScore += 8;
+      if (isMobile) computedScore += 12;
+      else if (rawPhone && rawPhone.trim().length >= 10) computedScore += 6;
+      else computedScore += 2;
 
       // 2. Pitch potential: Leads lacking a custom website have higher design pitch opportunity
       const isMapsLink = !lead.website || lead.website.includes("google.com/maps") || lead.website.includes("maps.google");
-      if (isMapsLink) computedScore += 20;
-      else computedScore += 10;
+      if (isMapsLink) computedScore += 14;
+      else computedScore += 6;
 
       // 3. Location specificity
       const addrLower = (lead.address || area || "").toLowerCase();
-      if (addrLower.includes("kothrud") || addrLower.includes("baner") || addrLower.includes("aundh") || addrLower.includes("bandra")) {
-        computedScore += 15;
-      } else if (addrLower.includes("hadapsar") || addrLower.includes("shivaji nagar") || addrLower.includes("pune") || addrLower.includes("mumbai")) {
-        computedScore += 10;
-      } else {
+      if (/kothrud|baner|aundh|kalyani|viman|bandra|juhu|worli/.test(addrLower)) {
+        computedScore += 8;
+      } else if (/shivaji|camp|hadapsar|pimpri|chinchwad|thane/.test(addrLower)) {
         computedScore += 5;
+      } else {
+        computedScore += 2;
       }
 
       // 4. Address granularity (has building/street/road/pin)
-      if (addrLower.includes("road") || addrLower.includes("street") || addrLower.includes("lane") || /\b\d{6}\b/.test(addrLower)) {
-        computedScore += 10;
-      }
+      if (/\b\d{6}\b/.test(addrLower)) computedScore += 4;
+      if (/road|street|lane|nagar|complex|plaza|building|opp|near/.test(addrLower)) computedScore += 4;
 
       // 5. Professional credential / entity naming
       const nameLower = (lead.name || "").toLowerCase();
-      if (nameLower.includes("dr.") || nameLower.includes("dr ") || nameLower.includes("clinic") || nameLower.includes("dental")) {
-        computedScore += 10;
+      if (/aesthetic|implant|smile|orthodontic|advanced|superspeciality/.test(nameLower)) {
+        computedScore += 6;
+      } else if (/dr\.|dr |dental clinic|healthcare/.test(nameLower)) {
+        computedScore += 4;
+      } else {
+        computedScore += 2;
       }
+
+      // Natural deterministic variance from lead name characters
+      let hash = 0;
+      const leadNameStr = lead.name || "";
+      for (let i = 0; i < leadNameStr.length; i++) {
+        hash = (hash * 31 + leadNameStr.charCodeAt(i)) % 11;
+      }
+      computedScore += (hash - 5); // -5 to +5
 
       const finalScore = typeof lead.score === "number" && !isNaN(lead.score) && lead.score > 0
         ? Math.min(100, Math.max(0, lead.score))
-        : Math.min(95, Math.max(35, computedScore));
+        : Math.min(98, Math.max(55, computedScore));
 
       // NOTE: public.leads table does NOT have a 'source' column.
       rowsToInsert.push({
