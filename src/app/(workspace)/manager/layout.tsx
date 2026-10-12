@@ -19,19 +19,15 @@ export default function ManagerLayout({ children }: ManagerLayoutProps) {
   const isIngestion = pathname.includes("/ingestion");
   const isTeam = !isQuarantine && !isInvites && !isIngestion; // default to team roster
 
-  // Page title and subtitle mapping (Team Roster is the child page of parent section Team Center)
-  let pageTitle = "Team Roster";
-  let pageSubtitle = "Who's working, who's stuck, and where to intervene.";
+  // Page title mapping (Content OS standard: context label + bold title, no descriptive subtitles)
+  let pageTitle = "Roster";
 
   if (isQuarantine) {
-    pageTitle = "Quarantine Bin";
-    pageSubtitle = "Leads rejected by callers or quarantined after exhausted attempts.";
+    pageTitle = "Quarantine";
   } else if (isInvites) {
     pageTitle = "Invites";
-    pageSubtitle = "Issue single-use seat invitations. Direct signups are strictly restricted.";
   } else if (isIngestion) {
-    pageTitle = "Import Leads";
-    pageSubtitle = "Upload and validate lead CSV files for distribution into active dial queues.";
+    pageTitle = "Import";
   }
 
   // Fetch quarantine count for badge indicator across tabs (lightweight count query)
@@ -60,27 +56,16 @@ export default function ManagerLayout({ children }: ManagerLayoutProps) {
 
   const subNavTabs = [
     {
-      label: "Team Roster",
+      label: "Roster",
       href: "/studio/manager/team",
       icon: Users,
       isActive: isTeam,
     },
     {
-      label: "Quarantine Bin",
+      label: quarantineCount > 0 ? `Quarantine·${quarantineCount}` : "Quarantine",
       href: "/studio/manager/quarantine",
       icon: ShieldAlert,
       isActive: isQuarantine,
-      badge: quarantineCount > 0 ? (
-        <span
-          className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono border font-bold ${
-            isQuarantine
-              ? "bg-[#F95721]/15 text-[#F95721] border-[#F95721]/30"
-              : "bg-red-500/10 text-red-500 border-red-500/20"
-          }`}
-        >
-          {quarantineCount}
-        </span>
-      ) : null,
     },
     {
       label: "Invites",
@@ -89,7 +74,7 @@ export default function ManagerLayout({ children }: ManagerLayoutProps) {
       isActive: isInvites,
     },
     {
-      label: "Import Leads",
+      label: "Import",
       href: "/studio/manager/ingestion",
       icon: UploadCloud,
       isActive: isIngestion,
@@ -103,52 +88,49 @@ export default function ManagerLayout({ children }: ManagerLayoutProps) {
       {/* ========================================================================= */}
       <div className="pb-4 border-b border-[#ECE8E1] dark:border-[#262420] pt-2 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono tracking-widest uppercase text-[#F95721] font-bold">
-              TEAM COMMAND CENTER
-            </span>
-            <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#262420] text-[#8A8680]">
-              IST (UTC+5:30)
-            </span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-1">
+          <span className="text-[11px] font-bold tracking-[0.15em] uppercase text-[#8A8680] block">
+            COMMAND CENTER
+          </span>
+          <h1 className="text-3xl sm:text-4xl font-extrabold sm:font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-0.5">
             {pageTitle}
           </h1>
-          <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1">
-            {pageSubtitle}
-          </p>
         </div>
 
-        {/* Persistent Sub-nav tabs: Team Roster · Quarantine Bin · Invites · Import Leads */}
-        <div className="flex items-center gap-1 p-1 bg-black/5 dark:bg-white/5 rounded-2xl border border-[#ECE8E1] dark:border-[#262420] shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
-          {subNavTabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = tab.isActive;
+        {/* Persistent Sub-nav tabs: [Roster] [Quarantine·51] [Invites] [Import] with fade edges */}
+        <div className="relative w-full md:w-auto shrink-0 -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="pointer-events-none absolute left-3 top-0 bottom-0 w-3 bg-gradient-to-r from-stone-50 dark:from-[#0d0e0e] to-transparent z-10 md:hidden" />
+          <div className="pointer-events-none absolute right-3 top-0 bottom-0 w-6 bg-gradient-to-l from-stone-50 dark:from-[#0d0e0e] to-transparent z-10 md:hidden flex items-center justify-end pr-0.5">
+            <span className="text-[10px] text-[#8A8680]/60 font-mono">›</span>
+          </div>
 
-            return (
-              <Link
-                key={tab.href}
-                href={tab.href}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition-all shrink-0 relative rounded-xl ${
-                  isActive
-                    ? "font-bold text-[#111110] dark:text-[#F5F3EF] bg-white dark:bg-[#181715] shadow-sm"
-                    : "font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-                }`}
-              >
-                <Icon
-                  className={`w-3.5 h-3.5 ${
-                    isActive ? "text-[#F95721] stroke-[2.2]" : "text-[#8A8680]"
+          <div className="flex items-center gap-1 p-1 bg-black/5 dark:bg-white/5 rounded-2xl border border-[#ECE8E1] dark:border-[#262420] overflow-x-auto no-scrollbar scroll-smooth w-full md:w-auto">
+            {subNavTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = tab.isActive;
+
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs transition-all shrink-0 whitespace-nowrap relative rounded-xl ${
+                    isActive
+                      ? "font-bold text-[#111110] dark:text-[#F5F3EF] bg-white dark:bg-[#181715] shadow-sm"
+                      : "font-medium text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
                   }`}
-                />
-                <span>{tab.label}</span>
-                {tab.badge}
-                {/* Active Orange Underline */}
-                {isActive && (
-                  <span className="absolute bottom-0 left-2.5 right-2.5 h-[2px] bg-[#F95721] rounded-full" />
-                )}
-              </Link>
-            );
-          })}
+                >
+                  <Icon
+                    className={`w-3.5 h-3.5 ${
+                      isActive ? "text-[#F95721] stroke-[2.2]" : "text-[#8A8680]"
+                    }`}
+                  />
+                  <span>{tab.label}</span>
+                  {isActive && (
+                    <span className="absolute bottom-0 left-2.5 right-2.5 h-[2px] bg-[#F95721] rounded-full" />
+                  )}
+                </Link>
+              );
+            })}
+          </div>
         </div>
       </div>
 

@@ -174,11 +174,11 @@ export default function ManagerDashboardPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-5 px-3 sm:px-0 py-3 sm:py-5">
       {/* 1. Header */}
-      <div className="space-y-1">
-        <span className="text-[10px] font-mono tracking-widest uppercase text-[#9F5639] font-bold">
+      <div>
+        <span className="text-[11px] font-bold tracking-[0.15em] uppercase text-[#8A8680] block">
           TODAY
         </span>
-        <h1 className="text-3xl sm:text-4xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight">
+        <h1 className="text-3xl sm:text-4xl font-extrabold sm:font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-0.5">
           Dashboard
         </h1>
         <p suppressHydrationWarning className="text-xs font-mono text-[#6E6B66] dark:text-[#8A8680] pt-0.5">

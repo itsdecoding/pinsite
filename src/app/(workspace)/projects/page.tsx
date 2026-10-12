@@ -454,10 +454,10 @@ export default function ProjectsKanbanPage() {
       <div className="space-y-3.5 md:hidden pt-1">
         {/* Tier 1 & 2: Small uppercase context label + Big bold title */}
         <div>
-          <span className="text-[11px] font-mono font-bold tracking-[0.16em] uppercase text-[#F95721] block">
+          <span className="text-[11px] font-bold tracking-[0.15em] uppercase text-[#8A8680] block">
             DEVELOPMENT
           </span>
-          <h1 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-0.5">
+          <h1 className="text-3xl font-extrabold sm:font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-0.5">
             Projects
           </h1>
         </div>
@@ -646,10 +646,10 @@ export default function ProjectsKanbanPage() {
         {/* Desktop Header */}
         <div className="flex items-center justify-between pb-4 border-b border-[#ECE8E1] dark:border-[#2D2924] pt-1">
           <div>
-            <span className="text-[11px] font-mono font-bold tracking-[0.16em] uppercase text-[#F95721] block">
+            <span className="text-[11px] font-bold tracking-[0.15em] uppercase text-[#8A8680] block">
               DEVELOPMENT
             </span>
-            <h1 className="text-3xl font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-0.5">
+            <h1 className="text-3xl font-extrabold sm:font-black text-[#111110] dark:text-[#F5F3EF] tracking-tight mt-0.5">
               Projects
             </h1>
           </div>
