@@ -280,6 +280,7 @@ export async function POST(req: NextRequest) {
 
     // Step 5: Execute single high-performance batch insert
     let insertedCount = 0;
+    let autoAssigned = false;
     if (rowsToInsert.length > 0) {
       const { error: insertError } = await supabase.from("leads").insert(rowsToInsert);
       if (insertError) {
@@ -287,6 +288,18 @@ export async function POST(req: NextRequest) {
         throw new Error(insertError.message || "Failed to insert lead batch into database");
       }
       insertedCount = rowsToInsert.length;
+
+      // Decision 2: Assign scraped leads immediately into caller queues
+      try {
+        const { error: assignError } = await supabase.rpc("assign_daily_leads");
+        if (!assignError) {
+          autoAssigned = true;
+        } else {
+          console.warn("Auto-assignment RPC warning:", assignError.message);
+        }
+      } catch (assignEx: any) {
+        console.warn("Auto-assignment RPC invocation failed:", assignEx.message);
+      }
     }
 
     return NextResponse.json({
@@ -297,6 +310,7 @@ export async function POST(req: NextRequest) {
         skipped_dnc: skippedDnc,
         skipped_duplicates: skippedDuplicates,
         invalid: invalidCount,
+        auto_assigned: autoAssigned,
       },
     });
   } catch (err: any) {

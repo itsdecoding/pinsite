@@ -16,6 +16,7 @@ import {
   Eye,
   RotateCcw,
 } from "lucide-react";
+import { ScraperTriggerCard } from "@/components/scraper/ScraperTriggerCard";
 
 interface IngestionStats {
   total: number;
@@ -251,6 +252,9 @@ export default function LeadIngestionPage() {
           <span>{errorMsg}</span>
         </div>
       )}
+
+      {/* Automated Real-time Lead Scraper Engine Card */}
+      <ScraperTriggerCard />
 
       {/* Upload Dropzone */}
       <div

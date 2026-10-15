@@ -21,6 +21,7 @@ import {
   Loader2,
   Crown,
 } from "lucide-react";
+import { ScraperTriggerCard } from "@/components/scraper/ScraperTriggerCard";
 
 interface Snapshot {
   warm_in_play: number;
@@ -1374,6 +1375,12 @@ export default function ManagerDashboardPage() {
       {/* ========================================================================= */}
       {activeTab === "pipeline" && (
         <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Decision 3 & 6: Scraper Engine Trigger & Real-time Daemon Status Pill */}
+          <ScraperTriggerCard
+            totalLeads={data?.funnel?.total_leads ?? 0}
+            onLeadsUpdated={() => fetchInsights(timeRange)}
+          />
+
           {/* Card 5A: Conversion Pipeline (Horizontal Milestone Stepper) */}
           {(() => {
           const totalLeads = data?.funnel?.total_leads ?? 0;
