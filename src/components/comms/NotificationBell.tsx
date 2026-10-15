@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
+import Link from "next/link";
 import { Bell, Check, ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserSession } from "@/contexts/UserSessionContext";
@@ -197,13 +198,16 @@ export function NotificationBell({
 
                     <div className="flex items-center gap-1 shrink-0">
                       {item.link && (
-                        <a
+                        <Link
                           href={item.link}
-                          onClick={() => markAsRead(item.id)}
+                          onClick={() => {
+                            setIsOpen(false);
+                            markAsRead(item.id);
+                          }}
                           className="p-1 text-[#6E6B66] dark:text-[#8A8680] hover:text-[#F95721] rounded"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
+                        </Link>
                       )}
                       {!item.read_at && (
                         <button

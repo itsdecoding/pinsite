@@ -75,7 +75,7 @@ export function MessageComposer({
 
   // Click outside listener for emoji picker & mention dropdown
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       if (
         emojiPickerRef.current &&
         !emojiPickerRef.current.contains(event.target as Node)
@@ -90,20 +90,31 @@ export function MessageComposer({
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside, { passive: true });
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
     };
   }, []);
 
-  // Auto-resize textarea height up to 140px
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${Math.min(
-        textareaRef.current.scrollHeight,
-        140
-      )}px`;
+  // Auto-resize textarea height up to 140px and toggle scrollbar strictly when needed
+  const adjustTextareaHeight = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const scrollHeight = el.scrollHeight;
+    const maxHeight = 140;
+    if (scrollHeight > maxHeight) {
+      el.style.height = `${maxHeight}px`;
+      el.style.overflowY = "auto";
+    } else {
+      el.style.height = `${Math.max(scrollHeight, 24)}px`;
+      el.style.overflowY = "hidden";
     }
+  };
+
+  useEffect(() => {
+    adjustTextareaHeight();
   }, [text]);
 
   const handleSelectMention = (member: PublicProfile) => {
@@ -181,6 +192,7 @@ export function MessageComposer({
     const val = e.target.value;
     setText(val);
     onTyping();
+    adjustTextareaHeight();
 
     // Check for @mention trigger
     const cursorPos = e.target.selectionStart || val.length;
@@ -213,6 +225,7 @@ export function MessageComposer({
         textareaRef.current.focus();
         const nextPos = cursorPos + emojiData.emoji.length;
         textareaRef.current.setSelectionRange(nextPos, nextPos);
+        adjustTextareaHeight();
       }
     }, 10);
   };
@@ -231,10 +244,16 @@ export function MessageComposer({
     setShowEmojiPicker(false);
     setShowMentionDropdown(false);
 
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.overflowY = "hidden";
+    }
+
     try {
       await onSendMessage(messageToSend, replyingToMessage, attachmentsToSend);
       if (textareaRef.current) {
         textareaRef.current.style.height = "auto";
+        textareaRef.current.style.overflowY = "hidden";
       }
     } catch (err) {
       console.error("Message send failed:", err);
@@ -448,21 +467,18 @@ export function MessageComposer({
         </div>
 
         {/* Center Textarea */}
-        <div
-          onClick={() => {
-            if (textareaRef.current) {
-              textareaRef.current.focus();
-            }
-          }}
-          className="flex-1 min-w-0 bg-black/[0.03] dark:bg-[#1E1F20] border border-black/[0.06] dark:border-white/[0.06] rounded-2xl px-3.5 py-2 focus-within:border-black/10 dark:focus-within:border-white/10 transition min-h-[40px] flex items-center cursor-text"
+        <label
+          htmlFor="comms-chat-textarea"
+          className="flex-1 min-w-0 bg-black/[0.03] dark:bg-[#1E1F20] border border-black/[0.06] dark:border-white/[0.06] rounded-2xl px-3.5 py-2 focus-within:border-black/20 dark:focus-within:border-white/20 transition min-h-[40px] flex items-center cursor-text"
         >
           <textarea
+            id="comms-chat-textarea"
             ref={textareaRef}
             value={text}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
-            disabled={disabled || isSending}
+            disabled={disabled}
             rows={1}
             autoCapitalize="sentences"
             autoCorrect="on"
@@ -474,14 +490,15 @@ export function MessageComposer({
               outline: "none",
               border: "none",
               boxShadow: "none",
+              overflowY: "hidden",
               WebkitTapHighlightColor: "transparent",
             }}
-            className="w-full bg-transparent resize-none text-base sm:text-xs text-[#111110] dark:text-zinc-100 placeholder-zinc-400 border-0 border-none outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 shadow-none max-h-[140px] leading-relaxed select-text touch-manipulation scrollbar-thin scrollbar-thumb-zinc-700/30"
+            className="w-full bg-transparent resize-none text-base sm:text-xs text-[#111110] dark:text-zinc-100 placeholder-zinc-400 border-0 border-none outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 shadow-none max-h-[140px] leading-relaxed select-text touch-manipulation overflow-hidden"
           />
-        </div>
+        </label>
 
         {/* Right Icon: Voice Memo when empty, Circular Send button when text is entered */}
-        <div className="pb-0.5 flex items-center gap-1 shrink-0">
+        <div className="pb-0.5 flex items-center shrink-0">
           {hasContent || isUploading ? (
             <button
               type="button"
@@ -504,29 +521,18 @@ export function MessageComposer({
               )}
             </button>
           ) : (
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handleToggleVoice}
-                title={isRecording ? "Recording voice note..." : "Voice note"}
-                className={`w-9 h-9 rounded-full flex items-center justify-center transition active:scale-95 touch-manipulation ${
-                  isRecording
-                    ? "bg-rose-500 text-white animate-pulse"
-                    : "text-zinc-400 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
-                }`}
-              >
-                <Mic className="w-5 h-5" />
-              </button>
-              {/* Muted Send indicator on mobile so touch target is always familiar */}
-              <button
-                type="button"
-                disabled
-                title="Type a message to send"
-                className="sm:hidden w-9 h-9 rounded-full flex items-center justify-center text-zinc-300 dark:text-zinc-600 cursor-not-allowed opacity-60"
-              >
-                <Send className="w-4 h-4 ml-0.5" />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleToggleVoice}
+              title={isRecording ? "Recording voice note..." : "Voice note"}
+              className={`w-10 h-10 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition active:scale-95 touch-manipulation ${
+                isRecording
+                  ? "bg-rose-500 text-white animate-pulse"
+                  : "text-zinc-400 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+              }`}
+            >
+              <Mic className="w-5 h-5" />
+            </button>
           )}
         </div>
       </div>

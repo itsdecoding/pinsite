@@ -16,7 +16,7 @@ import {
   Eye,
   RotateCcw,
 } from "lucide-react";
-import { ScraperTriggerCard } from "@/components/scraper/ScraperTriggerCard";
+import { openImportLeadsModal } from "@/components/scraper/ImportLeadsModal";
 
 interface IngestionStats {
   total: number;
@@ -228,22 +228,32 @@ export default function LeadIngestionPage() {
           </span>
         </div>
 
-        {file && (
+        <div className="flex items-center gap-2 self-end sm:self-auto">
           <button
             type="button"
-            onClick={() => {
-              setFile(null);
-              setStats(null);
-              setPreviewRows([]);
-              setErrorMsg(null);
-              if (fileInputRef.current) fileInputRef.current.value = "";
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#181715] hover:bg-black/5 dark:hover:bg-white/5 rounded-xl text-xs font-medium text-[#111110] dark:text-[#F5F3EF] border border-[#ECE8E1] dark:border-[#262420] transition-all cursor-pointer self-end sm:self-auto shadow-sm"
+            onClick={() => openImportLeadsModal("scrape")}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#F95721]/10 hover:bg-[#F95721]/20 rounded-xl text-xs font-bold text-[#F95721] transition-all cursor-pointer shadow-sm"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-[#F95721]" />
-            <span>Reset File</span>
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Scrape from Maps</span>
           </button>
-        )}
+          {file && (
+            <button
+              type="button"
+              onClick={() => {
+                setFile(null);
+                setStats(null);
+                setPreviewRows([]);
+                setErrorMsg(null);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#181715] hover:bg-black/5 dark:hover:bg-white/5 rounded-xl text-xs font-medium text-[#111110] dark:text-[#F5F3EF] border border-[#ECE8E1] dark:border-[#262420] transition-all cursor-pointer shadow-sm"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-[#F95721]" />
+              <span>Reset File</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {errorMsg && (
@@ -252,9 +262,6 @@ export default function LeadIngestionPage() {
           <span>{errorMsg}</span>
         </div>
       )}
-
-      {/* Automated Real-time Lead Scraper Engine Card */}
-      <ScraperTriggerCard />
 
       {/* Upload Dropzone */}
       <div

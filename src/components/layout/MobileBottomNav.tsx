@@ -377,18 +377,42 @@ export function MobileBottomNav() {
                 </button>
               </div>
 
-              {/* Primary Action Pill (+ Import Leads / + Start Dialing / + New Task) */}
-              <Link
-                href={role === "caller" ? "/studio/queue" : role === "developer" ? "/studio/projects" : "/studio/manager/ingestion"}
-                onClick={() => setIsDrawerOpen(false)}
-                className="relative w-full py-2.5 px-3 bg-gradient-to-b from-[#8E4128]/95 to-[#6E2E1A]/95 hover:from-[#9E4A2F] hover:to-[#7E351F] border border-[#D97755]/50 text-white rounded-full font-semibold text-xs shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_4px_14px_rgba(127,57,34,0.35)] flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] overflow-hidden"
-              >
-                <span className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent rounded-t-full" />
-                <Plus className="w-3.5 h-3.5 stroke-[2.5] relative z-10" />
-                <span className="relative z-10">
-                  {role === "caller" ? "Start Dialing" : role === "developer" ? "New Task" : "Import Leads"}
-                </span>
-              </Link>
+              {role === "caller" ? (
+                <Link
+                  href="/studio/queue"
+                  onClick={() => setIsDrawerOpen(false)}
+                  className="relative w-full py-2.5 px-3 bg-gradient-to-b from-[#8E4128]/95 to-[#6E2E1A]/95 hover:from-[#9E4A2F] hover:to-[#7E351F] border border-[#D97755]/50 text-white rounded-full font-semibold text-xs shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_4px_14px_rgba(127,57,34,0.35)] flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] overflow-hidden"
+                >
+                  <span className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent rounded-t-full" />
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5] relative z-10" />
+                  <span className="relative z-10">Start Dialing</span>
+                </Link>
+              ) : role === "developer" ? (
+                <Link
+                  href="/studio/projects"
+                  onClick={() => setIsDrawerOpen(false)}
+                  className="relative w-full py-2.5 px-3 bg-gradient-to-b from-[#8E4128]/95 to-[#6E2E1A]/95 hover:from-[#9E4A2F] hover:to-[#7E351F] border border-[#D97755]/50 text-white rounded-full font-semibold text-xs shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_4px_14px_rgba(127,57,34,0.35)] flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] overflow-hidden"
+                >
+                  <span className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent rounded-t-full" />
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5] relative z-10" />
+                  <span className="relative z-10">New Task</span>
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDrawerOpen(false);
+                    if (typeof window !== "undefined") {
+                      window.dispatchEvent(new CustomEvent("open-import-leads-modal"));
+                    }
+                  }}
+                  className="relative w-full py-2.5 px-3 bg-gradient-to-b from-[#8E4128]/95 to-[#6E2E1A]/95 hover:from-[#9E4A2F] hover:to-[#7E351F] border border-[#D97755]/50 text-white rounded-full font-semibold text-xs shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_4px_14px_rgba(127,57,34,0.35)] flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] overflow-hidden"
+                >
+                  <span className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent rounded-t-full" />
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5] relative z-10" />
+                  <span className="relative z-10">Import Leads</span>
+                </button>
+              )}
 
               {/* Vertical Nav Stack */}
               <nav className="space-y-1 pt-2">

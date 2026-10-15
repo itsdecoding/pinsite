@@ -11,7 +11,6 @@ import {
   CheckCheck,
   MessageSquare,
   MessageSquarePlus,
-  Users,
 } from "lucide-react";
 import { Channel, PublicProfile, DMConversation } from "./useCommsState";
 import { NotificationToggleButton } from "@/components/notifications/PushNotificationManager";

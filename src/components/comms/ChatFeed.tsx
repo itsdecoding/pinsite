@@ -75,8 +75,10 @@ export function ChatFeed({
     const handleVisualResize = () => {
       const vv = window.visualViewport;
       if (!vv) return;
-      // When software keyboard opens, visualViewport shrinks below innerHeight
-      const offset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+      // Only treat significant height differences as a software keyboard (>100px)
+      // This prevents URL bar scroll collapse (20-40px) from erroneously shifting the layout
+      const rawOffset = window.innerHeight - (vv.height + vv.offsetTop);
+      const offset = rawOffset > 100 ? rawOffset : 0;
       setKeyboardOffset(offset);
       if (offset > 0) {
         setTimeout(() => {
@@ -113,26 +115,43 @@ export function ChatFeed({
     setShowScrollBottomPill(false);
   };
 
+  // Pre-index messages into a Map for O(1) quote reply lookups
+  const messagesMap = useMemo(() => {
+    const map = new Map<string, Message>();
+    for (const msg of messages) {
+      map.set(msg.id, msg);
+    }
+    return map;
+  }, [messages]);
+
   // Group messages by calendar date ("Today", "Yesterday", or MMMM D, YYYY)
   const groupedMessages = useMemo(() => {
     const groups: { dateLabel: string; items: Message[] }[] = [];
     const dateMap = new Map<string, Message[]>();
 
+    const now = new Date();
+    const nowYear = now.getFullYear();
+    const nowMonth = now.getMonth();
+    const nowDate = now.getDate();
+
+    const yesterday = new Date(now);
+    yesterday.setDate(nowDate - 1);
+    const yestYear = yesterday.getFullYear();
+    const yestMonth = yesterday.getMonth();
+    const yestDate = yesterday.getDate();
+
     messages.forEach((msg) => {
       const msgDate = new Date(msg.created_at);
-      const now = new Date();
 
       const isToday =
-        msgDate.getDate() === now.getDate() &&
-        msgDate.getMonth() === now.getMonth() &&
-        msgDate.getFullYear() === now.getFullYear();
+        msgDate.getDate() === nowDate &&
+        msgDate.getMonth() === nowMonth &&
+        msgDate.getFullYear() === nowYear;
 
-      const yesterday = new Date(now);
-      yesterday.setDate(now.getDate() - 1);
       const isYesterday =
-        msgDate.getDate() === yesterday.getDate() &&
-        msgDate.getMonth() === yesterday.getMonth() &&
-        msgDate.getFullYear() === yesterday.getFullYear();
+        msgDate.getDate() === yestDate &&
+        msgDate.getMonth() === yestMonth &&
+        msgDate.getFullYear() === yestYear;
 
       let label = msgDate.toLocaleDateString(undefined, {
         month: "short",
@@ -158,20 +177,19 @@ export function ChatFeed({
 
   const isDmOnline = activeDmUser ? onlineUsers.has(activeDmUser.id) : false;
   const isTyping = typingUserNames.length > 0;
-  const typingStatusText = isTyping
-    ? activeView === "dm"
+  const typingStatusText = useMemo(() => {
+    if (typingUserNames.length === 0) return null;
+    return activeView === "dm"
       ? "typing..."
-      : `${typingUserNames.join(", ")} is typing...`
-    : null;
-
-  const onlineCount = onlineUsers.size;
+      : `${typingUserNames.join(", ")} is typing...`;
+  }, [typingUserNames, activeView]);
 
   return (
     <div
       style={{
         paddingBottom: keyboardOffset > 0 ? `${keyboardOffset}px` : undefined,
       }}
-      className={`h-full w-full min-w-0 max-w-full flex flex-col bg-[#F7F5F0] dark:bg-[#0B0C0D] border-x-0 lg:border-x border-black/[0.08] dark:border-white/[0.08] overflow-hidden relative transition-[padding] duration-150 ${className}`}
+      className={`h-full w-full min-w-0 max-w-full flex flex-col bg-[#F7F5F0] dark:bg-[#0B0C0D] border-x-0 lg:border-x border-black/[0.08] dark:border-white/[0.08] overflow-hidden relative ${className}`}
     >
       {/* WhatsApp Header: Clean, quiet, no fake badges */}
       <div className="px-3.5 py-2.5 sm:py-3 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between gap-3 bg-white/70 dark:bg-[#141516] backdrop-blur-md z-10">
@@ -309,7 +327,7 @@ export function ChatFeed({
                 const showSenderHeader = !isSameSenderAsPrev;
 
                 const quoted = msg.parent_message_id
-                  ? messages.find((m) => m.id === msg.parent_message_id) || null
+                  ? messagesMap.get(msg.parent_message_id) || null
                   : null;
 
                 return (
@@ -376,9 +394,12 @@ export function ChatFeed({
             : `Message ${activeDmUser?.full_name || "teammate"}`
         }
         disabled={
-          activeChannel?.is_private &&
-          currentUserRole !== "admin" &&
-          currentUserRole !== "manager"
+          activeView === "channel" &&
+          Boolean(
+            activeChannel?.is_private &&
+            currentUserRole !== "admin" &&
+            currentUserRole !== "manager"
+          )
         }
       />
     </div>

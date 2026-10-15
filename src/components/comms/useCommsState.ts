@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUserSession } from "@/contexts/UserSessionContext";
 
@@ -74,7 +74,6 @@ let globalConversationsCache: DMConversation[] = [];
 let globalTeamMembersCache: PublicProfile[] = [];
 
 export function useCommsState() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { user: sessionUser, profile: sessionProfile } = useUserSession();
   const supabase = useMemo(() => createClient(), []);
@@ -151,6 +150,16 @@ export function useCommsState() {
 
   // Active target tracker to avoid stale async state transitions
   const activeTargetRef = useRef<string>("");
+  const conversationsRef = useRef<DMConversation[]>(conversations);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  const currentUserIdRef = useRef<string>(currentUserId);
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
+
   const initialSyncDoneRef = useRef<boolean>(false);
   const inFlightProfilesRef = useRef<Record<string, Promise<PublicProfile> | undefined>>({});
 
@@ -394,13 +403,55 @@ export function useCommsState() {
       setActiveView("dm");
       setActiveDmUser(member);
       setActiveChannelId(null);
+      setReplyingToMessage(null);
 
       // Update URL query parameter
-      const url = new URL(window.location.href);
-      url.searchParams.set("dm", member.id);
-      url.searchParams.delete("channel");
-      window.history.replaceState({}, "", url.toString());
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("dm", member.id);
+        url.searchParams.delete("channel");
+        window.history.replaceState({}, "", url.toString());
+      }
 
+      // Check client state first for existing DM conversation
+      const existingConv =
+        conversations.find((c) => c.participant?.id === member.id) ||
+        globalConversationsCache.find((c) => c.participant?.id === member.id);
+
+      if (existingConv?.id) {
+        const thread_id = existingConv.id;
+        setActiveThreadId(thread_id);
+
+        const targetKey = `dm_${thread_id}`;
+        activeTargetRef.current = targetKey;
+
+        // Retrieve cached messages immediately for 0ms instant render
+        if (messagesCacheRef.current[targetKey]) {
+          setMessages(messagesCacheRef.current[targetKey]!);
+          setIsMessagesLoading(false);
+        } else {
+          setMessages([]);
+          setIsMessagesLoading(true);
+        }
+
+        // Mark thread messages as read
+        authFetch("/api/messages/conversations", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ thread_id }),
+        }).catch(() => {});
+
+        // Clear local unread badge on conversation
+        setConversations((prev) =>
+          prev.map((c) => (c.id === thread_id ? { ...c, unread_count: 0 } : c))
+        );
+        return;
+      }
+
+      // Brand new DM with no existing conversation record
+      setActiveThreadId(null);
+      const pendingTargetKey = `dm_user_${member.id}`;
+      activeTargetRef.current = pendingTargetKey;
       setMessages([]);
       setIsMessagesLoading(true);
 
@@ -416,6 +467,7 @@ export function useCommsState() {
           setIsMessagesLoading(false);
           return;
         }
+
         const res = await authFetch("/api/messages/thread", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -428,33 +480,35 @@ export function useCommsState() {
         }
 
         const { thread_id } = await res.json();
-        setActiveThreadId(thread_id);
+        if (activeTargetRef.current === pendingTargetKey) {
+          setActiveThreadId(thread_id);
 
-        const targetKey = `dm_${thread_id}`;
-        activeTargetRef.current = targetKey;
+          const targetKey = `dm_${thread_id}`;
+          activeTargetRef.current = targetKey;
 
-        // Mark thread messages as read
-        authFetch("/api/messages/conversations", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ thread_id }),
-        }).catch(() => {});
+          // Mark thread messages as read
+          authFetch("/api/messages/conversations", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ thread_id }),
+          }).catch(() => {});
 
-        // Clear local unread badge on conversation
-        setConversations((prev) =>
-          prev.map((c) => (c.id === thread_id ? { ...c, unread_count: 0 } : c))
-        );
+          // Clear local unread badge on conversation
+          setConversations((prev) =>
+            prev.map((c) => (c.id === thread_id ? { ...c, unread_count: 0 } : c))
+          );
 
-        if (messagesCacheRef.current[targetKey]) {
-          setMessages(messagesCacheRef.current[targetKey]);
-          setIsMessagesLoading(false);
+          if (messagesCacheRef.current[targetKey]) {
+            setMessages(messagesCacheRef.current[targetKey]!);
+            setIsMessagesLoading(false);
+          }
         }
       } catch (err) {
         console.error("Error setting up DM thread:", err);
         setIsMessagesLoading(false);
       }
     },
-    [currentUserId]
+    [conversations, currentUserId, sessionUser, authFetch, supabase]
   );
 
   // 4. Handle Deep-linking on Initial Load (Runs once on mount when channels are ready)
@@ -735,7 +789,10 @@ export function useCommsState() {
         },
         async (payload) => {
           if (payload.eventType === "DELETE") {
-            refreshConversations();
+            const oldRow = (payload.old || {}) as any;
+            if (!oldRow?.thread_id || conversationsRef.current.some((c) => c.id === oldRow.thread_id)) {
+              refreshConversations();
+            }
             return;
           }
 
@@ -777,8 +834,28 @@ export function useCommsState() {
                   new Date(a.updated_at || 0).getTime()
               );
             } else {
-              // New conversation not yet in list — trigger refresh
-              refreshConversations();
+              // Only trigger refresh if message is actually addressed to or sent by current user
+              if (newMsg.sender_id === currentUserId || newMsg.recipient_id === currentUserId) {
+                refreshConversations();
+              } else if (newMsg.thread_id) {
+                // Check if the thread belongs to current user before refreshing
+                (async () => {
+                  try {
+                    const { data: threadMatch } = await supabase
+                      .from("dm_threads")
+                      .select("id")
+                      .eq("id", newMsg.thread_id)
+                      .or(`user_a.eq.${currentUserId},user_b.eq.${currentUserId}`)
+                      .maybeSingle();
+
+                    if (threadMatch) {
+                      refreshConversations();
+                    }
+                  } catch {
+                    // Ignore query error
+                  }
+                })();
+              }
               return prev;
             }
           });
@@ -873,7 +950,12 @@ export function useCommsState() {
     };
   }, [currentUserId, supabase]);
 
-  // 9. Realtime Typing Indicator Channel
+  // Clear typing indicators when switching chats
+  useEffect(() => {
+    setTypingMap({});
+  }, [activeChannelId, activeThreadId]);
+
+  // 9. Realtime Typing Indicator Channel (kept permanently mounted)
   useEffect(() => {
     const typingChannel = supabase.channel("comms-typing");
     typingBroadcastChannelRef.current = typingChannel;
@@ -881,12 +963,16 @@ export function useCommsState() {
     typingChannel
       .on("broadcast", { event: "typing" }, (payload) => {
         const { user_id, full_name, target_id } = payload.payload || {};
-        if (user_id === currentUserId) return;
+        if (!user_id || user_id === currentUserIdRef.current) return;
 
-        const currentActiveKey =
-          activeView === "channel" ? activeChannelId : activeThreadId;
+        const currentTarget = activeTargetRef.current;
+        const isMatch =
+          Boolean(target_id) &&
+          (target_id === currentTarget ||
+            `ch_${target_id}` === currentTarget ||
+            `dm_${target_id}` === currentTarget);
 
-        if (target_id && target_id === currentActiveKey) {
+        if (isMatch) {
           setTypingMap((prev) => ({
             ...prev,
             [user_id]: {
@@ -919,7 +1005,7 @@ export function useCommsState() {
       clearInterval(interval);
       supabase.removeChannel(typingChannel);
     };
-  }, [currentUserId, activeView, activeChannelId, activeThreadId, supabase]);
+  }, [supabase]);
 
   // Broadcast typing event with debounce
   const broadcastTyping = useCallback(() => {
@@ -1211,7 +1297,10 @@ export function useCommsState() {
   const activeChannel = channels.find((c) => c.id === activeChannelId) || null;
 
   // Active typing list (names of other users)
-  const typingUserNames = Object.values(typingMap).map((t) => t.full_name);
+  const typingUserNames = useMemo(
+    () => Object.values(typingMap).map((t) => t.full_name),
+    [typingMap]
+  );
 
   return {
     currentUserId,

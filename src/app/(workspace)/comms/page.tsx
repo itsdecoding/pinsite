@@ -22,7 +22,6 @@ function CommsHubContainer() {
     activeChannelId,
     activeChannel,
     activeDmUser,
-    activeThreadId,
     messages,
     isMessagesLoading,
     onlineUsers,

@@ -37,27 +37,6 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "Forbidden: Not a participant in this conversation" }, { status: 403 });
       }
 
-      // Mark unread messages as read for this user
-      await admin
-        .from("dm_messages")
-        .update({ read_at: new Date().toISOString() })
-        .eq("thread_id", threadId)
-        .neq("sender_id", user.id)
-        .is("read_at", null);
-
-      // Also mark in-app notifications for this DM conversation as read
-      const partnerId = userALower === currentUserIdLower ? thread.user_b : thread.user_a;
-      try {
-        await admin
-          .from("notifications")
-          .update({ read_at: new Date().toISOString() })
-          .eq("user_id", user.id)
-          .or(`link.eq./studio/comms?dm=${partnerId},link.eq./comms?dm=${partnerId}`)
-          .is("read_at", null);
-      } catch (notifErr) {
-        console.warn("Failed to mark DM notifications as read:", notifErr);
-      }
-
       const { data, error } = await admin
         .from("dm_messages")
         .select(`
@@ -91,18 +70,6 @@ export async function GET(req: NextRequest) {
 
       if (channel.is_private && role !== "admin" && role !== "manager") {
         return NextResponse.json({ error: "Forbidden: Restricted management channel" }, { status: 403 });
-      }
-
-      // Also mark in-app notifications for this channel as read
-      try {
-        await admin
-          .from("notifications")
-          .update({ read_at: new Date().toISOString() })
-          .eq("user_id", user.id)
-          .or(`link.eq./studio/comms?channel=${channelId},link.eq./comms?channel=${channelId}`)
-          .is("read_at", null);
-      } catch (notifErr) {
-        console.warn("Failed to mark channel notifications as read:", notifErr);
       }
 
       const { data, error } = await admin
@@ -140,7 +107,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized: Active session required" }, { status: 401 });
     }
 
-    const { user, role } = auth;
+    const { user, role, fullName } = auth;
     const admin = getAdminClient();
     let body: any = {};
     try {
@@ -203,13 +170,7 @@ export async function POST(req: NextRequest) {
       // Dispatch in-app notification & FCM Push to the other participant
       try {
         const recipientId = userALower === currentUserIdLower ? thread.user_b : thread.user_a;
-        const { data: senderProf } = await admin
-          .from("profiles")
-          .select("full_name")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        const senderName = senderProf?.full_name || "A teammate";
+        const senderName = fullName || auth.profile?.full_name || "A teammate";
         const bodySnippet = messageBody.trim().slice(0, 150);
 
         await admin.from("notifications").insert({
@@ -282,60 +243,56 @@ export async function POST(req: NextRequest) {
 
       // Dispatch in-app notifications for @mentions
       try {
-        const isAtAll = /@all\b/i.test(messageBody);
-        const { data: activeProfiles } = await admin
-          .from("profiles")
-          .select("id, full_name")
-          .eq("active", true)
-          .neq("id", user.id);
+        if (messageBody.includes("@")) {
+          const isAtAll = /@all\b/i.test(messageBody);
+          const { data: activeProfiles } = await admin
+            .from("profiles")
+            .select("id, full_name")
+            .eq("active", true)
+            .neq("id", user.id);
 
-        if (activeProfiles && activeProfiles.length > 0) {
-          const mentionedProfiles = activeProfiles.filter((p) => {
-            if (isAtAll) return true;
-            if (!p.full_name || !p.full_name.trim()) return false;
-            const fullNameRegex = new RegExp(`@${p.full_name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-            if (fullNameRegex.test(messageBody)) return true;
-            const firstName = p.full_name.trim().split(/\s+/)[0];
-            if (firstName && firstName.length >= 2) {
-              const firstNameRegex = new RegExp(`@${firstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-              return firstNameRegex.test(messageBody);
-            }
-            return false;
-          });
+          if (activeProfiles && activeProfiles.length > 0) {
+            const mentionedProfiles = activeProfiles.filter((p) => {
+              if (isAtAll) return true;
+              if (!p.full_name || !p.full_name.trim()) return false;
+              const fullNameRegex = new RegExp(`@${p.full_name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+              if (fullNameRegex.test(messageBody)) return true;
+              const firstName = p.full_name.trim().split(/\s+/)[0];
+              if (firstName && firstName.length >= 2) {
+                const firstNameRegex = new RegExp(`@${firstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+                return firstNameRegex.test(messageBody);
+              }
+              return false;
+            });
 
-          if (mentionedProfiles.length > 0) {
-            const { data: senderProf } = await admin
-              .from("profiles")
-              .select("full_name")
-              .eq("id", user.id)
-              .maybeSingle();
+            if (mentionedProfiles.length > 0) {
+              const chName = channel?.name || "a channel";
+              const senderName = fullName || auth.profile?.full_name || "A teammate";
+              const bodySnippet = messageBody.trim().slice(0, 150);
 
-            const chName = channel?.name || "a channel";
-            const senderName = senderProf?.full_name || "A teammate";
-            const bodySnippet = messageBody.trim().slice(0, 150);
-
-            const notificationsToInsert = mentionedProfiles.map((p) => ({
-              user_id: p.id,
-              type: "mention",
-              title: `${senderName} mentioned you in #${chName}`,
-              body: bodySnippet,
-              link: `/studio/comms?channel=${channel_id}`,
-            }));
-
-            await admin.from("notifications").insert(notificationsToInsert);
-
-            // Trigger background / mobile / desktop push via FCM
-            const recipientUserIds = mentionedProfiles.map((p) => p.id);
-            sendFCMNotificationToUser(recipientUserIds, {
-              title: `${senderName} mentioned you in #${chName}`,
-              body: bodySnippet,
-              link: `/studio/comms?channel=${channel_id}`,
-              data: {
+              const notificationsToInsert = mentionedProfiles.map((p) => ({
+                user_id: p.id,
                 type: "mention",
-                channelId: channel_id,
-                senderId: user.id,
-              },
-            }).catch((err) => console.warn("Failed to dispatch FCM mentions push:", err));
+                title: `${senderName} mentioned you in #${chName}`,
+                body: bodySnippet,
+                link: `/studio/comms?channel=${channel_id}`,
+              }));
+
+              await admin.from("notifications").insert(notificationsToInsert);
+
+              // Trigger background / mobile / desktop push via FCM
+              const recipientUserIds = mentionedProfiles.map((p) => p.id);
+              sendFCMNotificationToUser(recipientUserIds, {
+                title: `${senderName} mentioned you in #${chName}`,
+                body: bodySnippet,
+                link: `/studio/comms?channel=${channel_id}`,
+                data: {
+                  type: "mention",
+                  channelId: channel_id,
+                  senderId: user.id,
+                },
+              }).catch((err) => console.warn("Failed to dispatch FCM mentions push:", err));
+            }
           }
         }
       } catch (notifErr) {

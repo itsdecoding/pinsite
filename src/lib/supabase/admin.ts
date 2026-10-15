@@ -117,10 +117,22 @@ export async function verifyManagerSession(req: NextRequest): Promise<VerifyApiS
 
 export async function getAuthenticatedUser(
   req: NextRequest
-): Promise<{ user: User; role: string; admin: SupabaseClient } | null> {
+): Promise<{
+  user: User;
+  role: string;
+  fullName: string;
+  profile: UserProfileSummary | null;
+  admin: SupabaseClient;
+} | null> {
   const result = await verifyApiSession(req);
   if ("error" in result) {
     return null;
   }
-  return { user: result.user, role: result.role, admin: result.admin };
+  return {
+    user: result.user,
+    role: result.role,
+    fullName: result.fullName,
+    profile: result.profile,
+    admin: result.admin,
+  };
 }
