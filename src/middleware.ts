@@ -15,6 +15,6 @@ export const config = {
      * - index.html (static landing page)
      * - Static asset extensions
      */
-    "/((?!_next/static|_next/image|favicon.ico|index\\.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|index\\.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp|html)$).*)",
   ],
 };

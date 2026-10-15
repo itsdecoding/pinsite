@@ -29,9 +29,8 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // FAST PATH: API routes handle their own granular authorization and session verification.
-  // Bypass middleware immediately before any network calls to eliminate mandatory 180ms network round-trip.
-  if (pathname.startsWith("/api")) {
+  // FAST PATH: API routes and public prospect demo sites bypass session verification
+  if (pathname.startsWith("/api") || pathname.startsWith("/joshi-clinic") || pathname.startsWith("/joshi-dental")) {
     return supabaseResponse;
   }
 
@@ -90,7 +89,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/studio/unauthorized") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/studio/auth") ||
-    pathname.startsWith("/api") ||
+    pathname.startsWith("/joshi-clinic") ||
+    pathname.startsWith("/joshi-dental") ||
     pathname === "/" ||
     pathname === "/studio";
 
