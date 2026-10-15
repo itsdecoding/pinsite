@@ -265,11 +265,6 @@ export function ImportLeadsModal() {
       }
 
       await supabase.from("scraper_status").update(updates).eq("id", "default");
-
-      if (action === "skip") {
-        await handleAssignLeads();
-      }
-
       await fetchScraperTelemetry();
     } catch (err: any) {
       alert(`Control action failed: ${err.message}`);
@@ -278,16 +273,23 @@ export function ImportLeadsModal() {
     }
   };
 
-  // Assign leads directly to callers via RPC
-  const handleAssignLeads = async () => {
+  // Distribute leads equally across callers via /api/manager/leads/distribute
+  const handleDistributeLeadsEqually = async () => {
     setIsActionLoading(true);
     setAssignSuccessMsg(null);
     try {
-      const { error } = await supabase.rpc("assign_daily_leads");
-      if (error) throw error;
-      setAssignSuccessMsg("Leads successfully distributed to active caller queues!");
+      const res = await fetch("/api/manager/leads/distribute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "equal" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to distribute leads");
+      setAssignSuccessMsg(
+        `Successfully distributed ${data.assigned_count} leads equally across ${data.callers_breakdown?.length || 0} active callers!`
+      );
     } catch (err: any) {
-      alert(`Auto-assignment warning: ${err.message}`);
+      alert(`Distribution warning: ${err.message}`);
     } finally {
       setIsActionLoading(false);
     }
@@ -831,18 +833,18 @@ export function ImportLeadsModal() {
                     </div>
                   )}
 
-                  {/* Scenario 3: Completed State (Requirement #7) */}
+                  {/* Scenario 3: Completed State (Stored in Unassigned Pool) */}
                   {scraperStatus?.run_state === "completed" && (
                     <div className="p-4 rounded-2xl bg-emerald-500/[0.08] border border-emerald-500/25 space-y-3">
                       <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
                         <ShieldCheck className="w-4 h-4" />
                         <h4 className="text-xs font-bold">
-                          Scrape Completed • {scraperStatus.leads_collected} Clean Leads Collected
+                          Scrape Completed • {scraperStatus.leads_collected} Clean Leads in Unassigned Pool
                         </h4>
                       </div>
                       <p className="text-xs text-[#8A8680]">
-                        All clean, deduplicated leads have been ingested into Agency OS and distributed
-                        to callers via <code>assign_daily_leads()</code>.
+                        All clean, deduplicated leads have landed safely in your <strong>Unassigned Pool</strong>.
+                        No leads are assigned to callers without your permission.
                       </p>
 
                       {assignSuccessMsg && (
@@ -851,15 +853,21 @@ export function ImportLeadsModal() {
                         </div>
                       )}
 
-                      <div className="flex items-center gap-2 pt-1">
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
                         <button
-                          onClick={handleAssignLeads}
+                          onClick={handleDistributeLeadsEqually}
                           disabled={isActionLoading}
-                          className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:brightness-105 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                          className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:brightness-105 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 shadow-sm"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Re-run Lead Distribution</span>
+                          <span>Distribute Leads Equally</span>
                         </button>
+                        <a
+                          href="/queue"
+                          className="py-2 px-3 rounded-xl bg-black/5 dark:bg-white/10 text-xs font-bold text-[#111110] dark:text-white hover:bg-black/10 dark:hover:bg-white/15 transition-all flex items-center justify-center gap-1.5"
+                        >
+                          <span>Manage in Queue</span>
+                        </a>
                         <button
                           onClick={() => {
                             // Reset state for new scrape
@@ -869,7 +877,7 @@ export function ImportLeadsModal() {
                               .eq("id", "default")
                               .then(() => fetchScraperTelemetry());
                           }}
-                          className="py-2 px-4 rounded-xl bg-black/5 dark:bg-white/10 text-xs font-bold text-[#8A8680] hover:text-[#111110] dark:hover:text-white transition-all"
+                          className="py-2 px-3 rounded-xl bg-black/5 dark:bg-white/10 text-xs font-bold text-[#8A8680] hover:text-[#111110] dark:hover:text-white transition-all"
                         >
                           New Scrape
                         </button>

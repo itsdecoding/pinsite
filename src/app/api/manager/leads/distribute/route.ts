@@ -11,56 +11,59 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
+    const mode = body.mode || "equal"; // Default to equal distribution across all active callers
     const targetCap = Number(body.target_cap) || 100;
 
     const admin = getAdminClient();
 
-    // Try executing RPC first if database function is updated
-    try {
-      const { data: rpcData, error: rpcErr } = await admin.rpc("assign_daily_leads", {
-        p_target_cap: targetCap,
-      });
-      if (!rpcErr && rpcData && rpcData.success) {
-        // Fetch current active load per caller to provide transparent breakdown
-        const { data: activeCallers } = await admin
-          .from("profiles")
-          .select("id, full_name")
-          .eq("role", "caller")
-          .eq("active", true)
-          .is("deleted_at", null)
-          .order("full_name", { ascending: true });
-
-        const callerIds = (activeCallers || []).map((c) => c.id);
-        const { data: callerActiveLeads } = await admin
-          .from("leads")
-          .select("assigned_to")
-          .in("assigned_to", callerIds)
-          .is("deleted_at", null)
-          .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")');
-
-        const counts = new Map<string, number>();
-        for (const cid of callerIds) counts.set(cid, 0);
-        for (const l of callerActiveLeads || []) {
-          if (l.assigned_to) counts.set(l.assigned_to, (counts.get(l.assigned_to) || 0) + 1);
-        }
-
-        const callersBreakdown = (activeCallers || []).map((c) => ({
-          id: c.id,
-          name: c.full_name,
-          total: counts.get(c.id) || 0,
-          target: targetCap,
-        }));
-
-        return NextResponse.json({
-          success: true,
-          assigned_count: rpcData.assigned_count ?? 0,
-          remaining_pool: rpcData.remaining_pool ?? 0,
-          callers_breakdown: callersBreakdown,
-          message: `Distribution completed successfully (${rpcData.assigned_count ?? 0} leads assigned across ${activeCallers?.length || 0} callers).`,
+    // If explicit capacity mode requested, use RPC
+    if (mode === "capacity" || mode === "topup") {
+      try {
+        const { data: rpcData, error: rpcErr } = await admin.rpc("assign_daily_leads", {
+          p_target_cap: targetCap,
         });
+        if (!rpcErr && rpcData && rpcData.success) {
+          // Fetch current active load per caller to provide transparent breakdown
+          const { data: activeCallers } = await admin
+            .from("profiles")
+            .select("id, full_name")
+            .eq("role", "caller")
+            .eq("active", true)
+            .is("deleted_at", null)
+            .order("full_name", { ascending: true });
+
+          const callerIds = (activeCallers || []).map((c) => c.id);
+          const { data: callerActiveLeads } = await admin
+            .from("leads")
+            .select("assigned_to")
+            .in("assigned_to", callerIds)
+            .is("deleted_at", null)
+            .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")');
+
+          const counts = new Map<string, number>();
+          for (const cid of callerIds) counts.set(cid, 0);
+          for (const l of callerActiveLeads || []) {
+            if (l.assigned_to) counts.set(l.assigned_to, (counts.get(l.assigned_to) || 0) + 1);
+          }
+
+          const callersBreakdown = (activeCallers || []).map((c) => ({
+            id: c.id,
+            name: c.full_name,
+            total: counts.get(c.id) || 0,
+            target: targetCap,
+          }));
+
+          return NextResponse.json({
+            success: true,
+            assigned_count: rpcData.assigned_count ?? 0,
+            remaining_pool: rpcData.remaining_pool ?? 0,
+            callers_breakdown: callersBreakdown,
+            message: `Distribution completed successfully (${rpcData.assigned_count ?? 0} leads assigned across ${activeCallers?.length || 0} callers).`,
+          });
+        }
+      } catch {
+        // Fallback to application-layer distribution below
       }
-    } catch {
-      // Fallback to application-layer depth-aware distribution below
     }
 
     // Application-layer depth-aware distribution:
@@ -134,13 +137,27 @@ export async function POST(req: NextRequest) {
       target: number;
     }> = [];
 
-    for (const caller of sortedCallers) {
+    const totalAvailable = unassignedLeads.length;
+    const callerCount = sortedCallers.length;
+    const baseShare = Math.floor(totalAvailable / callerCount);
+    let remainder = totalAvailable % callerCount;
+
+    for (let i = 0; i < callerCount; i++) {
+      const caller = sortedCallers[i];
       const currentLoad = counts.get(caller.id) || 0;
-      const needed = Math.max(0, targetCap - currentLoad);
+
+      let countForCaller = 0;
+      if (mode === "equal") {
+        countForCaller = baseShare + (remainder > 0 ? 1 : 0);
+        if (remainder > 0) remainder--;
+      } else {
+        countForCaller = Math.max(0, targetCap - currentLoad);
+      }
+
       let assignedToCaller = 0;
 
-      if (needed > 0 && leadIndex < unassignedLeads.length) {
-        const batch = unassignedLeads.slice(leadIndex, leadIndex + needed);
+      if (countForCaller > 0 && leadIndex < unassignedLeads.length) {
+        const batch = unassignedLeads.slice(leadIndex, leadIndex + countForCaller);
         if (batch.length > 0) {
           const leadIds = batch.map((l) => l.id);
 
@@ -158,7 +175,7 @@ export async function POST(req: NextRequest) {
             lead_id: lid,
             to_caller_id: caller.id,
             assigned_by: authResult.user.id,
-            reason: "daily_distribution_topup",
+            reason: mode === "equal" ? "equal_distribution" : "daily_distribution_topup",
           }));
 
           await admin.from("assignment_history").insert(historyEntries);
@@ -168,7 +185,7 @@ export async function POST(req: NextRequest) {
               user_id: caller.id,
               type: "leads_ready",
               title: "Leads Ready",
-              body: `${leadIds.length} leads assigned to your queue (daily top-up to ${targetCap}).`,
+              body: `${leadIds.length} leads assigned to your queue.`,
               link: "/queue",
             });
           } catch {
