@@ -28,19 +28,9 @@
   --serif:"Newsreader",Georgia,serif;
   --pad:clamp(16px,4vw,40px);
 }
-/* ---------- content & image protection (anti-scrape / anti-copy / anti-screenshot) ---------- */
-*,*::before,*::after{box-sizing:border-box;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none}
+*,*::before,*::after{box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.6 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
-img,svg,picture,[role="img"]{-webkit-user-drag:none;user-drag:none;pointer-events:none}
-button,a,input,select,textarea,.ba,.knob,.dot,.cb-menu,[role="tab"],.lang button{pointer-events:auto!important}
-@media print{html,body{display:none!important;visibility:hidden!important;opacity:0!important;height:0!important;width:0!important}}
-.screen-curtain{position:fixed;inset:0;z-index:999999;background:rgba(13,40,38,.98);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px;opacity:0;visibility:hidden;pointer-events:none;backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);transition:opacity .2s ease,visibility .2s ease}
-.screen-curtain svg{width:48px;height:48px;color:var(--mint-2)}
-.screen-curtain h3{font-size:24px;margin:0;letter-spacing:-.02em}
-.screen-curtain p{font-size:15px;max-width:32ch;margin:0;color:rgba(255,255,255,.7);line-height:1.5}
-body.screen-protected .screen-curtain{opacity:1;visibility:visible;pointer-events:auto}
-body.screen-protected > :not(.screen-curtain){filter:blur(20px) grayscale(.8)}
 img{display:block;max-width:100%}
 a{color:inherit;text-decoration:none}
 button{font:inherit;color:inherit;cursor:pointer}
@@ -592,12 +582,6 @@ html[lang="mr"] .menu nav a{line-height:1.3}
 </style>
 <noscript><style>html .reveal{opacity:1;transform:none}.hero h1 .ln>span{transform:none}</style></noscript>
 <body>
-
-<div class="screen-curtain" id="screen-curtain" aria-hidden="true">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-  <h3>Protected Content</h3>
-  <p>Content, images and text are protected. Screenshots and copying are disabled.</p>
-</div>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
@@ -1239,89 +1223,6 @@ html[lang="mr"] .menu nav a{line-height:1.3}
   });
 
   d.getElementById('yr').textContent=new Date().getFullYear();
-
-  // ---------- Content Protection: Anti-Scraper, Anti-Screenshot, Anti-Copy ----------
-  (function(){
-    // 1. Block right-click context menu (Save image as, inspect element)
-    d.addEventListener('contextmenu', function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      return false;
-    }, { capture: true });
-
-    // 2. Block text copy, cut, drag, and selection start
-    ['copy', 'cut', 'selectstart', 'dragstart'].forEach(function(evt){
-      d.addEventListener(evt, function(e){
-        if (e.target && e.target.closest && e.target.closest('[data-copy]')) return;
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.clipboardData) e.clipboardData.setData('text/plain', '');
-        return false;
-      }, { capture: true });
-    });
-
-    // 3. Block keyboard shortcuts for scraping, inspecting, viewing source, and printing
-    d.addEventListener('keydown', function(e){
-      var isMod = e.ctrlKey || e.metaKey;
-      var k = (e.key || '').toLowerCase();
-      var code = e.keyCode || e.which;
-
-      // F12 (Developer Tools)
-      if (code === 123) { e.preventDefault(); return false; }
-
-      if (isMod) {
-        // Ctrl+C (Copy), Ctrl+X (Cut), Ctrl+S (Save), Ctrl+U (View Source), Ctrl+P (Print to PDF)
-        if (k === 'c' || k === 'x' || k === 's' || k === 'u' || k === 'p') {
-          e.preventDefault();
-          return false;
-        }
-        // Ctrl+Shift+I, J, C, K (Inspectors and Console)
-        if (e.shiftKey && (k === 'i' || k === 'j' || k === 'c' || k === 'k')) {
-          e.preventDefault();
-          return false;
-        }
-      }
-
-      // PrintScreen key: trigger protection curtain and wipe clipboard
-      if (k === 'printscreen' || code === 44) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          try { navigator.clipboard.writeText(''); } catch(err){}
-        }
-        d.body.classList.add('screen-protected');
-        setTimeout(function(){ d.body.classList.remove('screen-protected'); }, 1400);
-        e.preventDefault();
-        return false;
-      }
-    }, { capture: true });
-
-    // 4. Anti-Screenshot / Snipping Tool defense:
-    // When focus leaves the window (e.g. Snipping Tool, screen grabber), blur content
-    var blurTimer = null;
-    window.addEventListener('blur', function(){
-      d.body.classList.add('screen-protected');
-    });
-    window.addEventListener('focus', function(){
-      clearTimeout(blurTimer);
-      blurTimer = setTimeout(function(){
-        d.body.classList.remove('screen-protected');
-      }, 150);
-    });
-    d.addEventListener('visibilitychange', function(){
-      if (d.hidden) {
-        d.body.classList.add('screen-protected');
-      } else {
-        d.body.classList.remove('screen-protected');
-      }
-    });
-
-    // 5. Console protection: clear and warn DevTools users
-    setInterval(function(){
-      if (window.console && console.clear) {
-        console.clear();
-        console.warn('%cProtected Content%c\nUnauthorized scraping, copying, or screenshot capture of content and images from this site is strictly prohibited.', 'color:#D63A44;font-size:22px;font-weight:bold;', 'font-size:13px;color:#14181B;');
-      }
-    }, 4000);
-  })();
 })();
 </script>
 </body>
