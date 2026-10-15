@@ -27,6 +27,7 @@ interface CommsDirectoryProps {
   currentUserId?: string;
   onSelectChannel: (channelId: string) => void;
   onSelectDm: (member: PublicProfile) => void;
+  isLoading?: boolean;
   className?: string;
 }
 
@@ -134,6 +135,7 @@ export function CommsDirectory({
   currentUserId,
   onSelectChannel,
   onSelectDm,
+  isLoading = false,
   className = "",
 }: CommsDirectoryProps) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -570,7 +572,25 @@ export function CommsDirectory({
 
       {/* 4. CHAT ROSTER (UNIFIED SCROLLABLE LIST) */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden w-full min-w-0 max-w-full scrollbar-thin scrollbar-thumb-zinc-700/30">
-        {totalVisible === 0 ? (
+        {isLoading && totalVisible === 0 ? (
+          <div className="p-2 space-y-1">
+            {[...Array(6)].map((_, i) => (
+              <div
+                key={i}
+                className="min-h-[72px] px-4 py-3 flex items-center gap-3 w-full animate-pulse"
+              >
+                <div className="w-12 h-12 rounded-full bg-black/[0.06] dark:bg-white/[0.06] shrink-0" />
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="h-3.5 bg-black/[0.08] dark:bg-white/[0.08] rounded-full w-24" />
+                    <div className="h-2.5 bg-black/[0.04] dark:bg-white/[0.04] rounded-full w-12" />
+                  </div>
+                  <div className="h-2.5 bg-black/[0.05] dark:bg-white/[0.05] rounded-full w-40" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : totalVisible === 0 ? (
           /* EMPTY STATE */
           <div className="h-full flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-200">
             <div className="w-16 h-16 rounded-full bg-black/[0.04] dark:bg-white/[0.06] flex items-center justify-center text-zinc-400 mb-3 shadow-inner">
