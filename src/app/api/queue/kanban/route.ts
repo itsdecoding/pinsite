@@ -10,6 +10,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
 
+    if (authResult.role !== "admin" && authResult.role !== "manager") {
+      return NextResponse.json(
+        { error: "Forbidden: Transparent Kanban is restricted to Managers and Admins only." },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const filterNiche = searchParams.get("niche")?.trim();
     const filterArea = searchParams.get("area")?.trim();

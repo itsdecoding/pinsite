@@ -27,11 +27,9 @@ import {
   Eye,
   CheckSquare,
   Lock,
-  Layers,
   PhoneCall,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { QueueKanban, KanbanLead } from "./QueueKanban";
 
 export interface Lead {
   id: string;
@@ -293,10 +291,14 @@ export function CallerCockpit({
   const impersonateParam = resolvedTargetId || searchParams.get("impersonate");
   const supabase = createClient();
 
-  const viewParam = searchParams.get("view");
-  const [viewMode, setViewMode] = useState<"cockpit" | "kanban">(
-    initialView || (viewParam === "kanban" ? "kanban" : "cockpit")
-  );
+  // User Profile
+  const [currentUserProfile, setCurrentUserProfile] = useState<{
+    id: string;
+    full_name: string;
+    role: string;
+    email?: string;
+  } | null>(null);
+
 
   // Screen Views: 'cockpit' (Screen 1) | 'detail' (Screen 3 Dossier) | 'comms' | 'summary' (Screen 4 Daily Report) | 'callbacks' | 'waiting'
   const [activeScreen, setActiveScreen] = useState<
@@ -332,39 +334,6 @@ export function CallerCockpit({
   const [activeLeadIndex, setActiveLeadIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  const handleSelectLeadFromKanban = useCallback((kanbanLead: KanbanLead) => {
-    setDialNowLeads((prev) => {
-      const existingIdx = prev.findIndex((l) => l.id === kanbanLead.id);
-      if (existingIdx !== -1) {
-        setActiveLeadIndex(existingIdx);
-        return prev;
-      }
-      const convertedLead: Lead = {
-        id: kanbanLead.id,
-        name: kanbanLead.name,
-        phone: kanbanLead.phone,
-        normalized_phone: kanbanLead.normalized_phone || kanbanLead.phone,
-        website: kanbanLead.website,
-        has_website: Boolean(kanbanLead.has_website),
-        address: kanbanLead.address,
-        niche: kanbanLead.niche,
-        area: kanbanLead.area,
-        score: kanbanLead.score,
-        status: kanbanLead.status,
-        assigned_to: kanbanLead.assigned_to || null,
-        attempts_count: kanbanLead.attempts_count || 0,
-        next_callback_at: kanbanLead.next_callback_at || null,
-        last_called_at: kanbanLead.last_called_at || null,
-        cooldown_until: kanbanLead.cooldown_until || null,
-        profiles: kanbanLead.profiles,
-      };
-      setActiveLeadIndex(0);
-      return [convertedLead, ...prev];
-    });
-    setPipelineTab("dialNow");
-    setViewMode("cockpit");
-    playHapticTick(900, 0.02);
-  }, []);
 
   // Active Lead Call History
   const [historicalLogs, setHistoricalLogs] = useState<HistoricalCallLog[]>([]);
@@ -382,13 +351,6 @@ export function CallerCockpit({
     dnc: initialStats?.dnc ?? 0,
   });
 
-  // User Profile
-  const [currentUserProfile, setCurrentUserProfile] = useState<{
-    id: string;
-    full_name: string;
-    role: string;
-    email?: string;
-  } | null>(null);
 
   // Impersonation details (if mirroring)
   const [impersonatedCaller, setImpersonatedCaller] = useState<{
@@ -1003,37 +965,9 @@ export function CallerCockpit({
           <header className="w-full px-3 sm:px-3.5 pt-2 pb-1.5 bg-[#0c0c0e]/95 backdrop-blur-xl border-b border-white/[0.06] z-30 shrink-0">
             {/* Primary View Navigation Switcher (Rule: 2-4 options, primary navigation, switched frequently -> Tabs/Pills always visible) */}
             <div className="flex items-center justify-between mb-2 px-0.5 gap-2">
-              <div className="flex items-center p-0.5 rounded-full bg-white/[0.06] border border-white/[0.1] shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setViewMode("cockpit");
-                    playHapticTick(850, 0.02);
-                  }}
-                  className={`px-2.5 py-1 rounded-full text-[11px] font-mono font-bold transition-all flex items-center gap-1.5 ${
-                    viewMode === "cockpit"
-                      ? "bg-[#F95721] text-white shadow-sm"
-                      : "text-zinc-400 hover:text-white"
-                  }`}
-                >
-                  <PhoneCall className="w-3 h-3" />
-                  <span>Cockpit</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setViewMode("kanban");
-                    playHapticTick(850, 0.02);
-                  }}
-                  className={`px-2.5 py-1 rounded-full text-[11px] font-mono font-bold transition-all flex items-center gap-1.5 ${
-                    viewMode === "kanban"
-                      ? "bg-[#F95721] text-white shadow-sm"
-                      : "text-zinc-400 hover:text-white"
-                  }`}
-                >
-                  <Layers className="w-3 h-3" />
-                  <span>Transparent Kanban</span>
-                </button>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] text-zinc-300 text-[11px] font-mono font-bold shadow-xs">
+                <PhoneCall className="w-3 h-3 text-[#F95721]" />
+                <span>Outbound Deck</span>
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
@@ -1043,27 +977,24 @@ export function CallerCockpit({
                     MIRROR
                   </span>
                 )}
-                {viewMode === "cockpit" && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsDeckQueueOpen(true);
-                      playHapticTick(800, 0.02);
-                    }}
-                    className="flex items-center gap-1 bg-zinc-800/90 hover:bg-zinc-700 active:scale-95 text-zinc-300 text-xs px-2 py-0.5 rounded-full border border-zinc-700/60 transition"
-                  >
-                    <FileText className="w-3 h-3 text-[#F95721]" />
-                    <span className="text-[10px] font-semibold">
-                      Queue ({dialNowLeads.length + callbackLeads.length + waitingLeads.length})
-                    </span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDeckQueueOpen(true);
+                    playHapticTick(800, 0.02);
+                  }}
+                  className="flex items-center gap-1 bg-zinc-800/90 hover:bg-zinc-700 active:scale-95 text-zinc-300 text-xs px-2 py-0.5 rounded-full border border-zinc-700/60 transition"
+                >
+                  <FileText className="w-3 h-3 text-[#F95721]" />
+                  <span className="text-[10px] font-semibold">
+                    Queue ({dialNowLeads.length + callbackLeads.length + waitingLeads.length})
+                  </span>
+                </button>
               </div>
             </div>
 
-            {viewMode === "cockpit" && (
-              /* Segmented Pipeline Tabs */
-              <nav className="grid grid-cols-4 gap-1 p-1 bg-[#141418] rounded-2xl border border-white/[0.06] text-xs shadow-inner">
+            {/* Segmented Pipeline Tabs */}
+            <nav className="grid grid-cols-4 gap-1 p-1 bg-[#141418] rounded-2xl border border-white/[0.06] text-xs shadow-inner">
               <button
                 type="button"
                 onClick={() => handlePipelineTabSelect("dialNow")}
@@ -1132,20 +1063,10 @@ export function CallerCockpit({
                 </span>
               </button>
             </nav>
-          )}
           </header>
 
           {/* MAIN BODY CONTAINER */}
-          <main className={`flex-1 relative overflow-hidden flex flex-col ${viewMode === "kanban" ? "px-2 pt-1 pb-2 overflow-y-auto" : "px-3.5 sm:px-4 pt-2.5 pb-2"}`}>
-            {viewMode === "kanban" ? (
-              <div className="w-full flex-1 overflow-x-auto pb-4">
-                <QueueKanban
-                  userRole={currentUserProfile?.role || viewingAs || "caller"}
-                  onSelectLeadForDial={handleSelectLeadFromKanban}
-                />
-              </div>
-            ) : (
-              <>
+          <main className="flex-1 relative overflow-hidden flex flex-col px-3.5 sm:px-4 pt-2.5 pb-2">
             {/* SCREEN 1: COCKPIT VIEW */}
             {activeScreen === "cockpit" && (
               <div className="flex-1 flex flex-col justify-between">
@@ -1727,8 +1648,6 @@ export function CallerCockpit({
                   Return to Dial Now
                 </button>
               </div>
-            )}
-            </>
             )}
           </main>
 

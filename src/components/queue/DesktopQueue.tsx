@@ -268,9 +268,16 @@ function DesktopQueueMain() {
   const router = useRouter();
   const impersonateParam = searchParams.get("impersonate");
   const viewParam = searchParams.get("view");
+  const isManagement = userRole === "admin" || userRole === "manager";
   const [activeView, setActiveView] = useState<"deck" | "kanban">(
-    viewParam === "kanban" ? "kanban" : "deck"
+    isManagement && viewParam === "kanban" ? "kanban" : "deck"
   );
+
+  useEffect(() => {
+    if (!isManagement && activeView === "kanban") {
+      setActiveView("deck");
+    }
+  }, [isManagement, activeView]);
 
   const handleSelectFromKanban = (kanbanLead: KanbanLead) => {
     const existingIdx = leads.findIndex((l) => l.id === kanbanLead.id);
@@ -815,8 +822,6 @@ function DesktopQueueMain() {
     );
   }
 
-  const isManagement = userRole === "admin" || userRole === "manager";
-
   // Label for active filter scope
   let activeScopeLabel = "All Active Leads";
   if (impersonatedCaller) activeScopeLabel = `${impersonatedCaller.full_name}'s Deck`;
@@ -843,33 +848,40 @@ function DesktopQueueMain() {
             </span>
           )}
 
-          {/* Primary View Navigation Switcher (Rule: 2-4 options, switched frequently -> visible tabs/pills) */}
-          <div className="flex items-center p-0.5 rounded-full bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] ml-1 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setActiveView("deck")}
-              className={`px-3 py-1 rounded-full text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
-                activeView === "deck"
-                  ? "bg-[#F95721] text-white shadow-sm"
-                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-              }`}
-            >
+          {/* Primary View Navigation Switcher (Only visible to Admin and Manager roles) */}
+          {isManagement ? (
+            <div className="flex items-center p-0.5 rounded-full bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] ml-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setActiveView("deck")}
+                className={`px-3 py-1 rounded-full text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
+                  activeView === "deck"
+                    ? "bg-[#F95721] text-white shadow-sm"
+                    : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                }`}
+              >
+                <PhoneCall className="w-3.5 h-3.5" />
+                <span>Dial Deck</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveView("kanban")}
+                className={`px-3 py-1 rounded-full text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
+                  activeView === "kanban"
+                    ? "bg-[#F95721] text-white shadow-sm"
+                    : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Transparent Kanban</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F95721]/10 text-[#F95721] border border-[#F95721]/20 text-xs font-mono font-bold ml-1 shadow-sm">
               <PhoneCall className="w-3.5 h-3.5" />
               <span>Dial Deck</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveView("kanban")}
-              className={`px-3 py-1 rounded-full text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
-                activeView === "kanban"
-                  ? "bg-[#F95721] text-white shadow-sm"
-                  : "text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Transparent Kanban</span>
-            </button>
-          </div>
+            </div>
+          )}
 
           {/* Caller's Queue Number moved directly into the header bar (when viewing deck) */}
           {activeView === "deck" && leads.length > 0 && (

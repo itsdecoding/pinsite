@@ -138,8 +138,9 @@ export function CallerCockpitOverlay({ caller, onClose }: CallerCockpitOverlayPr
               rejected: caller.outcomes_breakdown?.not_interested || 0,
               dnc: caller.outcomes_breakdown?.dnc || 0,
             }}
-            viewingAs="manager"
+            viewingAs="caller"
             embedded={true}
+            readOnly={true}
             hideMirrorBanner={true}
           />
         </div>

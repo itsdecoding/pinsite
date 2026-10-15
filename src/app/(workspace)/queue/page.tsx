@@ -53,6 +53,7 @@ function QueueEntry() {
   }
 
   const userRole = profile?.role || "caller";
+  const isManagement = userRole === "admin" || userRole === "manager";
 
   // Forking principle (Zero media-query hiding):
   // 1. Mobile Caller -> New Designer 2 Caller Cockpit (5 screens)
@@ -62,14 +63,15 @@ function QueueEntry() {
   const isMirroring = Boolean(impersonateParam);
 
   const viewParam = searchParams.get("view");
-  const initialView = viewParam === "kanban" ? "kanban" : "cockpit";
+  // Transparent Kanban is strictly reserved for Admin and Manager roles
+  const initialView = isManagement && viewParam === "kanban" ? "kanban" : "cockpit";
 
   if (isCaller && isMobile) {
-    return <CallerCockpit initialView={initialView} />;
+    return <CallerCockpit viewingAs="caller" initialView="cockpit" />;
   }
 
   if (isMirroring && isMobile) {
-    return <CallerCockpit readOnly initialView={initialView} />;
+    return <CallerCockpit readOnly viewingAs="caller" initialView="cockpit" />;
   }
 
   if (isMirroring && impersonateParam) {
