@@ -151,8 +151,12 @@ export function useCommsState() {
   // Active target tracker to avoid stale async state transitions
   const activeTargetRef = useRef<string>("");
   const conversationsRef = useRef<DMConversation[]>(conversations);
+  const ignoredThreadIdsRef = useRef<Set<string>>(new Set());
+  const inFlightThreadChecksRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     conversationsRef.current = conversations;
+    globalConversationsCache = conversations;
   }, [conversations]);
 
   const currentUserIdRef = useRef<string>(currentUserId);
@@ -415,7 +419,7 @@ export function useCommsState() {
 
       // Check client state first for existing DM conversation
       const existingConv =
-        conversations.find((c) => c.participant?.id === member.id) ||
+        conversationsRef.current.find((c) => c.participant?.id === member.id) ||
         globalConversationsCache.find((c) => c.participant?.id === member.id);
 
       if (existingConv?.id) {
@@ -493,10 +497,21 @@ export function useCommsState() {
             body: JSON.stringify({ thread_id }),
           }).catch(() => {});
 
-          // Clear local unread badge on conversation
-          setConversations((prev) =>
-            prev.map((c) => (c.id === thread_id ? { ...c, unread_count: 0 } : c))
-          );
+          // Ensure conversation exists in local conversations state
+          setConversations((prev) => {
+            const exists = prev.some((c) => c.id === thread_id);
+            if (exists) {
+              return prev.map((c) => (c.id === thread_id ? { ...c, unread_count: 0 } : c));
+            }
+            const newConv: DMConversation = {
+              id: thread_id,
+              participant: member,
+              last_message: null,
+              unread_count: 0,
+              updated_at: new Date().toISOString(),
+            };
+            return [newConv, ...prev];
+          });
 
           if (messagesCacheRef.current[targetKey]) {
             setMessages(messagesCacheRef.current[targetKey]!);
@@ -508,7 +523,7 @@ export function useCommsState() {
         setIsMessagesLoading(false);
       }
     },
-    [conversations, currentUserId, sessionUser, authFetch, supabase]
+    [currentUserId, sessionUser, authFetch, supabase]
   );
 
   // 4. Handle Deep-linking on Initial Load (Runs once on mount when channels are ready)
@@ -594,7 +609,7 @@ export function useCommsState() {
         }
       }
 
-      // Record channel read
+      // Record channel read and clear channel notifications
       if (currentUserId && !isCancelled) {
         try {
           await supabase.from("channel_reads").upsert({
@@ -602,6 +617,12 @@ export function useCommsState() {
             user_id: currentUserId,
             last_read_at: new Date().toISOString(),
           });
+          await supabase
+            .from("notifications")
+            .update({ read_at: new Date().toISOString() })
+            .eq("user_id", currentUserId)
+            .or(`link.eq./studio/comms?channel=${activeChannelId},link.eq./comms?channel=${activeChannelId}`)
+            .is("read_at", null);
         } catch {
           // Ignore read timestamp error
         }
@@ -778,6 +799,9 @@ export function useCommsState() {
   useEffect(() => {
     if (!currentUserId) return;
 
+    ignoredThreadIdsRef.current.clear();
+    inFlightThreadChecksRef.current.clear();
+
     const globalDmSub = supabase
       .channel(`global-dm-inbox-${currentUserId}-${Math.random().toString(36).substring(2, 9)}`)
       .on(
@@ -799,19 +823,24 @@ export function useCommsState() {
           const newMsg = (payload.new || {}) as any;
           if (!newMsg.thread_id) return;
 
+          const isInsert = payload.eventType === "INSERT";
           const isOwnMessage = newMsg.sender_id === currentUserId;
 
           // Check if message belongs to an active or cached thread
-          setConversations((prev) => {
-            const matchIndex = prev.findIndex((c) => c.id === newMsg.thread_id);
-            if (matchIndex >= 0) {
+          const hasExistingConv = conversationsRef.current.some((c) => c.id === newMsg.thread_id);
+
+          if (hasExistingConv) {
+            setConversations((prev) => {
+              const matchIndex = prev.findIndex((c) => c.id === newMsg.thread_id);
+              if (matchIndex < 0) return prev;
+
               const updated = [...prev];
               const conv = updated[matchIndex];
               const isViewingThisThread =
                 activeTargetRef.current === `dm_${newMsg.thread_id}`;
 
               const nextUnread =
-                isViewingThisThread || isOwnMessage
+                !isInsert || isViewingThisThread || isOwnMessage
                   ? conv.unread_count
                   : conv.unread_count + 1;
 
@@ -833,32 +862,45 @@ export function useCommsState() {
                   new Date(b.updated_at || 0).getTime() -
                   new Date(a.updated_at || 0).getTime()
               );
-            } else {
-              // Only trigger refresh if message is actually addressed to or sent by current user
-              if (newMsg.sender_id === currentUserId || newMsg.recipient_id === currentUserId) {
-                refreshConversations();
-              } else if (newMsg.thread_id) {
-                // Check if the thread belongs to current user before refreshing
-                (async () => {
-                  try {
-                    const { data: threadMatch } = await supabase
-                      .from("dm_threads")
-                      .select("id")
-                      .eq("id", newMsg.thread_id)
-                      .or(`user_a.eq.${currentUserId},user_b.eq.${currentUserId}`)
-                      .maybeSingle();
+            });
+            return;
+          }
 
-                    if (threadMatch) {
-                      refreshConversations();
-                    }
-                  } catch {
-                    // Ignore query error
-                  }
-                })();
-              }
-              return prev;
+          // New conversation not yet in list — only trigger refresh if message is actually addressed to or sent by current user
+          if (isOwnMessage || newMsg.recipient_id === currentUserId) {
+            refreshConversations();
+            return;
+          }
+
+          // If thread is already known NOT to belong to current user, ignore immediately (0ms, 0 network)
+          if (ignoredThreadIdsRef.current.has(newMsg.thread_id)) {
+            return;
+          }
+
+          // If check is already in-flight for this thread, avoid duplicate network calls
+          if (inFlightThreadChecksRef.current.has(newMsg.thread_id)) {
+            return;
+          }
+
+          inFlightThreadChecksRef.current.add(newMsg.thread_id);
+          try {
+            const { data: threadMatch } = await supabase
+              .from("dm_threads")
+              .select("id")
+              .eq("id", newMsg.thread_id)
+              .or(`user_a.eq.${currentUserId},user_b.eq.${currentUserId}`)
+              .maybeSingle();
+
+            if (threadMatch) {
+              refreshConversations();
+            } else {
+              ignoredThreadIdsRef.current.add(newMsg.thread_id);
             }
-          });
+          } catch {
+            // Ignore query error
+          } finally {
+            inFlightThreadChecksRef.current.delete(newMsg.thread_id);
+          }
         }
       )
       .subscribe();
@@ -953,7 +995,7 @@ export function useCommsState() {
   // Clear typing indicators when switching chats
   useEffect(() => {
     setTypingMap({});
-  }, [activeChannelId, activeThreadId]);
+  }, [activeView, activeChannelId, activeThreadId]);
 
   // 9. Realtime Typing Indicator Channel (kept permanently mounted)
   useEffect(() => {
@@ -1168,6 +1210,7 @@ export function useCommsState() {
 
           // Update conversation list if it's a DM
           if (activeView === "dm" && threadId) {
+            let isNewConversation = false;
             setConversations((prev) => {
               const matchIndex = prev.findIndex((c) => c.id === threadId);
               if (matchIndex >= 0) {
@@ -1188,6 +1231,7 @@ export function useCommsState() {
                     new Date(a.updated_at || 0).getTime()
                 );
               } else {
+                isNewConversation = true;
                 const newConv: DMConversation = {
                   id: threadId!,
                   participant: activeDmUser || {
@@ -1204,10 +1248,12 @@ export function useCommsState() {
                   unread_count: 0,
                   updated_at: message.created_at,
                 };
-                refreshConversations();
                 return [newConv, ...prev];
               }
             });
+            if (isNewConversation) {
+              refreshConversations();
+            }
           }
         }
       } catch (err) {
