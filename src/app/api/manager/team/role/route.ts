@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
           .select("id")
           .eq("assigned_to", userId)
           .is("deleted_at", null)
-          .not("status", "in", '("closed_won","closed_lost","dnc")');
+          .not("status", "in", '("closed_won","closed_lost","dnc","interested")');
 
         if (!leadsErr && assignedLeads && assignedLeads.length > 0) {
           const leadIds = assignedLeads.map((l) => l.id);
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
             })
             .eq("assigned_to", userId)
             .is("deleted_at", null)
-            .not("status", "in", '("closed_won","closed_lost","dnc")');
+            .not("status", "in", '("closed_won","closed_lost","dnc","interested")');
 
           if (unassignErr) {
             console.error("Failed to unassign leads on role change:", unassignErr);
@@ -147,18 +147,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 5. Sync metadata in auth.users
-    try {
-      await admin.auth.admin.updateUserById(userId, {
-        user_metadata: {
-          role: newRole,
-        },
-      });
-    } catch (authMetaErr) {
-      console.warn("Could not sync auth user_metadata (non-blocking):", authMetaErr);
-    }
-
-    // 6. Notify user of role change
+    // 5. Notify user of role change
     try {
       await admin.from("notifications").insert({
         user_id: userId,
@@ -167,7 +156,7 @@ export async function POST(req: NextRequest) {
         body: `Your workspace role has been updated to ${newRole.toUpperCase()} by an administrator.`,
         entity_type: "lead",
         entity_id: userId,
-        link: newRole === "caller" ? "/queue" : newRole === "developer" ? "/projects" : "/manager/team",
+        link: newRole === "caller" ? "/studio/queue" : newRole === "developer" ? "/studio/projects" : "/studio/manager/team",
       });
     } catch {
       // Non-blocking notification

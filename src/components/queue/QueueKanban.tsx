@@ -29,6 +29,7 @@ import {
   CheckCircle2,
   ArrowUpDown,
 } from "lucide-react";
+import { formatPhoneDisplay, formatLeadName, formatRelativeTime } from "@/lib/queue/utils";
 
 export interface KanbanLead {
   id: string;
@@ -89,51 +90,6 @@ export interface KanbanData {
 interface QueueKanbanProps {
   onSelectLeadForDial?: (lead: KanbanLead) => void;
   userRole?: string;
-}
-
-/**
- * Formats a phone number for clean human readability: +91 92264 14192
- */
-function formatPhoneDisplay(phone: string | null | undefined): string {
-  if (!phone) return "No Phone";
-  const cleaned = phone.trim();
-  const digits = cleaned.replace(/\D/g, "");
-
-  let core10 = digits;
-  if (digits.length === 11 && digits.startsWith("0")) {
-    core10 = digits.slice(1);
-  } else if (digits.length === 12 && digits.startsWith("91")) {
-    core10 = digits.slice(2);
-  }
-
-  if (core10.length === 10) {
-    return `+91 ${core10.slice(0, 5)} ${core10.slice(5)}`;
-  }
-
-  return phone;
-}
-
-function formatLeadName(rawName: string | null | undefined): string {
-  if (!rawName) return "Unnamed Lead";
-  let name = rawName.trim();
-  name = name.replace(/([a-zA-Z0-9'’])\s*-\s*([a-zA-Z0-9])/g, "$1 - $2");
-  name = name.replace(/\bDr\.([A-Za-z])/gi, "Dr. $1");
-  name = name.replace(/\bDr(?!\.)\s+/gi, "Dr. ");
-  name = name.replace(/\s+/g, " ").trim();
-  return name;
-}
-
-function formatRelativeTime(dateString: string | null | undefined): string {
-  if (!dateString) return "";
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffSec = Math.round((now.getTime() - date.getTime()) / 1000);
-
-  if (diffSec < 60) return "Just now";
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
-  if (diffSec < 172800) return "Yesterday";
-  return date.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
 }
 
 export function QueueKanban({ onSelectLeadForDial, userRole = "caller" }: QueueKanbanProps) {

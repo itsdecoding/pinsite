@@ -30,6 +30,16 @@ import {
   PhoneCall,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  formatPhoneDisplay,
+  formatLeadName,
+  formatTelLink,
+  resolveDecisionMaker,
+  formatRelativeTime,
+  getISTStartOfDayUtcIso,
+  HUMAN_CONNECT_OUTCOMES,
+  cleanTruncateAtWord,
+} from "@/lib/queue/utils";
 
 export interface Lead {
   id: string;
@@ -88,68 +98,6 @@ export interface CallerCockpitProps {
 }
 
 /**
- * Normalizes phone number to clean Indian format: +91 97654 07679
- */
-function formatPhoneDisplay(phone: string | null | undefined): string {
-  if (!phone) return "No Phone";
-  const cleaned = phone.trim().replace(/\D/g, "");
-  let core10 = cleaned;
-  if (cleaned.length === 11 && cleaned.startsWith("0")) core10 = cleaned.slice(1);
-  else if (cleaned.length === 12 && cleaned.startsWith("91")) core10 = cleaned.slice(2);
-  if (core10.length === 10) return `+91 ${core10.slice(0, 5)} ${core10.slice(5)}`;
-  return phone;
-}
-
-function formatTelLink(phone: string | null | undefined): string {
-  if (!phone) return "";
-  const cleaned = phone.trim().replace(/\D/g, "");
-  let core10 = cleaned;
-  if (cleaned.length === 11 && cleaned.startsWith("0")) core10 = cleaned.slice(1);
-  else if (cleaned.length === 12 && cleaned.startsWith("91")) core10 = cleaned.slice(2);
-  if (core10.length === 10) return `tel:+91${core10}`;
-  return `tel:+91${cleaned}`;
-}
-
-function formatLeadName(name: string | null | undefined): string {
-  if (!name) return "Unnamed Clinic";
-  let cleaned = name.trim().replace(/([a-zA-Z0-9'’])\s*-\s*([a-zA-Z0-9])/g, "$1 - $2");
-  cleaned = cleaned.replace(/\bDr\.([A-Za-z])/gi, "Dr. $1");
-  cleaned = cleaned.replace(/\bDr(?!\.)\s+/gi, "Dr. ");
-  return cleaned.replace(/\s+/g, " ").trim();
-}
-
-/**
- * Truncates text at a word boundary so it never cuts mid-word (e.g. "Panchasheel Nagar,...")
- */
-function cleanTruncateAtWord(text: string | null | undefined, maxChars = 28): string {
-  if (!text) return "";
-  const trimmed = text.trim();
-  if (trimmed.length <= maxChars) return trimmed;
-  const sub = trimmed.slice(0, maxChars);
-  const lastSpace = sub.lastIndexOf(" ");
-  const cleanSub = lastSpace > 10 ? sub.slice(0, lastSpace) : sub;
-  return cleanSub.replace(/[,.-]+$/, "") + "...";
-}
-
-/**
- * Resolves decision maker fallback gracefully:
- * - If name is specified: Dr. Kaustubh Patil (Owner)
- * - If no name in DB: "Ask for the owner" (actionable human instruction, not data label)
- */
-function resolveDecisionMaker(lead: Lead | null): string {
-  if (!lead) return "Ask for the owner";
-  if (lead.decision_maker && lead.decision_maker.trim()) {
-    return lead.decision_maker.trim();
-  }
-  const match = (lead.name || "").match(/^(Dr\.?\s*[A-Za-z]+('s)?)/i);
-  if (match) {
-    const docName = match[1].replace(/'s$/i, "").replace(/^Dr\.?/i, "Dr. ");
-    return `${docName.trim()} (Owner)`;
-  }
-  return "Ask for the owner";
-}
-
-/**
  * Formats prior contact summary: "Yesterday, 4:15 PM · No Answer" or "Oct 1, 11:30 AM · Gatekeeper"
  */
 function formatPriorContactSummary(calledAt: string, outcome: string): string {
@@ -172,19 +120,6 @@ function formatPriorContactSummary(calledAt: string, outcome: string): string {
   const outcomeLabel = outcome.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
   return `${dayLabel}, ${timeLabel} · ${outcomeLabel}`;
-}
-
-function formatRelativeTime(dateString: string | null | undefined): string {
-  if (!dateString) return "Never";
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffSec = Math.round((now.getTime() - date.getTime()) / 1000);
-
-  if (diffSec < 60) return "Just now";
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
-  if (diffSec < 172800) return "Yesterday";
-  return date.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
 }
 
 function formatDurationTimer(seconds: number): string {
@@ -387,6 +322,12 @@ export function CallerCockpit({
 
   // Selected lead based on tab
   const activeLeadsList = pipelineTab === "callbacks" ? callbackLeads : dialNowLeads;
+
+  // Clamp activeLeadIndex whenever active list length updates to prevent false "All Caught Up" empty states
+  useEffect(() => {
+    setActiveLeadIndex((prev) => Math.max(0, Math.min(prev, activeLeadsList.length - 1)));
+  }, [activeLeadsList.length]);
+
   const currentLead = activeLeadsList[activeLeadIndex] || null;
 
   // 1. Auto-open disposition drawer upon returning from phone dialer
@@ -461,12 +402,7 @@ export function CallerCockpit({
         }
 
         // IST Day Start: UTC+5:30
-        const istOffsetMs = 5.5 * 60 * 60 * 1000;
-        const istNow = new Date(Date.now() + istOffsetMs);
-        const istDateStr = istNow.toISOString().split("T")[0];
-        const istStartUtc = new Date(
-          new Date(`${istDateStr}T00:00:00.000Z`).getTime() - istOffsetMs
-        ).toISOString();
+        const istStartUtc = getISTStartOfDayUtcIso();
 
         // RUN LEADS & CALLS IN PARALLEL (Eliminates sequential roundtrips)
         const leadsPromise = supabase
@@ -560,6 +496,9 @@ export function CallerCockpit({
         setCallbackLeads(callbacks);
         setWaitingLeads(waiting);
 
+        const currentBucket = pipelineTab === "callbacks" ? callbacks : dialNow;
+        setActiveLeadIndex((prev) => Math.max(0, Math.min(prev, currentBucket.length - 1)));
+
         // Fetch today's calls for shift stats (IST Day Start: UTC+5:30)
         const calls = todayCalls || [];
         let totalTalkSec = 0;
@@ -578,7 +517,7 @@ export function CallerCockpit({
           else if (c.outcome === "not_interested") rejectedCount++;
           else if (c.outcome === "dnc") dncCount++;
 
-          if (c.outcome !== "no_answer") {
+          if (HUMAN_CONNECT_OUTCOMES.has(c.outcome)) {
             connectCount++;
           }
         });
@@ -826,6 +765,10 @@ export function CallerCockpit({
       setCallStartTime(null);
       callStartTimeRef.current = null;
       setLastCallDuration(0);
+
+      // Clamp activeLeadIndex after outcome submission to prevent false "All Caught Up"
+      const newLength = Math.max(0, activeLeadsList.length - 1);
+      setActiveLeadIndex((prev) => Math.max(0, Math.min(prev, newLength - 1)));
 
       // Trigger spring crossfade animation
       setCardAnimating(true);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient, verifyManagerSession } from "@/lib/supabase/admin";
+import { getISTStartOfDayUtcIso, HUMAN_CONNECT_OUTCOMES } from "@/lib/queue/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -26,12 +27,7 @@ export async function GET(req: NextRequest) {
       rangeLabel = "Last 24 Hours";
     } else {
       // Today in IST (Asia/Kolkata: UTC+5:30)
-      const istOffsetMs = 5.5 * 60 * 60 * 1000;
-      const istNow = new Date(now.getTime() + istOffsetMs);
-      const istDateStr = istNow.toISOString().split("T")[0]; // YYYY-MM-DD
-      // Start of day in IST converted to UTC ISO:
-      const istStartUtc = new Date(new Date(`${istDateStr}T00:00:00.000Z`).getTime() - istOffsetMs);
-      filterStartIso = istStartUtc.toISOString();
+      filterStartIso = getISTStartOfDayUtcIso(now);
       rangeLabel = "Today (IST)";
     }
 
@@ -120,15 +116,7 @@ export async function GET(req: NextRequest) {
     const callsList = callsData || [];
     const leadsList = activeLeads || [];
 
-    // Real connect definition: Human was reached!
-    const humanConnectOutcomes = new Set([
-      "interested",
-      "callback",
-      "gatekeeper",
-      "dm_reached",
-      "closed_won",
-    ]);
-
+    // Real connect definition: Human was reached (standardized in @/lib/queue/utils)
     let totalDials = 0;
     let totalConnects = 0;
     let totalTalkTimeSeconds = 0;
@@ -151,7 +139,7 @@ export async function GET(req: NextRequest) {
 
       // Count human connects
       const connects = callerCalls.filter((c) => {
-        return humanConnectOutcomes.has(c.outcome);
+        return HUMAN_CONNECT_OUTCOMES.has(c.outcome);
       }).length;
 
       // Outcomes breakdown logged today

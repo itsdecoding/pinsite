@@ -41,6 +41,14 @@ import { createClient } from "@/lib/supabase/client";
 import { EntityComments } from "@/components/comms/EntityComments";
 import { get, set } from "idb-keyval";
 import { QueueKanban, KanbanLead } from "./QueueKanban";
+import {
+  formatPhoneDisplay,
+  formatLeadName,
+  formatTelLink,
+  resolveDecisionMaker,
+  formatRelativeTime,
+  getISTStartOfDayUtcIso,
+} from "@/lib/queue/utils";
 
 export interface Lead {
   id: string;
@@ -124,103 +132,6 @@ const OUTCOMES = [
 type QueueScope = "all" | "unassigned" | "assigned" | "mine" | string;
 
 /**
- * Normalizes phone number to strict E.164 tel: URI (+91 for Indian numbers)
- */
-function formatTelLink(phone: string | null | undefined): string {
-  if (!phone) return "";
-  const cleaned = phone.trim();
-  if (cleaned.startsWith("+91")) {
-    return `tel:+91${cleaned.slice(3).replace(/\D/g, "")}`;
-  }
-  const digits = cleaned.replace(/\D/g, "");
-  // If 11 digits starting with 0 (e.g. 09226414192)
-  if (digits.length === 11 && digits.startsWith("0")) {
-    return `tel:+91${digits.slice(1)}`;
-  }
-  // If 12 digits starting with 91 (e.g. 919226414192)
-  if (digits.length === 12 && digits.startsWith("91")) {
-    return `tel:+${digits}`;
-  }
-  // If 10 digits standard mobile (e.g. 9226414192)
-  if (digits.length === 10) {
-    return `tel:+91${digits}`;
-  }
-  // Fallback
-  return `tel:${cleaned.startsWith("+") ? cleaned : `+91${digits}`}`;
-}
-
-/**
- * Formats a phone number for clean human readability: +91 92264 14192
- */
-function formatPhoneDisplay(phone: string | null | undefined): string {
-  if (!phone) return "No Phone";
-  const cleaned = phone.trim();
-  const digits = cleaned.replace(/\D/g, "");
-
-  let core10 = digits;
-  if (digits.length === 11 && digits.startsWith("0")) {
-    core10 = digits.slice(1);
-  } else if (digits.length === 12 && digits.startsWith("91")) {
-    core10 = digits.slice(2);
-  }
-
-  if (core10.length === 10) {
-    return `+91 ${core10.slice(0, 5)} ${core10.slice(5)}`;
-  }
-
-  return phone;
-}
-
-/**
- * Formats timestamps into human relative string (e.g. "Just now", "2h ago", "Yesterday")
- */
-function formatRelativeTime(dateString: string | null | undefined): string {
-  if (!dateString) return "";
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffSec = Math.round((now.getTime() - date.getTime()) / 1000);
-
-  if (diffSec < 60) return "Just now";
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
-  if (diffSec < 172800) return "Yesterday";
-  return date.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
-}
-
-/**
- * Resolves the decision maker name, dynamically extracting from business name if unassigned
- */
-function resolveDecisionMaker(lead: Lead): string {
-  if (lead.decision_maker && lead.decision_maker.trim()) {
-    return lead.decision_maker.trim();
-  }
-  // Smart extraction: e.g. "Dr.Archana's Aesthetic Dental Clinic" -> "Dr. Archana — Principal Doctor / Owner"
-  const match = lead.name.match(/^(Dr\.?\s*[A-Za-z]+('s)?)/i);
-  if (match) {
-    const docName = match[1].replace(/'s$/i, "").replace(/^Dr\.?/i, "Dr. ");
-    return `${docName.trim()} — Owner / Lead Doctor`;
-  }
-  return "Owner / Managing Director";
-}
-
-/**
- * Normalizes and formats lead names cleanly for data hygiene:
- * - Fixes "Dr.Archana" -> "Dr. Archana"
- * - Fixes "Dr Phadatare" -> "Dr. Phadatare"
- * - Fixes "Dr Namrata's-Samarth" -> "Dr. Namrata's - Samarth"
- * - Normalizes spacing
- */
-function formatLeadName(rawName: string | null | undefined): string {
-  if (!rawName) return "Unnamed Lead";
-  let name = rawName.trim();
-  name = name.replace(/([a-zA-Z0-9'’])\s*-\s*([a-zA-Z0-9])/g, "$1 - $2");
-  name = name.replace(/\bDr\.([A-Za-z])/gi, "Dr. $1");
-  name = name.replace(/\bDr(?!\.)\s+/gi, "Dr. ");
-  name = name.replace(/\s+/g, " ").trim();
-  return name;
-}
-
-/**
  * Formats seconds into MM:SS call duration timer
  */
 function formatDurationTimer(seconds: number): string {
@@ -250,23 +161,12 @@ function DesktopQueueMain() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [queueScope, setQueueScope] = useState<QueueScope>("all");
   const [callersList, setCallersList] = useState<CallerInfo[]>([]);
-  const [isReassigning, setIsReassigning] = useState(false);
-  const [impersonatedCaller, setImpersonatedCaller] = useState<{
-    id: string;
-    full_name: string;
-    is_online: boolean;
-    dials_today: number;
-  } | null>(null);
-  const [adminFullName, setAdminFullName] = useState<string>("Manager");
-  const [adminActionsCount, setAdminActionsCount] = useState<number>(0);
-  const [isMirrorDetailsOpen, setIsMirrorDetailsOpen] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [latestCallNote, setLatestCallNote] = useState<CallLogSummary | null>(null);
   const [loadingNote, setLoadingNote] = useState(false);
 
   const searchParams = useSearchParams();
   const router = useRouter();
-  const impersonateParam = searchParams.get("impersonate");
   const viewParam = searchParams.get("view");
   const isManagement = userRole === "admin" || userRole === "manager";
   const [activeView, setActiveView] = useState<"deck" | "kanban">(
@@ -442,48 +342,8 @@ function DesktopQueueMain() {
 
         const role = profile?.role || "caller";
         setUserRole(role);
-        if (profile?.full_name) {
-          const cleanName = profile.full_name.replace(/\s*\((?:Admin|Manager|Owner|Caller|Developer)\)/gi, "").trim();
-          setAdminFullName(cleanName || "Manager");
-        }
 
-        // 2. Resolve impersonation (Mirror Mode) if admin or manager
-        let activeImpersonation: { id: string; full_name: string; is_online: boolean; dials_today: number } | null = null;
-        if (impersonateParam && (role === "admin" || role === "manager")) {
-          const { data: callerData } = await supabase
-            .from("profiles")
-            .select("id, full_name, role, is_available, active")
-            .eq("id", impersonateParam)
-            .maybeSingle();
-
-          if (callerData) {
-            // Calculate start of day in Asia/Kolkata (IST: UTC+5:30) identically to team-stats
-            const istOffsetMs = 5.5 * 60 * 60 * 1000;
-            const istNow = new Date(Date.now() + istOffsetMs);
-            const istDateStr = istNow.toISOString().split("T")[0]; // YYYY-MM-DD
-            const istStartUtc = new Date(new Date(`${istDateStr}T00:00:00.000Z`).getTime() - istOffsetMs).toISOString();
-
-            const { count: dialsToday } = await supabase
-              .from("calls")
-              .select("*", { count: "exact", head: true })
-              .eq("caller_id", callerData.id)
-              .gte("called_at", istStartUtc);
-
-            activeImpersonation = {
-              id: callerData.id,
-              full_name: callerData.full_name,
-              is_online: Boolean(callerData.active && callerData.is_available),
-              dials_today: dialsToday || 0,
-            };
-            setImpersonatedCaller(activeImpersonation);
-          } else {
-            setImpersonatedCaller(null);
-          }
-        } else {
-          setImpersonatedCaller(null);
-        }
-
-        // 3. Check total pool & unassigned counts (strictly excluding closed, dnc, not_interested, and interested)
+        // 2. Check total pool & unassigned counts (strictly excluding closed, dnc, not_interested, and interested)
         const { count: poolCount } = await supabase
           .from("leads")
           .select("*", { count: "exact", head: true })
@@ -549,9 +409,7 @@ function DesktopQueueMain() {
             q = q.or(`cooldown_until.is.null,cooldown_until.lte.${nowIso}`);
           }
 
-          if (activeImpersonation) {
-            q = q.eq("assigned_to", activeImpersonation.id);
-          } else if (role === "caller") {
+          if (role === "caller") {
             q = q.eq("assigned_to", user.id);
           } else {
             if (activeScope === "mine") {
@@ -607,7 +465,7 @@ function DesktopQueueMain() {
         if (!silent) setLoading(false);
       }
     },
-    [supabase, queueScope, impersonateParam]
+    [supabase, queueScope]
   );
 
   // Initial lead fetch and connectivity listeners
@@ -651,51 +509,6 @@ function DesktopQueueMain() {
     loadLeads(newScope);
   };
 
-  const handleExitMirrorMode = () => {
-    setImpersonatedCaller(null);
-    router.push("/studio/manager/team");
-  };
-
-  const handleReassignLead = async (leadId: string, newCallerId: string) => {
-    setIsReassigning(true);
-    try {
-      const res = await fetch("/api/queue/reassign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lead_id: leadId,
-          caller_id: newCallerId || null,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to reassign lead");
-
-      setAdminActionsCount((prev) => prev + 1);
-
-      // Update lead in memory
-      const targetCaller = callersList.find((c) => c.id === newCallerId);
-      setLeads((prev) =>
-        prev.map((l) =>
-          l.id === leadId
-            ? {
-                ...l,
-                assigned_to: newCallerId || null,
-                profiles: targetCaller ? { full_name: targetCaller.full_name } : null,
-              }
-            : l
-        )
-      );
-
-      // Refresh stats
-      await loadLeads();
-    } catch (err: any) {
-      alert(`Reassign error: ${err.message}`);
-    } finally {
-      setIsReassigning(false);
-    }
-  };
-
   const handleStartCall = () => {
     if (!currentLead) return;
     setCallActive(true);
@@ -734,10 +547,6 @@ function DesktopQueueMain() {
       p_client_offline_id: clientOfflineId,
       p_rejection_reason: selectedOutcome === "not_interested" ? (rejectionReason.trim() || "Rejected by caller") : null,
     };
-
-    if (impersonatedCaller) {
-      payload.p_impersonate_caller_id = impersonatedCaller.id;
-    }
 
     try {
       if (isOnline) {
@@ -824,8 +633,7 @@ function DesktopQueueMain() {
 
   // Label for active filter scope
   let activeScopeLabel = "All Active Leads";
-  if (impersonatedCaller) activeScopeLabel = `${impersonatedCaller.full_name}'s Deck`;
-  else if (queueScope === "unassigned") activeScopeLabel = "Unassigned Pool";
+  if (queueScope === "unassigned") activeScopeLabel = "Unassigned Pool";
   else if (queueScope === "assigned") activeScopeLabel = "All Assigned Leads";
   else if (queueScope === "mine") activeScopeLabel = "My Assigned Queue";
   else if (queueScope.startsWith("caller_")) {
@@ -891,7 +699,7 @@ function DesktopQueueMain() {
           )}
 
           {/* Admin/Manager-Only Scope Filter Dropdown (Strictly hidden from callers, shown in deck mode) */}
-          {isManagement && !impersonatedCaller && activeView === "deck" && (
+          {isManagement && activeView === "deck" && (
             <div className="flex items-center gap-1.5 ml-1">
               <span className="text-[10px] font-mono uppercase text-[#6E6B66] dark:text-[#8A8680] font-bold tracking-wider hidden sm:inline">
                 Scope:
@@ -917,99 +725,6 @@ function DesktopQueueMain() {
         </div>
 
         <div className="flex items-center gap-2.5">
-          {/* Subtle Figma/Linear-style Mirror Mode Pill & Popover (when impersonating) */}
-          {impersonatedCaller && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsMirrorDetailsOpen((prev) => !prev)}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-700 dark:text-amber-400 font-mono text-xs font-semibold shadow-sm transition-all active:scale-95"
-                title="Click to view Mirror Mode audit trail & session details"
-              >
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
-                <span>
-                  MIRRORING • {impersonatedCaller.full_name} • {impersonatedCaller.dials_today} dials • {leads.length} ready to dial
-                </span>
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isMirrorDetailsOpen ? "rotate-180" : ""}`} />
-              </button>
-
-              {/* Expanded detail popover card (Linear/Figma style) */}
-              {isMirrorDetailsOpen && (
-                <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-3xl bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-2xl p-4 z-[150] animate-in fade-in slide-in-from-top-2 duration-150">
-                  <div className="flex items-start justify-between pb-2.5 border-b border-[#ECE8E1] dark:border-[#2D2924]">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm">👁️</span>
-                      <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#F95721]">
-                        Mirror Mode Audit Trail
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsMirrorDetailsOpen(false)}
-                      className="p-1 text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] rounded-lg hover:bg-black/5 dark:hover:bg-white/5"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="py-3 space-y-2.5 text-xs">
-                    {/* Status & Output */}
-                    <div className="p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 space-y-1">
-                      <div className="flex items-center justify-between font-mono text-[11px]">
-                        <span className="text-[#8A8680]">Caller Status:</span>
-                        <span className="inline-flex items-center gap-1 font-bold text-[#111110] dark:text-[#F5F3EF]">
-                          <span className={`w-2 h-2 rounded-full ${impersonatedCaller.is_online ? "bg-emerald-500" : "bg-stone-400"}`} />
-                          {impersonatedCaller.is_online ? "Active / Online" : "Idle / Offline"}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between font-mono text-[11px]">
-                        <span className="text-[#8A8680]">Today&apos;s Dials:</span>
-                        <span className="font-bold text-[#111110] dark:text-[#F5F3EF]">{impersonatedCaller.dials_today} dials</span>
-                      </div>
-                      <div className="flex items-center justify-between font-mono text-[11px]">
-                        <span className="text-[#8A8680]">Ready to Dial:</span>
-                        <span className="font-bold text-[#F95721]">{leads.length} leads</span>
-                      </div>
-                    </div>
-
-                    {/* Dual Attribution Audit Trail */}
-                    <p className="text-[11px] text-[#6E6B66] dark:text-[#8A8680] leading-relaxed">
-                      Actions logged here will record as{" "}
-                      <strong className="text-[#111110] dark:text-[#F5F3EF]">
-                        {adminFullName} ({userRole === "admin" ? "Admin" : "Manager"})
-                      </strong>{" "}
-                      acting on behalf of{" "}
-                      <strong className="text-[#111110] dark:text-[#F5F3EF]">{impersonatedCaller.full_name}</strong>.
-                    </p>
-
-                    {adminActionsCount > 0 && (
-                      <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 font-mono text-[10px]">
-                        Session Actions: {adminActionsCount} performed
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="pt-2.5 border-t border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => setIsMirrorDetailsOpen(false)}
-                      className="text-xs text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF]"
-                    >
-                      Close
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleExitMirrorMode}
-                      className="px-3.5 py-1.5 bg-black dark:bg-white text-white dark:text-black rounded-xl text-xs font-bold shadow-sm hover:opacity-90 active:scale-95 transition-all"
-                    >
-                      Exit Mirror Mode
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Online/Offline indicator */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] shadow-sm text-xs">
             {isOnline ? (
@@ -1046,39 +761,28 @@ function DesktopQueueMain() {
               No leads currently exist in the database. Upload a lead CSV in Lead Ingestion to populate your agency outreach pool.
             </p>
             <Link
-              href="/manager/ingestion"
+              href="/studio/manager/ingestion"
               className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm"
             >
               <span>Upload Lead CSV</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           </div>
-        ) : (isManagement || impersonatedCaller) && queueScope !== "all" && leads.length === 0 ? (
+        ) : isManagement && queueScope !== "all" && leads.length === 0 ? (
           <div className="p-8 sm:p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
             <Layers className="w-12 h-12 text-[#6E6B66] dark:text-[#8A8680] mx-auto mb-3" />
             <h2 className="text-lg font-bold text-[#111110] dark:text-[#F5F3EF]">
               No leads in {activeScopeLabel}
             </h2>
             <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1 max-w-sm mx-auto">
-              {impersonatedCaller
-                ? `This caller currently has no active leads or all assigned leads are in active cooldown.`
-                : `There are ${totalPoolCount} active leads in the master agency deck waiting to be dialed.`}
+              There are {totalPoolCount} active leads in the master agency deck waiting to be dialed.
             </p>
-            {impersonatedCaller ? (
-              <button
-                onClick={handleExitMirrorMode}
-                className="mt-6 px-5 py-2.5 bg-black text-white hover:bg-neutral-800 rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm"
-              >
-                Exit Mirror Mode
-              </button>
-            ) : (
-              <button
-                onClick={() => handleScopeChange("all")}
-                className="mt-6 px-5 py-2.5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm"
-              >
-                Switch to All Active Leads ({totalPoolCount})
-              </button>
-            )}
+            <button
+              onClick={() => handleScopeChange("all")}
+              className="mt-6 px-5 py-2.5 bg-[#F95721] hover:bg-[#E04612] text-white rounded-full font-semibold text-xs transition-transform active:scale-95 shadow-sm"
+            >
+              Switch to All Active Leads ({totalPoolCount})
+            </button>
           </div>
         ) : !isManagement && leads.length === 0 ? (
           <div className="p-8 sm:p-12 text-center bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl max-w-lg mx-auto shadow-sm">
@@ -1125,64 +829,20 @@ function DesktopQueueMain() {
                   </span>
 
                   {currentLead.assigned_to ? (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[11px] font-medium text-[#111110] dark:text-[#F5F3EF]">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                        <span>Assigned to:</span>
-                        <strong className="text-[#F95721] font-semibold">
-                          {currentLead.assigned_to === currentUserId
-                            ? "You"
-                            : currentLead.profiles?.full_name || "Caller"}
-                        </strong>
-                      </span>
-
-                      {/* Quick Reassign Dropdown: strictly available only in Mirror Mode for Managers */}
-                      {impersonatedCaller && isManagement && (
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            value={currentLead.assigned_to || ""}
-                            onChange={(e) => handleReassignLead(currentLead.id, e.target.value)}
-                            disabled={isReassigning}
-                            className="text-[10px] font-semibold py-1 px-2.5 rounded-full bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:border-[#F95721]/50 outline-none cursor-pointer"
-                          >
-                            <option value={currentLead.assigned_to}>Reassign lead...</option>
-                            <option value="">&rarr; Unassign to Pool</option>
-                            {callersList.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                &rarr; {c.full_name} ({c.lead_count} leads)
-                              </option>
-                            ))}
-                          </select>
-                          {isReassigning && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F95721]" />}
-                        </div>
-                      )}
-                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/5 dark:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] text-[11px] font-medium text-[#111110] dark:text-[#F5F3EF]">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                      <span>Assigned to:</span>
+                      <strong className="text-[#F95721] font-semibold">
+                        {currentLead.assigned_to === currentUserId
+                          ? "You"
+                          : currentLead.profiles?.full_name || "Caller"}
+                      </strong>
+                    </span>
                   ) : (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-bold">
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Unassigned Pool</span>
-                      </span>
-
-                      {impersonatedCaller && isManagement && (
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            defaultValue=""
-                            onChange={(e) => handleReassignLead(currentLead.id, e.target.value)}
-                            disabled={isReassigning}
-                            className="text-[10px] font-semibold py-1 px-2.5 rounded-full bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] text-[#6E6B66] dark:text-[#8A8680] hover:text-[#111110] dark:hover:text-[#F5F3EF] hover:border-[#F95721]/50 outline-none cursor-pointer"
-                          >
-                            <option value="" disabled>Assign to caller...</option>
-                            {callersList.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                &rarr; Assign to {c.full_name} ({c.lead_count} leads)
-                              </option>
-                            ))}
-                          </select>
-                          {isReassigning && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F95721]" />}
-                        </div>
-                      )}
-                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-bold">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Unassigned Pool</span>
+                    </span>
                   )}
                 </div>
               </div>
@@ -1397,68 +1057,36 @@ function DesktopQueueMain() {
                   </div>
                 )}
 
-                {/* Primary Dial CTA (Desktop & Tablet) or Diagnostic Observer Card in Mirror Mode */}
-                {impersonatedCaller ? (
-                  <div className="pt-2">
-                    <div className="p-4 sm:p-5 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3.5 text-amber-900 dark:text-amber-200">
-                      <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 text-xl font-bold">
-                        👁️
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs font-bold uppercase tracking-wider font-mono text-amber-700 dark:text-amber-300">
-                          Diagnostic Observer Mode
-                        </p>
-                        <p className="text-xs leading-relaxed text-[#111110]/80 dark:text-[#F5F3EF]/80 max-w-2xl">
-                          Direct dialing and outcome logging are disabled in Mirror Mode to prevent interference with {impersonatedCaller.full_name}&apos;s live call session. You can reassign this lead above or leave guidance in the Coaching Notes below.
-                        </p>
-                      </div>
+                {/* Primary Dial CTA (Desktop & Tablet) */}
+                <div className="pt-2 flex flex-col sm:flex-row items-center gap-4">
+                  {callActive && (
+                    <div className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 font-mono font-bold text-xs animate-pulse">
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
+                      <span>Call in progress: {formatDurationTimer(callElapsedSeconds)}</span>
                     </div>
-                  </div>
-                ) : (
-                  <div className="pt-2 flex flex-col sm:flex-row items-center gap-4">
-                    {callActive && (
-                      <div className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 font-mono font-bold text-xs animate-pulse">
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
-                        <span>Call in progress: {formatDurationTimer(callElapsedSeconds)}</span>
-                      </div>
-                    )}
-                    <a
-                      href={formatTelLink(currentLead.phone)}
-                      onClick={handleStartCall}
-                      className="w-full sm:w-auto flex-1 min-h-[50px] py-4 px-8 bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-sm uppercase tracking-wider rounded-full shadow-lg flex items-center justify-center gap-3 transition-transform active:scale-[0.98] text-center"
-                    >
-                      <PhoneCall className="w-5 h-5 animate-pulse" />
-                      <span>Dial Now ({formatPhoneDisplay(currentLead.phone)})</span>
-                    </a>
+                  )}
+                  <a
+                    href={formatTelLink(currentLead.phone)}
+                    onClick={handleStartCall}
+                    className="w-full sm:w-auto flex-1 min-h-[50px] py-4 px-8 bg-[#F95721] hover:bg-[#E04612] text-white font-bold text-sm uppercase tracking-wider rounded-full shadow-lg flex items-center justify-center gap-3 transition-transform active:scale-[0.98] text-center"
+                  >
+                    <PhoneCall className="w-5 h-5 animate-pulse" />
+                    <span>Dial Now ({formatPhoneDisplay(currentLead.phone)})</span>
+                  </a>
 
-                    <button
-                      onClick={() => setIsDrawerOpen(true)}
-                      className="w-full sm:w-auto min-h-[50px] py-4 px-6 bg-white dark:bg-[#1C1A17] hover:bg-black/5 dark:hover:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-full text-xs font-semibold text-[#111110] dark:text-[#F5F3EF] transition-colors flex items-center justify-center gap-2"
-                    >
-                      <span>Log Outcome</span>
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
+                  <button
+                    onClick={() => setIsDrawerOpen(true)}
+                    className="w-full sm:w-auto min-h-[50px] py-4 px-6 bg-white dark:bg-[#1C1A17] hover:bg-black/5 dark:hover:bg-white/5 border border-[#ECE8E1] dark:border-[#2D2924] rounded-full text-xs font-semibold text-[#111110] dark:text-[#F5F3EF] transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span>Log Outcome</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Embedded Comments Thread / Coaching Notes */}
+            {/* Embedded Comments Thread */}
             <div className="bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-3xl p-6 shadow-sm space-y-4">
-              {impersonatedCaller && (
-                <div className="flex items-center justify-between pb-3 border-b border-[#ECE8E1] dark:border-[#2D2924]">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">📝</span>
-                    <span className="text-xs font-bold uppercase tracking-wider font-mono text-[#F95721]">
-                      Live Coaching Notes for {impersonatedCaller.full_name}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-mono text-[10px] font-semibold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                    <span>Live sync</span>
-                  </div>
-                </div>
-              )}
               <EntityComments entityType="lead" entityId={currentLead.id} />
             </div>
           </div>
@@ -1708,8 +1336,10 @@ function DesktopQueueMain() {
 }
 
 export function DesktopQueue({ callerId }: { callerId?: string } = {}) {
-  if (callerId) {
-    return <DesktopMirrorQueue callerId={callerId} />;
+  const searchParams = useSearchParams();
+  const targetCallerId = callerId || searchParams?.get("impersonate") || undefined;
+  if (targetCallerId) {
+    return <DesktopMirrorQueue callerId={targetCallerId} />;
   }
   return <DesktopQueueMain />;
 }
@@ -1881,12 +1511,7 @@ export function DesktopMirrorQueue({ callerId }: { callerId: string }) {
       });
 
       // 2. Fetch calls completed today by this caller (IST Day Start: UTC+5:30)
-      const istOffsetMs = 5.5 * 60 * 60 * 1000;
-      const istNow = new Date(Date.now() + istOffsetMs);
-      const istDateStr = istNow.toISOString().split("T")[0];
-      const istStartUtc = new Date(
-        new Date(`${istDateStr}T00:00:00.000Z`).getTime() - istOffsetMs
-      ).toISOString();
+      const istStartUtc = getISTStartOfDayUtcIso();
 
       const { data: todayCallsData } = await supabase
         .from("calls")

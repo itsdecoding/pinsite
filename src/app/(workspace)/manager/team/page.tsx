@@ -1474,7 +1474,7 @@ export default function ManagerTeamPage() {
                     /* Developer Actions: [View Projects] [Message] */
                     <div className="grid grid-cols-2 gap-2">
                       <Link
-                        href="/projects"
+                        href="/studio/projects"
                         className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 text-xs font-semibold transition-all border border-cyan-500/20"
                       >
                         <Kanban className="w-3.5 h-3.5" />
@@ -1482,7 +1482,7 @@ export default function ManagerTeamPage() {
                       </Link>
 
                       <Link
-                        href="/comms"
+                        href="/studio/comms"
                         className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-white/15"
                       >
                         <MessageSquare className="w-3.5 h-3.5 text-[#8A8680]" />
@@ -1493,7 +1493,7 @@ export default function ManagerTeamPage() {
                     /* Manager / Admin Actions: [Team Invites] [Message] */
                     <div className="grid grid-cols-2 gap-2">
                       <Link
-                        href="/manager/invites"
+                        href="/studio/manager/invites"
                         className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 text-xs font-semibold transition-all border border-purple-500/20"
                       >
                         <Users className="w-3.5 h-3.5" />
@@ -1501,7 +1501,7 @@ export default function ManagerTeamPage() {
                       </Link>
 
                       <Link
-                        href="/comms"
+                        href="/studio/comms"
                         className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[#111110] dark:text-[#F5F3EF] text-xs font-semibold transition-all border border-[#ECE8E1] dark:border-white/15"
                       >
                         <MessageSquare className="w-3.5 h-3.5 text-[#8A8680]" />
@@ -2416,7 +2416,7 @@ export default function ManagerTeamPage() {
 
               {actionsSheetCaller.role !== "caller" && (
                 <Link
-                  href="/comms"
+                  href="/studio/comms"
                   onClick={() => setActionsSheetCaller(null)}
                   className="w-full p-3 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] hover:bg-black/5 dark:hover:bg-white/5 border border-[#ECE8E1] dark:border-white/10 flex items-center gap-3 text-left transition-colors"
                 >

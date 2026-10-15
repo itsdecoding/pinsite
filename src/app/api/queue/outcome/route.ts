@@ -122,12 +122,14 @@ export async function POST(req: NextRequest) {
       attempts_count: newAttemptsCount,
       last_called_at: nowIso,
       updated_at: nowIso,
+      next_callback_at: null,
     };
 
     if (p_status === "dnc") {
       leadUpdate.dnc_flag = true;
       leadUpdate.assigned_to = null;
       leadUpdate.deleted_at = nowIso;
+      leadUpdate.cooldown_until = null;
     } else if (p_status === "not_interested") {
       leadUpdate.rejection_reason = p_rejection_reason?.trim() || "Rejected by caller";
       leadUpdate.quarantined_at = nowIso;
@@ -140,8 +142,9 @@ export async function POST(req: NextRequest) {
     } else if (p_status === "interested") {
       leadUpdate.escalated_at = nowIso;
       leadUpdate.cooldown_until = null;
-    } else if (p_status === "callback" && p_callback_at) {
-      leadUpdate.next_callback_at = p_callback_at;
+    } else if (p_status === "callback") {
+      leadUpdate.next_callback_at = p_callback_at || null;
+      leadUpdate.cooldown_until = null;
     } else if (p_status === "no_answer" || p_status === "gatekeeper") {
       if (newAttemptsCount === 1) {
         leadUpdate.cooldown_until = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
@@ -163,6 +166,8 @@ export async function POST(req: NextRequest) {
         leadUpdate.assigned_to = null;
         leadUpdate.cooldown_until = null;
       }
+    } else {
+      leadUpdate.cooldown_until = null;
     }
 
     let { error: updateError } = await admin

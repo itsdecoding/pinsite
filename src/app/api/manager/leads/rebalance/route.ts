@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
         assigned_to: target_caller_id,
         status: "assigned",
         assigned_date: todayStr,
+        cooldown_until: null,
         updated_at: new Date().toISOString(),
       })
       .in("id", leadIdsToMove);
@@ -108,7 +109,7 @@ export async function POST(req: NextRequest) {
         body: `A manager transferred ${leadIdsToMove.length} leads to your queue.`,
         entity_type: "lead",
         entity_id: leadIdsToMove[0],
-        link: "/queue",
+        link: "/studio/queue",
       });
     } catch (notifErr) {
       console.warn("Could not insert rebalance notification:", notifErr);
