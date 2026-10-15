@@ -158,7 +158,7 @@ html.lock,html.lock body{overflow:hidden}
 .loaded .hero h1 .ln:nth-child(3)>span{transition-delay:.18s}
 .hero-sub{max-width:44ch;color:rgba(255,255,255,.8);font-size:clamp(17px,1.45vw,21px);margin:30px 0 32px}
 .cta-row{display:flex;flex-wrap:wrap;gap:12px}
-.hero-bg{position:absolute;top:0;right:0;bottom:0;width:66%;background:url("assets/hero/chair-wide.jpg") 50% 34%/cover no-repeat;opacity:.52;filter:saturate(.8);-webkit-mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.5) 28%,#000 62%);mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.5) 28%,#000 62%);transform:scale(1.06);transform-origin:70% 40%;transition:transform 2.6s cubic-bezier(.2,.7,.2,1)}
+.hero-bg{position:absolute;top:0;right:0;bottom:0;width:66%;background:url("/joshi-clinic/assets/hero/chair-wide.jpg") 50% 34%/cover no-repeat;opacity:.52;filter:saturate(.8);-webkit-mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.5) 28%,#000 62%);mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.5) 28%,#000 62%);transform:scale(1.06);transform-origin:70% 40%;transition:transform 2.6s cubic-bezier(.2,.7,.2,1)}
 .loaded .hero-bg{transform:scale(1)}
 .hero-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,var(--forest) 0,transparent 38%),linear-gradient(180deg,rgba(13,40,38,.55) 0,transparent 30%)}
 
@@ -216,7 +216,7 @@ html.lock,html.lock body{overflow:hidden}
 .case.on{display:block}
 .ba{position:relative;aspect-ratio:528/800;width:min(100%,calc(min(88vh,820px) * .66));height:auto;flex:none;margin:0 auto;border-radius:24px;overflow:hidden;user-select:none;touch-action:pan-y;background:#ddd;cursor:ew-resize}
 .ba-wrap{display:flex;gap:16px;justify-content:center;align-items:stretch}
-.ba .layer{position:absolute;inset:0;background-image:url("assets/maps/photo-e.jpg");background-size:242.42% auto;background-repeat:no-repeat}
+.ba .layer{position:absolute;inset:0;background-image:url("/joshi-clinic/assets/maps/photo-e.jpg");background-size:242.42% auto;background-repeat:no-repeat}
 .ba .before{background-size:293.33% auto;background-position:12.36% 30.8%}
 .ba .after{background-position:89.5% 20.83%;clip-path:inset(0 0 0 var(--x,50%))}
 .ba .bar{position:absolute;top:0;bottom:0;left:var(--x,50%);width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.06)}
@@ -227,7 +227,7 @@ html.lock,html.lock body{overflow:hidden}
 .ba input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:ew-resize;margin:0}
 .pair{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .pair figure{margin:0}
-.pair .pic{aspect-ratio:548/672;border-radius:22px;background-image:url("assets/maps/photo-a.jpg");background-repeat:no-repeat}
+.pair .pic{aspect-ratio:548/672;border-radius:22px;background-image:url("/joshi-clinic/assets/maps/photo-a.jpg");background-repeat:no-repeat}
 .pair .pb{background-size:233.58% auto;background-position:7.92% 90.13%}
 .pair .pa{background-size:234.43% auto;background-position:91.83% 9.87%}
 .pair figcaption{font-size:16px;font-weight:600;margin-top:10px}
@@ -669,8 +669,8 @@ html[lang="mr"] .menu nav a{line-height:1.3}
 <!-- ABOUT -->
 <section class="about">
   <div class="tilts">
-    <figure class="tilt l reveal"><img src="assets/maps/photo-c.jpg" alt="Dental chair and lamp at the clinic" loading="lazy"></figure>
-    <figure class="tilt r reveal"><img src="assets/maps/photo-d.jpg" alt="Treatment room with a Gnatus dental chair" loading="lazy" style="object-position:50% 62%"></figure>
+    <figure class="tilt l reveal"><img src="/joshi-clinic/assets/maps/photo-c.jpg" alt="Dental chair and lamp at the clinic" loading="lazy"></figure>
+    <figure class="tilt r reveal"><img src="/joshi-clinic/assets/maps/photo-d.jpg" alt="Treatment room with a Gnatus dental chair" loading="lazy" style="object-position:50% 62%"></figure>
   </div>
   <div class="wrap">
     <p class="statement reveal" data-i="about">Every visit begins with <em>a proper diagnosis.</em> You see what <b>the doctor sees</b>, hear <em>every option</em> in plain words, and agree to <b>the plan</b> before any treatment begins.</p>
@@ -724,47 +724,47 @@ html[lang="mr"] .menu nav a{line-height:1.3}
     </div>
     <div class="rail" id="rail" data-rail="dark">
       <article class="t">
-        <img class="t-img" src="assets/treatments/root-canal.jpg?v=17" alt="Dentist using a dental handpiece on a patient&rsquo;s tooth" width="900" height="675" loading="lazy" decoding="async">
+        <img class="t-img" src="/joshi-clinic/assets/treatments/root-canal.jpg?v=17" alt="Dentist using a dental handpiece on a patient&rsquo;s tooth" width="900" height="675" loading="lazy" decoding="async">
         <h3 data-i="t1.h">Root canal treatment</h3>
         <p data-i="t1.p">Clears infection from inside the tooth and saves it from extraction.</p>
       </article>
       <article class="t">
-        <img class="t-img" src="assets/treatments/re-root-canal.jpg?v=17" alt="Dentist examining tooth-root scans on a light box" width="900" height="675" loading="lazy" decoding="async">
+        <img class="t-img" src="/joshi-clinic/assets/treatments/re-root-canal.jpg?v=17" alt="Dentist examining tooth-root scans on a light box" width="900" height="675" loading="lazy" decoding="async">
         <h3 data-i="t2.h">Re-root canal</h3>
         <p data-i="t2.p">Re-treats an older root canal that has become painful or infected again.</p>
       </article>
       <article class="t">
-        <img class="t-img" src="assets/treatments/caps-crowns.jpg?v=17" alt="Ceramic crown fitted on a dental model" width="900" height="675" loading="lazy" decoding="async">
+        <img class="t-img" src="/joshi-clinic/assets/treatments/caps-crowns.jpg?v=17" alt="Ceramic crown fitted on a dental model" width="900" height="675" loading="lazy" decoding="async">
         <h3 data-i="t3.h">Caps &amp; crowns</h3>
         <p data-i="t3.p">Protects a weak or treated tooth with a cap matched to the teeth beside it.</p>
       </article>
       <article class="t">
-        <img class="t-img" src="assets/treatments/dentures.jpg?v=17" alt="Technician finishing a full denture by hand" width="900" height="675" loading="lazy" decoding="async">
+        <img class="t-img" src="/joshi-clinic/assets/treatments/dentures.jpg?v=17" alt="Technician finishing a full denture by hand" width="900" height="675" loading="lazy" decoding="async">
         <h3 data-i="t4.h">Dentures</h3>
         <p data-i="t4.p">Replaces missing teeth with complete or partial dentures, so you can eat, speak and smile with ease.</p>
       </article>
       <article class="t">
-        <img class="t-img" src="assets/treatments/fillings.jpg?v=17" alt="Dentist treating a patient&rsquo;s tooth" width="900" height="675" loading="lazy" decoding="async">
+        <img class="t-img" src="/joshi-clinic/assets/treatments/fillings.jpg?v=17" alt="Dentist treating a patient&rsquo;s tooth" width="900" height="675" loading="lazy" decoding="async">
         <h3 data-i="t5.h">Tooth-coloured fillings</h3>
         <p data-i="t5.p">Seals a cavity with a filling that matches the natural shade of your tooth.</p>
       </article>
       <article class="t">
-        <img class="t-img" src="assets/treatments/chipped-tooth.jpg?v=17" alt="A row of natural-shaped front teeth" width="900" height="675" loading="lazy" decoding="async">
+        <img class="t-img" src="/joshi-clinic/assets/treatments/chipped-tooth.jpg?v=17" alt="A row of natural-shaped front teeth" width="900" height="675" loading="lazy" decoding="async">
         <h3 data-i="t6.h">Chipped tooth repair</h3>
         <p data-i="t6.p">Rebuilds a broken front tooth to its natural shape, often in one sitting.</p>
       </article>
       <article class="t">
-        <img class="t-img" src="assets/treatments/scaling.jpg?v=17" alt="Gloved hands cleaning teeth with an ultrasonic scaler" width="900" height="675" loading="lazy" decoding="async">
+        <img class="t-img" src="/joshi-clinic/assets/treatments/scaling.jpg?v=17" alt="Gloved hands cleaning teeth with an ultrasonic scaler" width="900" height="675" loading="lazy" decoding="async">
         <h3 data-i="t7.h">Scaling &amp; polishing</h3>
         <p data-i="t7.p">Lifts tartar and stains with a professional cleaning and keeps gums healthy.</p>
       </article>
       <article class="t">
-        <img class="t-img" src="assets/treatments/extractions.jpg?v=17" alt="Dental mirror, probe and tweezers on a clinic tray" width="900" height="675" loading="lazy" decoding="async">
+        <img class="t-img" src="/joshi-clinic/assets/treatments/extractions.jpg?v=17" alt="Dental mirror, probe and tweezers on a clinic tray" width="900" height="675" loading="lazy" decoding="async">
         <h3 data-i="t8.h">Extractions</h3>
         <p data-i="t8.p">Removes a tooth that cannot be saved, carefully and without hurry.</p>
       </article>
       <article class="t">
-        <img class="t-img" src="assets/treatments/kids.jpg?v=17" alt="A young girl resting calmly in a dental chair" width="900" height="675" loading="lazy" decoding="async">
+        <img class="t-img" src="/joshi-clinic/assets/treatments/kids.jpg?v=17" alt="A young girl resting calmly in a dental chair" width="900" height="675" loading="lazy" decoding="async">
         <h3 data-i="t9.h">Children&rsquo;s dentistry</h3>
         <p data-i="t9.p">Gives children calm first visits, small fillings and preventive care for growing teeth.</p>
       </article>
@@ -853,7 +853,7 @@ html[lang="mr"] .menu nav a{line-height:1.3}
     <div class="wrap doc-grid">
       <div class="doc-a">
         <div class="doc-photo reveal">
-          <img src="assets/doctor-placeholder.png" alt="Dr. Bhakti Joshi">
+          <img src="/joshi-clinic/assets/doctor-placeholder.png" alt="Dr. Bhakti Joshi">
           <div class="doc-badge">
             <div><b data-i="brand">Joshi Dental Clinic</b><span data-i="badge.loc">Lokmanya Colony, Kothrud</span></div>
             <svg><use href="#tooth"/></svg>
@@ -874,9 +874,9 @@ html[lang="mr"] .menu nav a{line-height:1.3}
         <div class="expert">
           <h3 data-i="ex.h">Areas of expertise</h3>
           <ul>
-            <li style="--img:url('assets/treatments/re-root-canal.jpg');--pos:30% 40%" data-i="ex1">Root canal &amp; re-root canal</li>
-            <li style="--img:url('assets/treatments/dentures.jpg');--pos:60% 50%" data-i="ex2">Caps, crowns &amp; dentures</li>
-            <li style="--img:url('assets/treatments/chipped-tooth.jpg');--pos:50% 50%" data-i="ex3">Fillings, repairs &amp; gum care</li>
+            <li style="--img:url('/joshi-clinic/assets/treatments/re-root-canal.jpg');--pos:30% 40%" data-i="ex1">Root canal &amp; re-root canal</li>
+            <li style="--img:url('/joshi-clinic/assets/treatments/dentures.jpg');--pos:60% 50%" data-i="ex2">Caps, crowns &amp; dentures</li>
+            <li style="--img:url('/joshi-clinic/assets/treatments/chipped-tooth.jpg');--pos:50% 50%" data-i="ex3">Fillings, repairs &amp; gum care</li>
           </ul>
         </div>
         <button type="button" class="btn btn-ink" data-book><span class="dot"><svg width="16" height="16"><use href="#arr"/></svg></span><span data-i="dc.btn">Book an appointment</span></button>
@@ -938,7 +938,7 @@ html[lang="mr"] .menu nav a{line-height:1.3}
         <iframe title="Map to Joshi Dental Clinic, Kothrud" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://maps.google.com/maps?q=Joshi%20Dental%20Clinic%2C%20Lokmanya%20Colony%2C%20Kothrud%2C%20Pune&z=16&output=embed"></iframe>
       </div>
       <figure class="board reveal" style="margin:0">
-        <img src="assets/signboard.png" alt="Joshi Dental Clinic signboard outside the building" loading="lazy">
+        <img src="/joshi-clinic/assets/signboard.png" alt="Joshi Dental Clinic signboard outside the building" loading="lazy">
         <span data-i="board"><b>Look for this board</b>Outside Sushil Building, Lane No. 4</span>
       </figure>
       </div>
