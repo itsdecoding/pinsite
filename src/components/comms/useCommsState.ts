@@ -68,6 +68,11 @@ export interface DMConversation {
   updated_at: string;
 }
 
+// Module-level in-memory caches across route transitions for instant mounting (0ms delay)
+let globalChannelsCache: Channel[] = [];
+let globalConversationsCache: DMConversation[] = [];
+let globalTeamMembersCache: PublicProfile[] = [];
+
 export function useCommsState() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -102,7 +107,7 @@ export function useCommsState() {
       ? { id: sessionProfile.id, full_name: sessionProfile.full_name, role: sessionProfile.role }
       : null
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(globalChannelsCache.length === 0);
 
   // Sync state if session updates
   useEffect(() => {
@@ -120,10 +125,10 @@ export function useCommsState() {
     }
   }, [sessionUser, sessionProfile, currentUserId, currentUserProfile]);
 
-  // Channels & DM Conversations
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [conversations, setConversations] = useState<DMConversation[]>([]);
-  const [teamMembers, setTeamMembers] = useState<PublicProfile[]>([]);
+  // Channels & DM Conversations (initialized optimistically from cache)
+  const [channels, setChannels] = useState<Channel[]>(globalChannelsCache);
+  const [conversations, setConversations] = useState<DMConversation[]>(globalConversationsCache);
+  const [teamMembers, setTeamMembers] = useState<PublicProfile[]>(globalTeamMembersCache);
 
   // Navigation / Selection
   const [activeView, setActiveView] = useState<"channel" | "dm">("channel");
@@ -194,6 +199,7 @@ export function useCommsState() {
       if (res.ok) {
         const data = await res.json();
         const convList: DMConversation[] = data.conversations || [];
+        globalConversationsCache = convList;
         setConversations(convList);
         // Pre-populate profile cache with participants
         convList.forEach((c) => {
@@ -212,7 +218,16 @@ export function useCommsState() {
     let mounted = true;
 
     async function init() {
-      setLoading(true);
+      // If we don't have cached channels, show loading; otherwise keep loading false (optimistic SWR)
+      if (globalChannelsCache.length === 0) {
+        setLoading(true);
+      }
+
+      // Safety timeout: ensure loading state never hangs longer than 3 seconds
+      const safetyTimer = setTimeout(() => {
+        if (mounted) setLoading(false);
+      }, 3000);
+
       try {
         const activeUserId = sessionUser?.id;
 
@@ -264,7 +279,9 @@ export function useCommsState() {
             profileCacheRef.current[p.id] = p;
           });
           const currentId = activeUserId || currentUserId;
-          setTeamMembers(currentId ? profiles.filter((p) => p.id !== currentId) : profiles);
+          const members = currentId ? profiles.filter((p) => p.id !== currentId) : profiles;
+          globalTeamMembersCache = members;
+          setTeamMembers(members);
         }
 
         const resolvedChannels: Channel[] = (channelData || []).map((c: any) => ({
@@ -273,46 +290,62 @@ export function useCommsState() {
           last_message: null,
         }));
 
-        // Fetch latest preview message for channels (bounded limit)
-        if (resolvedChannels.length > 0) {
-          const channelIds = resolvedChannels.map((c) => c.id);
-          const { data: recentMsgs } = await supabase
-            .from("messages")
-            .select(`
-              channel_id,
-              body,
-              created_at,
-              sender_id,
-              profiles:sender_id (full_name)
-            `)
-            .in("channel_id", channelIds)
-            .is("deleted_at", null)
-            .order("created_at", { ascending: false })
-            .limit(50);
-
-          if (recentMsgs && recentMsgs.length > 0) {
-            const latestMap: Record<string, any> = {};
-            recentMsgs.forEach((m: any) => {
-              if (!latestMap[m.channel_id]) {
-                latestMap[m.channel_id] = {
-                  body: m.body,
-                  sender_name: m.profiles?.full_name || "Teammate",
-                  created_at: m.created_at,
-                };
-              }
-            });
-            resolvedChannels.forEach((c) => {
-              c.last_message = latestMap[c.id] || null;
-            });
-          }
+        if (mounted) {
+          globalChannelsCache = resolvedChannels;
+          setChannels(resolvedChannels);
+          // UNBLOCK UI IMMEDIATELY! Do NOT wait for preview messages waterfall!
+          setLoading(false);
+          clearTimeout(safetyTimer);
         }
 
-        if (mounted) {
-          setChannels(resolvedChannels);
+        // Fetch latest preview messages for channels asynchronously (non-blocking background task)
+        if (resolvedChannels.length > 0) {
+          const channelIds = resolvedChannels.map((c) => c.id);
+          (async () => {
+            try {
+              const { data: recentMsgs } = await supabase
+                .from("messages")
+                .select(`
+                  channel_id,
+                  body,
+                  created_at,
+                  sender_id,
+                  profiles:sender_id (full_name)
+                `)
+                .in("channel_id", channelIds)
+                .is("deleted_at", null)
+                .order("created_at", { ascending: false })
+                .limit(50);
+
+              if (recentMsgs && recentMsgs.length > 0 && mounted) {
+                const latestMap: Record<string, any> = {};
+                recentMsgs.forEach((m: any) => {
+                  if (!latestMap[m.channel_id]) {
+                    latestMap[m.channel_id] = {
+                      body: m.body,
+                      sender_name: m.profiles?.full_name || "Teammate",
+                      created_at: m.created_at,
+                    };
+                  }
+                });
+                setChannels((prev) => {
+                  const updated = prev.map((c) => ({
+                    ...c,
+                    last_message: latestMap[c.id] || c.last_message || null,
+                  }));
+                  globalChannelsCache = updated;
+                  return updated;
+                });
+              }
+            } catch {
+              // Ignore background preview fetch errors
+            }
+          })();
         }
       } catch (err) {
         console.error("Failed to initialize comms state:", err);
       } finally {
+        clearTimeout(safetyTimer);
         if (mounted) setLoading(false);
       }
     }
@@ -424,9 +457,9 @@ export function useCommsState() {
     [currentUserId]
   );
 
-  // 4. Handle Deep-linking on Initial Load (Runs once on mount when ready)
+  // 4. Handle Deep-linking on Initial Load (Runs once on mount when channels are ready)
   useEffect(() => {
-    if (loading || !currentUserId || channels.length === 0) return;
+    if (channels.length === 0) return;
     if (initialSyncDoneRef.current) return;
     initialSyncDoneRef.current = true;
 
