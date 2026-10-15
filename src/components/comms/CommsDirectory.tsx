@@ -493,8 +493,12 @@ export function CommsDirectory({
             type="text"
             placeholder="Search"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full min-w-0 bg-black/[0.05] dark:bg-[#1C1D1F] border border-black/[0.06] dark:border-white/[0.06] rounded-full pl-9 pr-8 py-2 text-sm text-[#111110] dark:text-white placeholder-zinc-400 focus:outline-none focus:border-[#7F3922]/60 transition box-border"
+            style={{
+              outline: "none",
+              boxShadow: "none",
+              WebkitTapHighlightColor: "transparent",
+            }}
+            className="w-full min-w-0 bg-black/[0.05] dark:bg-[#1C1D1F] border border-black/[0.06] dark:border-white/[0.06] focus:border-black/20 dark:focus:border-white/20 rounded-full pl-9 pr-8 py-2 text-sm text-[#111110] dark:text-white placeholder-zinc-400 outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 shadow-none transition box-border"
           />
           {searchQuery && (
             <button

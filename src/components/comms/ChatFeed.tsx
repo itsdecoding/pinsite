@@ -66,6 +66,32 @@ export function ChatFeed({
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showScrollBottomPill, setShowScrollBottomPill] = useState(false);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+
+  // Dynamic visualViewport tracking: keeps message composer pinned above software keyboard on mobile
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.visualViewport) return;
+
+    const handleVisualResize = () => {
+      const vv = window.visualViewport;
+      if (!vv) return;
+      // When software keyboard opens, visualViewport shrinks below innerHeight
+      const offset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+      setKeyboardOffset(offset);
+      if (offset > 0) {
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 50);
+      }
+    };
+
+    window.visualViewport.addEventListener("resize", handleVisualResize);
+    window.visualViewport.addEventListener("scroll", handleVisualResize);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", handleVisualResize);
+      window.visualViewport?.removeEventListener("scroll", handleVisualResize);
+    };
+  }, []);
 
   // Auto-scroll to bottom when messages change if user is near bottom
   useEffect(() => {
@@ -142,7 +168,10 @@ export function ChatFeed({
 
   return (
     <div
-      className={`h-full w-full min-w-0 max-w-full flex flex-col bg-[#F7F5F0] dark:bg-[#0B0C0D] border-x-0 lg:border-x border-black/[0.08] dark:border-white/[0.08] overflow-hidden relative ${className}`}
+      style={{
+        paddingBottom: keyboardOffset > 0 ? `${keyboardOffset}px` : undefined,
+      }}
+      className={`h-full w-full min-w-0 max-w-full flex flex-col bg-[#F7F5F0] dark:bg-[#0B0C0D] border-x-0 lg:border-x border-black/[0.08] dark:border-white/[0.08] overflow-hidden relative transition-[padding] duration-150 ${className}`}
     >
       {/* WhatsApp Header: Clean, quiet, no fake badges */}
       <div className="px-3.5 py-2.5 sm:py-3 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between gap-3 bg-white/70 dark:bg-[#141516] backdrop-blur-md z-10">

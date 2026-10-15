@@ -379,7 +379,7 @@ function MessageItemComponent({
                   setEditText(message.body);
                 }
               }}
-              className="w-full bg-white dark:bg-black/50 border border-black/[0.1] dark:border-white/[0.15] rounded-xl p-2 text-xs text-[#111110] dark:text-zinc-100 focus:outline-none focus:border-[#7F3922]"
+              className="w-full bg-white dark:bg-black/50 border border-black/[0.1] dark:border-white/[0.15] focus:border-black/20 dark:focus:border-white/20 rounded-xl p-2 text-xs text-[#111110] dark:text-zinc-100 outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 shadow-none"
               rows={2}
               autoFocus
             />

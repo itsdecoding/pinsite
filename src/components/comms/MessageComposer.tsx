@@ -300,7 +300,7 @@ export function MessageComposer({
   const hasContent = text.trim().length > 0 || pendingAttachments.length > 0;
 
   return (
-    <div className="relative w-full min-w-0 max-w-full bg-white dark:bg-[#111213] border-t border-black/[0.06] dark:border-white/[0.08] p-2 sm:p-3">
+    <div className="relative w-full min-w-0 max-w-full bg-white dark:bg-[#111213] border-t border-black/[0.06] dark:border-white/[0.08] p-2 sm:p-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
       {/* Hidden File Input */}
       <input
         ref={fileInputRef}
@@ -454,7 +454,7 @@ export function MessageComposer({
               textareaRef.current.focus();
             }
           }}
-          className="flex-1 min-w-0 bg-black/[0.03] dark:bg-[#1E1F20] border border-black/[0.06] dark:border-white/[0.06] rounded-2xl px-3.5 py-2 focus-within:border-[#7F3922]/60 transition min-h-[40px] flex items-center cursor-text"
+          className="flex-1 min-w-0 bg-black/[0.03] dark:bg-[#1E1F20] border border-black/[0.06] dark:border-white/[0.06] rounded-2xl px-3.5 py-2 focus-within:border-black/10 dark:focus-within:border-white/10 transition min-h-[40px] flex items-center cursor-text"
         >
           <textarea
             ref={textareaRef}
@@ -471,8 +471,12 @@ export function MessageComposer({
               WebkitUserSelect: "text",
               userSelect: "text",
               touchAction: "manipulation",
+              outline: "none",
+              border: "none",
+              boxShadow: "none",
+              WebkitTapHighlightColor: "transparent",
             }}
-            className="w-full bg-transparent resize-none text-base sm:text-xs text-[#111110] dark:text-zinc-100 placeholder-zinc-400 focus:outline-none max-h-[140px] leading-relaxed select-text touch-manipulation scrollbar-thin scrollbar-thumb-zinc-700/30"
+            className="w-full bg-transparent resize-none text-base sm:text-xs text-[#111110] dark:text-zinc-100 placeholder-zinc-400 border-0 border-none outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 shadow-none max-h-[140px] leading-relaxed select-text touch-manipulation scrollbar-thin scrollbar-thumb-zinc-700/30"
           />
         </div>
 

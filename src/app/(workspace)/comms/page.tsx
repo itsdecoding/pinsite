@@ -109,10 +109,12 @@ function CommsHubContainer() {
 
       {/* 2. ACTIVE CHAT FEED:
           On Desktop: Always visible (flex-1).
-          On Mobile (< lg): Visible only when mobileView === 'chat' */}
+          On Mobile (< lg): Fullscreen fixed overlay (z-50) when active so MobileBottomNav is covered and keyboard slides flush under composer */}
       <div
-        className={`h-full w-full min-w-0 max-w-full lg:flex-1 ${
-          mobileView === "chat" ? "block" : "hidden lg:block"
+        className={`w-full min-w-0 max-w-full lg:flex-1 ${
+          mobileView === "chat"
+            ? "fixed inset-0 z-50 lg:relative lg:inset-auto lg:z-auto h-[100dvh] lg:h-full flex flex-col bg-[#F7F5F0] dark:bg-[#0B0C0D]"
+            : "hidden lg:block h-full"
         }`}
       >
         <ChatFeed

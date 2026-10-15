@@ -107,10 +107,23 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Accessibility: Universal Focus-Visible */
-*:focus-visible {
+/* Clean Focus & Tap Highlight Handling (Eliminates intrusive glowing orange boxes on inputs) */
+*, *::before, *::after {
+  -webkit-tap-highlight-color: transparent;
+}
+
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible {
   outline: none !important;
-  box-shadow: 0 0 0 2px var(--canvas-bg), 0 0 0 4px #F95721 !important;
+  box-shadow: none !important;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px var(--canvas-bg), 0 0 0 3px rgba(249, 87, 33, 0.4) !important;
 }
 
 /* Custom Scrollbars */
