@@ -93,9 +93,8 @@ export function ImportLeadsModal() {
 
   // Scraper configuration state (Broad area + Manual sub-locations)
   const [broadArea, setBroadArea] = useState<string>("Hadapsar");
-  const [subLocationsInput, setSubLocationsInput] = useState<string>(
-    "Magarpatta\nAmanora\nSasane Nagar\nSayyed Nagar\nMalwadi\nGadital"
-  );
+  const [subLocationsInput, setSubLocationsInput] = useState<string>("");
+  const [moreSubLocations, setMoreSubLocations] = useState<string>("");
   const [targetLeads, setTargetLeads] = useState<number>(1000);
   const [scraperStatus, setScraperStatus] = useState<ScraperStatus | null>(null);
   const [isCopied, setIsCopied] = useState(false);
@@ -268,6 +267,38 @@ export function ImportLeadsModal() {
       await fetchScraperTelemetry();
     } catch (err: any) {
       alert(`Control action failed: ${err.message}`);
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  // Handle adding more sub-locations when sub-locations are exhausted
+  const handleAddMoreLocations = async () => {
+    const newLocs = moreSubLocations
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (newLocs.length === 0) return;
+
+    setIsActionLoading(true);
+    try {
+      await supabase
+        .from("scraper_status")
+        .update({
+          control_action: JSON.stringify({
+            action: "add_locations",
+            sublocations: newLocs,
+          }),
+          run_state: "running",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", "default");
+
+      setMoreSubLocations("");
+      await fetchScraperTelemetry();
+    } catch (err: any) {
+      alert(`Error adding locations: ${err.message}`);
     } finally {
       setIsActionLoading(false);
     }
@@ -787,44 +818,93 @@ export function ImportLeadsModal() {
                     </div>
                   )}
 
-                  {/* Scenario 2: Batch Decision Prompt (Requirement #6) */}
+                  {/* Scenario 2: Batch Decision Prompt (Sub-Locations Exhausted & Target Not Met) */}
                   {scraperStatus?.run_state === "waiting_decision" && (
-                    <div className="p-4 rounded-2xl bg-amber-500/[0.08] border border-amber-500/25 space-y-3">
+                    <div className="p-4 rounded-2xl bg-amber-500/[0.08] border border-amber-500/25 space-y-4">
                       <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                        <Clock className="w-4 h-4" />
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
                         <h4 className="text-xs font-bold">
-                          Batch {scraperStatus.current_batch} Finished • Decision Needed
+                          Sub-Locations Exhausted • Target Not Reached Yet
                         </h4>
                       </div>
-                      <p className="text-xs text-[#111110] dark:text-[#F5F3EF] leading-relaxed">
-                        Collected <strong>{scraperStatus.leads_collected}</strong> leads so far (Target:{" "}
-                        {scraperStatus.target_leads}). Choose how you want to continue:
-                      </p>
 
-                      {/* 3 Decision Buttons */}
+                      <div className="space-y-1.5">
+                        <p className="text-xs text-[#111110] dark:text-[#F5F3EF] leading-relaxed">
+                          All entered sub-locations for <strong>{scraperStatus.current_area || broadArea}</strong> have been scraped.
+                        </p>
+                        <div className="flex items-center justify-between text-xs font-mono font-bold text-[#111110] dark:text-white pt-1">
+                          <span>
+                            Progress: {scraperStatus.leads_collected} / {scraperStatus.target_leads || targetLeads} clean leads
+                          </span>
+                          <span className="text-[#8A8680]">
+                            ({Math.max(0, (scraperStatus.target_leads || targetLeads) - scraperStatus.leads_collected)} remaining)
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-black/5 dark:bg-white/10 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-amber-500 transition-all duration-300"
+                            style={{
+                              width: `${Math.min(
+                                100,
+                                Math.round(
+                                  (scraperStatus.leads_collected /
+                                    (scraperStatus.target_leads || targetLeads)) *
+                                    100
+                                )
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Input for more sub-locations */}
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold text-[#111110] dark:text-[#F5F3EF] flex items-center gap-1.5">
+                            <Layers className="w-3.5 h-3.5 text-[#F95721]" />
+                            <span>Add More Sub-Locations (one per line)</span>
+                          </label>
+                          <span className="text-[10px] text-[#8A8680] font-mono">
+                            {moreSubLocations.split("\n").filter((s) => s.trim().length > 0).length} entered
+                          </span>
+                        </div>
+                        <textarea
+                          value={moreSubLocations}
+                          onChange={(e) => setMoreSubLocations(e.target.value)}
+                          rows={4}
+                          placeholder={"Kalyani Nagar\nViman Nagar\nKharadi\nKoregaon Park"}
+                          className="w-full px-3.5 py-2.5 bg-black/[0.02] dark:bg-white/[0.04] border border-[#ECE8E1] dark:border-white/10 rounded-xl text-xs font-mono text-[#111110] dark:text-[#F5F3EF] outline-none focus:border-[#F95721] transition-all resize-y leading-relaxed"
+                        />
+                      </div>
+
+                      {/* Action Buttons */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                         <button
-                          onClick={() => handleControlAction("continue")}
-                          disabled={isActionLoading}
-                          className="py-2 px-3 rounded-xl bg-[#F95721] text-white text-xs font-bold hover:brightness-105 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                          onClick={handleAddMoreLocations}
+                          disabled={isActionLoading || !moreSubLocations.trim()}
+                          className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-[#F95721] to-[#E04816] text-white text-xs font-bold hover:brightness-105 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 shadow-sm sm:col-span-1"
                         >
-                          <Play className="w-3.5 h-3.5 fill-current" />
-                          <span>Add 5 more locations</span>
+                          {isActionLoading ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                          )}
+                          <span>Add & Continue</span>
                         </button>
 
                         <button
                           onClick={() => handleControlAction("skip")}
                           disabled={isActionLoading}
-                          className="py-2 px-3 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 text-xs font-bold text-[#111110] dark:text-white disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                          className="py-2.5 px-3 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 text-xs font-bold text-[#111110] dark:text-white disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 sm:col-span-1"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                          <span>Skip for now</span>
+                          <span>Finish & Keep Leads</span>
                         </button>
 
                         <button
                           onClick={() => handleControlAction("cancel")}
                           disabled={isActionLoading}
-                          className="py-2 px-3 rounded-xl border border-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/10 text-xs font-bold disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                          className="py-2.5 px-3 rounded-xl border border-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/10 text-xs font-bold disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 sm:col-span-1"
                         >
                           <X className="w-3.5 h-3.5" />
                           <span>Cancel</span>
@@ -918,7 +998,7 @@ export function ImportLeadsModal() {
                           value={subLocationsInput}
                           onChange={(e) => setSubLocationsInput(e.target.value)}
                           rows={6}
-                          placeholder={"Magarpatta\nAmanora\nSasane Nagar\nSayyed Nagar\nMalwadi\nGadital"}
+                          placeholder={"Enter sub-locations, one per line (optional)\ne.g.\nMagarpatta\nAmanora\nSasane Nagar\nSayyed Nagar\nMalwadi"}
                           className="w-full px-3.5 py-2.5 bg-black/[0.02] dark:bg-white/[0.04] border border-[#ECE8E1] dark:border-white/10 rounded-xl text-xs font-mono text-[#111110] dark:text-[#F5F3EF] outline-none focus:border-[#F95721] transition-all resize-y leading-relaxed"
                         />
                         <p className="text-[10px] text-[#8A8680] mt-1 leading-normal">
