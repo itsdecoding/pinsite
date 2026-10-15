@@ -448,7 +448,14 @@ export function MessageComposer({
         </div>
 
         {/* Center Textarea */}
-        <div className="flex-1 min-w-0 bg-black/[0.03] dark:bg-[#1E1F20] border border-black/[0.06] dark:border-white/[0.06] rounded-2xl px-3.5 py-2 focus-within:border-[#7F3922]/60 transition min-h-[40px] flex items-center">
+        <div
+          onClick={() => {
+            if (textareaRef.current) {
+              textareaRef.current.focus();
+            }
+          }}
+          className="flex-1 min-w-0 bg-black/[0.03] dark:bg-[#1E1F20] border border-black/[0.06] dark:border-white/[0.06] rounded-2xl px-3.5 py-2 focus-within:border-[#7F3922]/60 transition min-h-[40px] flex items-center cursor-text"
+        >
           <textarea
             ref={textareaRef}
             value={text}
@@ -460,7 +467,12 @@ export function MessageComposer({
             autoCapitalize="sentences"
             autoCorrect="on"
             spellCheck="true"
-            className="w-full bg-transparent resize-none text-[15px] sm:text-xs text-[#111110] dark:text-zinc-100 placeholder-zinc-400 focus:outline-none max-h-[140px] leading-relaxed select-text scrollbar-thin scrollbar-thumb-zinc-700/30"
+            style={{
+              WebkitUserSelect: "text",
+              userSelect: "text",
+              touchAction: "manipulation",
+            }}
+            className="w-full bg-transparent resize-none text-base sm:text-xs text-[#111110] dark:text-zinc-100 placeholder-zinc-400 focus:outline-none max-h-[140px] leading-relaxed select-text touch-manipulation scrollbar-thin scrollbar-thumb-zinc-700/30"
           />
         </div>
 
