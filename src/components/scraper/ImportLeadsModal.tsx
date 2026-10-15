@@ -16,13 +16,13 @@ import {
   Tag,
   Copy,
   Check,
-  ChevronDown,
   Layers,
   ArrowRight,
   Play,
   RotateCw,
   Clock,
   ShieldCheck,
+  Terminal,
 } from "lucide-react";
 
 interface ScraperStatus {
@@ -58,7 +58,19 @@ interface ParsedPreview {
   area: string;
 }
 
-const BROAD_AREAS = ["Hadapsar", "Kothrud", "Baner", "Aundh", "Wakad", "Pimpri"];
+const SUGGESTED_LOCATIONS = [
+  "Hadapsar",
+  "Kothrud",
+  "Baner",
+  "Aundh",
+  "Wakad",
+  "Viman Nagar",
+  "Manhattan, New York",
+  "Dubai, UAE",
+  "London, UK",
+  "Indiranagar, Bangalore",
+  "Bandra, Mumbai",
+];
 
 export function openImportLeadsModal(defaultTab?: "csv" | "scrape") {
   if (typeof window !== "undefined") {
@@ -79,8 +91,8 @@ export function ImportLeadsModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"csv" | "scrape">("csv");
 
-  // Scraper configuration state
-  const [selectedArea, setSelectedArea] = useState<string>("Hadapsar");
+  // Scraper configuration state (Free text location)
+  const [locationInput, setLocationInput] = useState<string>("Kothrud");
   const [targetLeads, setTargetLeads] = useState<number>(1000);
   const [scraperStatus, setScraperStatus] = useState<ScraperStatus | null>(null);
   const [isCopied, setIsCopied] = useState(false);
@@ -95,11 +107,11 @@ export function ImportLeadsModal() {
   const [csvError, setCsvError] = useState<string | null>(null);
   const [previewRows, setPreviewRows] = useState<ParsedPreview[]>([]);
   const [targetNiche, setTargetNiche] = useState("Dentist");
-  const [targetArea, setTargetArea] = useState("Kothrud, Pune");
+  const [targetArea, setTargetArea] = useState("Kothrud");
   const [targetScore, setTargetScore] = useState(75);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Listen to open events
+  // Listen to modal open events
   useEffect(() => {
     const handleOpen = (e: Event) => {
       const customEvent = e as CustomEvent;
@@ -115,7 +127,7 @@ export function ImportLeadsModal() {
     return () => window.removeEventListener("open-import-leads-modal", handleOpen);
   }, [isAdmin]);
 
-  // Fetch scraper status telemetry
+  // Fetch live scraper status & telemetry
   const fetchScraperTelemetry = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -138,7 +150,7 @@ export function ImportLeadsModal() {
 
     const interval = setInterval(fetchScraperTelemetry, 3000);
 
-    // Supabase Realtime subscription
+    // Supabase Realtime channel for instant telemetry updates
     const channel = supabase
       .channel("modal-scraper-status")
       .on(
@@ -158,45 +170,51 @@ export function ImportLeadsModal() {
     };
   }, [isOpen, fetchScraperTelemetry, supabase]);
 
-  // Connection check: Heartbeat < 60s
+  // Connection status: Heartbeat < 60s
   const heartbeatAgeSec = scraperStatus?.last_heartbeat
     ? Math.max(0, Math.round((Date.now() - new Date(scraperStatus.last_heartbeat).getTime()) / 1000))
     : 999999;
   const isConnected = Boolean(scraperStatus?.is_online && heartbeatAgeSec < 60);
 
-  // Terminal run command string
-  const terminalCommand = `cd C:\\Users\\Muzammil\\Desktop\\lead-finder; node orchestrator.js --area ${selectedArea} --target ${targetLeads}`;
+  // Background daemon startup command
+  const daemonCommand = `cd C:\\Users\\Muzammil\\Desktop\\lead-finder; node orchestrator.js --daemon`;
 
   const handleCopyCommand = () => {
-    navigator.clipboard.writeText(terminalCommand);
+    navigator.clipboard.writeText(daemonCommand);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2200);
   };
 
-  // Trigger scrape execution via daemon / Supabase job queue
+  // Trigger scrape execution via daemon (submits job to scraper_jobs)
   const handleStartScrape = async () => {
+    const cleanLocation = locationInput.trim();
+    if (!cleanLocation) {
+      alert("Please enter a target location (e.g. Kothrud, Manhattan, Dubai).");
+      return;
+    }
+
     setIsActionLoading(true);
     try {
-      // 1. Insert job into scraper_jobs
+      // 1. Submit pending job to scraper_jobs for daemon pickup
       const { error: jobErr } = await supabase.from("scraper_jobs").insert({
         status: "pending",
-        broad_area: selectedArea,
+        broad_area: cleanLocation,
         niche: "Dentist",
         target_leads: targetLeads,
         current_batch: 0,
         total_batches: 4,
         leads_collected: 0,
-        current_area: selectedArea,
+        current_area: cleanLocation,
       });
 
-      if (jobErr) console.warn("Job insert warning:", jobErr.message);
+      if (jobErr) console.warn("Job insert notice:", jobErr.message);
 
       // 2. Update scraper_status state
       await supabase
         .from("scraper_status")
         .update({
           run_state: "running",
-          current_area: selectedArea,
+          current_area: cleanLocation,
           target_leads: targetLeads,
           leads_collected: 0,
           current_batch: 0,
@@ -207,7 +225,7 @@ export function ImportLeadsModal() {
 
       await fetchScraperTelemetry();
     } catch (err: any) {
-      alert(`Error starting scrape: ${err.message}`);
+      alert(`Error submitting scrape job: ${err.message}`);
     } finally {
       setIsActionLoading(false);
     }
@@ -232,7 +250,6 @@ export function ImportLeadsModal() {
 
       await supabase.from("scraper_status").update(updates).eq("id", "default");
 
-      // If user chose "skip", trigger lead assignment immediately
       if (action === "skip") {
         await handleAssignLeads();
       }
@@ -260,7 +277,7 @@ export function ImportLeadsModal() {
     }
   };
 
-  // CSV Parsing and Upload Helpers
+  // CSV Parsing & Ingestion Helpers
   function getVal(row: any, candidates: string[]): string {
     const keys = Object.keys(row);
     for (const cand of candidates) {
@@ -287,7 +304,7 @@ export function ImportLeadsModal() {
       setCsvStats(null);
       setCsvError(null);
 
-      // Extract preview sample
+      // Extract sample rows
       Papa.parse(selected, {
         header: true,
         preview: 4,
@@ -337,7 +354,7 @@ export function ImportLeadsModal() {
               const website = getVal(row, ["Google Maps Link", "Website URL", "website", "url", "maps link"]);
               const address = getVal(row, ["Address", "Full Address", "location", "address"]);
               const niche = getVal(row, ["niche", "category", "industry"]) || targetNiche || "Dentist";
-              const area = getVal(row, ["area", "city", "locality"]) || targetArea || "Kothrud, Pune";
+              const area = getVal(row, ["area", "city", "locality"]) || targetArea || "Kothrud";
               const scoreVal = parseInt(getVal(row, ["score", "lead score"]) || String(targetScore), 10);
 
               return {
@@ -415,7 +432,7 @@ export function ImportLeadsModal() {
                 Import Leads
               </h3>
               <p className="text-[11px] text-[#8A8680]">
-                Choose how you want to bring leads into Agency OS
+                Bring leads into Agency OS via CSV upload or live Google Maps scrape
               </p>
             </div>
           </div>
@@ -612,7 +629,7 @@ export function ImportLeadsModal() {
           {/* ========================================================================= */}
           {activeTab === "scrape" && isAdmin && (
             <div className="space-y-4">
-              {/* Simplified Heartbeat Status Pill (Connected vs Not Connected) */}
+              {/* Simplified Status Pill (● Scraper Connected vs ● Scraper Offline) */}
               <div className="flex items-center justify-between p-3 rounded-2xl bg-white dark:bg-white/[0.03] border border-[#ECE8E1] dark:border-white/10">
                 <div className="flex items-center gap-2">
                   <span
@@ -620,8 +637,14 @@ export function ImportLeadsModal() {
                       isConnected ? "bg-emerald-500 animate-pulse" : "bg-red-500"
                     }`}
                   />
-                  <span className="text-xs font-bold font-mono text-[#111110] dark:text-[#F5F3EF]">
-                    {isConnected ? "Connected" : "Not Connected"}
+                  <span
+                    className={`text-xs font-bold font-mono ${
+                      isConnected
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {isConnected ? "● Scraper Connected" : "● Scraper Offline"}
                   </span>
                   {isConnected && (
                     <span className="text-[10px] text-[#8A8680] font-mono">
@@ -640,69 +663,29 @@ export function ImportLeadsModal() {
               </div>
 
               {/* ----------------------------------------------------------------- */}
-              {/* STATE A: NOT CONNECTED (Show Start Scraper Screen + Copy Command) */}
+              {/* STATE A: OFFLINE (Daemon Not Running)                             */}
               {/* ----------------------------------------------------------------- */}
               {!isConnected && (
                 <div className="p-4 rounded-2xl bg-red-500/[0.04] border border-red-500/20 space-y-4">
                   <div className="space-y-1">
                     <h4 className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF] flex items-center gap-1.5">
                       <AlertTriangle className="w-4 h-4 text-amber-500" />
-                      <span>Start Scraper on your Laptop</span>
+                      <span>Start Background Daemon on your Laptop</span>
                     </h4>
                     <p className="text-[11px] text-[#8A8680] leading-relaxed">
-                      The scraper runs locally on your laptop to use residential IP rotation. Select
-                      your parameters, copy the command, and run it in your terminal:
+                      The scraper runs as a lightweight background daemon on your laptop. Run this command
+                      or double-click <strong>run-daemon.bat</strong> in your lead-finder folder:
                     </p>
-                  </div>
-
-                  {/* Scrape Target Parameters */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-mono text-[#8A8680] uppercase mb-1 flex items-center gap-1">
-                        <MapPin className="w-3 h-3 text-[#F95721]" />
-                        Broad Area
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={selectedArea}
-                          onChange={(e) => setSelectedArea(e.target.value)}
-                          className="w-full appearance-none px-3 py-2 bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-white/10 rounded-xl text-xs font-bold text-[#111110] dark:text-[#F5F3EF] outline-none cursor-pointer pr-8"
-                        >
-                          {BROAD_AREAS.map((a) => (
-                            <option key={a} value={a}>
-                              {a}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="w-3.5 h-3.5 text-[#8A8680] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-mono text-[#8A8680] uppercase mb-1 flex items-center gap-1">
-                        <Layers className="w-3 h-3 text-[#F95721]" />
-                        Target Leads
-                      </label>
-                      <input
-                        type="number"
-                        value={targetLeads}
-                        onChange={(e) => setTargetLeads(Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-white dark:bg-[#181715] border border-[#ECE8E1] dark:border-white/10 rounded-xl text-xs font-bold text-[#111110] dark:text-[#F5F3EF] outline-none"
-                        min={10}
-                        max={5000}
-                        step={50}
-                      />
-                    </div>
                   </div>
 
                   {/* Terminal Copy-Paste Box */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-[10px] font-mono text-[#8A8680]">
-                      <span>POWERSHELL / BASH COMMAND:</span>
+                      <span>DAEMON COMMAND (RUN ONCE):</span>
                       {isCopied && <span className="text-emerald-500 font-bold">Copied to Clipboard!</span>}
                     </div>
                     <div className="relative flex items-center bg-[#0C0D0E] text-[#4ADE80] font-mono text-xs p-3 rounded-xl border border-white/10 overflow-x-auto shadow-inner">
-                      <span className="select-all pr-12 truncate">{terminalCommand}</span>
+                      <span className="select-all pr-12 truncate">{daemonCommand}</span>
                       <button
                         onClick={handleCopyCommand}
                         className="absolute right-2 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-sans text-[11px] font-bold flex items-center gap-1 transition-all"
@@ -714,29 +697,29 @@ export function ImportLeadsModal() {
                   </div>
 
                   <p className="text-[10px] text-[#8A8680] italic">
-                    ℹ️ As soon as you run this command on your machine, this modal will automatically
-                    connect and stream live batch progress.
+                    ℹ️ Once the daemon starts, this screen will automatically flip to &quot;● Scraper Connected&quot;
+                    and allow you to scrape any city, neighborhood, or country in the world.
                   </p>
                 </div>
               )}
 
-              {/* ------------------------------------------------------------- */}
-              {/* STATE B: CONNECTED (Live Scraping, Decision Loop, or Trigger) */}
-              {/* ------------------------------------------------------------- */}
+              {/* ----------------------------------------------------------------- */}
+              {/* STATE B: CONNECTED (Daemon Running: Free-text Location Scraper)     */}
+              {/* ----------------------------------------------------------------- */}
               {isConnected && (
                 <div className="space-y-4">
-                  {/* Scenario 1: Scraping is Running */}
+                  {/* Scenario 1: Scraping in Progress */}
                   {scraperStatus?.run_state === "running" && (
                     <div className="p-4 rounded-2xl bg-white dark:bg-white/[0.03] border border-[#ECE8E1] dark:border-white/10 space-y-3.5">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Loader2 className="w-4 h-4 text-[#F95721] animate-spin" />
                           <span className="text-xs font-bold text-[#111110] dark:text-[#F5F3EF]">
-                            Scraping in Progress • {scraperStatus.current_area || selectedArea}
+                            Scraping in Progress • {scraperStatus.current_area || locationInput}
                           </span>
                         </div>
                         <span className="text-[11px] font-mono text-[#8A8680]">
-                          Batch {scraperStatus.current_batch} of {scraperStatus.total_batches}
+                          Batch {scraperStatus.current_batch} of {scraperStatus.total_batches || 4}
                         </span>
                       </div>
 
@@ -828,8 +811,8 @@ export function ImportLeadsModal() {
                         </h4>
                       </div>
                       <p className="text-xs text-[#8A8680]">
-                        All clean, deduplicated leads have been ingested into Agency OS and prepared
-                        for call queue distribution.
+                        All clean, deduplicated leads have been ingested into Agency OS and distributed
+                        to callers via <code>assign_daily_leads()</code>.
                       </p>
 
                       {assignSuccessMsg && (
@@ -845,43 +828,51 @@ export function ImportLeadsModal() {
                           className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:brightness-105 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Distribute Leads to Callers</span>
+                          <span>Re-run Lead Distribution</span>
                         </button>
                         <button
-                          onClick={() => setIsOpen(false)}
+                          onClick={() => {
+                            // Reset state for new scrape
+                            supabase
+                              .from("scraper_status")
+                              .update({ run_state: "idle", leads_collected: 0, current_batch: 0 })
+                              .eq("id", "default")
+                              .then(() => fetchScraperTelemetry());
+                          }}
                           className="py-2 px-4 rounded-xl bg-black/5 dark:bg-white/10 text-xs font-bold text-[#8A8680] hover:text-[#111110] dark:hover:text-white transition-all"
                         >
-                          Done
+                          New Scrape
                         </button>
                       </div>
                     </div>
                   )}
 
-                  {/* Scenario 4: Idle / Ready to Start */}
+                  {/* Scenario 4: Idle & Ready to Scrape ANY Location */}
                   {(!scraperStatus?.run_state || scraperStatus?.run_state === "idle") && (
-                    <div className="p-4 rounded-2xl bg-white dark:bg-white/[0.03] border border-[#ECE8E1] dark:border-white/10 space-y-3.5">
-                      <div className="grid grid-cols-2 gap-3">
+                    <div className="p-4 rounded-2xl bg-white dark:bg-white/[0.03] border border-[#ECE8E1] dark:border-white/10 space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        {/* 1. Free-Text Location Input */}
                         <div>
                           <label className="block text-[10px] font-mono text-[#8A8680] uppercase mb-1 flex items-center gap-1">
                             <MapPin className="w-3 h-3 text-[#F95721]" />
-                            Location Broad Area
+                            Location (Any City or Area)
                           </label>
-                          <div className="relative">
-                            <select
-                              value={selectedArea}
-                              onChange={(e) => setSelectedArea(e.target.value)}
-                              className="w-full appearance-none px-3 py-2 bg-black/[0.02] dark:bg-white/[0.04] border border-[#ECE8E1] dark:border-white/10 rounded-xl text-xs font-bold text-[#111110] dark:text-[#F5F3EF] outline-none cursor-pointer pr-8"
-                            >
-                              {BROAD_AREAS.map((a) => (
-                                <option key={a} value={a}>
-                                  {a}
-                                </option>
-                              ))}
-                            </select>
-                            <ChevronDown className="w-3.5 h-3.5 text-[#8A8680] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                          </div>
+                          <input
+                            type="text"
+                            list="location-datalist"
+                            value={locationInput}
+                            onChange={(e) => setLocationInput(e.target.value)}
+                            placeholder="e.g. Kothrud, Manhattan, Dubai..."
+                            className="w-full px-3 py-2 bg-black/[0.02] dark:bg-white/[0.04] border border-[#ECE8E1] dark:border-white/10 rounded-xl text-xs font-bold text-[#111110] dark:text-[#F5F3EF] outline-none focus:border-[#F95721]"
+                          />
+                          <datalist id="location-datalist">
+                            {SUGGESTED_LOCATIONS.map((loc) => (
+                              <option key={loc} value={loc} />
+                            ))}
+                          </datalist>
                         </div>
 
+                        {/* 2. Target Leads Input */}
                         <div>
                           <label className="block text-[10px] font-mono text-[#8A8680] uppercase mb-1 flex items-center gap-1">
                             <Layers className="w-3 h-3 text-[#F95721]" />
@@ -902,13 +893,13 @@ export function ImportLeadsModal() {
                       {/* Start Scrape Button */}
                       <button
                         onClick={handleStartScrape}
-                        disabled={isActionLoading}
+                        disabled={isActionLoading || !locationInput.trim()}
                         className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#F95721] to-[#E04816] text-white text-xs font-bold hover:brightness-105 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm"
                       >
                         {isActionLoading ? (
                           <>
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            <span>Starting Engine...</span>
+                            <span>Queuing Scrape Job...</span>
                           </>
                         ) : (
                           <>
