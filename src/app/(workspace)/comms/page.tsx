@@ -82,17 +82,6 @@ function CommsHubContainer() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="h-[calc(100dvh-5rem)] flex flex-col items-center justify-center gap-3">
-        <Loader2 className="w-7 h-7 animate-spin text-[#F95721]" />
-        <span className="text-xs text-zinc-500 font-medium">
-          Loading Comms Command Center...
-        </span>
-      </div>
-    );
-  }
-
   return (
     <div className="w-full min-w-0 max-w-full h-[calc(100dvh-5rem)] lg:h-[calc(100dvh-6.5rem)] max-h-[920px] flex rounded-none lg:rounded-3xl border-0 lg:border border-black/[0.08] dark:border-white/[0.08] overflow-hidden shadow-none lg:shadow-2xl bg-white dark:bg-[#111213] pb-[env(safe-area-inset-bottom,0.5rem)]">
       {/* 1. DIRECTORY RAIL:
@@ -114,6 +103,7 @@ function CommsHubContainer() {
           currentUserId={currentUserId}
           onSelectChannel={handleSelectChannel}
           onSelectDm={handleSelectDm}
+          isLoading={loading}
         />
       </div>
 
@@ -130,7 +120,7 @@ function CommsHubContainer() {
           activeChannel={activeChannel}
           activeDmUser={activeDmUser}
           messages={messages}
-          isLoading={isMessagesLoading}
+          isLoading={isMessagesLoading || (loading && messages.length === 0)}
           currentUserId={currentUserId}
           currentUserRole={currentUserProfile?.role || "caller"}
           currentUserProfile={currentUserProfile}
