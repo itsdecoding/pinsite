@@ -93,7 +93,9 @@ export function ImportLeadsModal() {
 
   // Scraper configuration state (Broad area + Manual sub-locations)
   const [broadArea, setBroadArea] = useState<string>("Hadapsar");
-  const [subLocationsInput, setSubLocationsInput] = useState<string>("");
+  const [subLocationsInput, setSubLocationsInput] = useState<string>(
+    "Magarpatta\nAmanora\nSasane Nagar\nSayyed Nagar\nMalwadi"
+  );
   const [moreSubLocations, setMoreSubLocations] = useState<string>("");
   const [targetLeads, setTargetLeads] = useState<number>(1000);
   const [scraperStatus, setScraperStatus] = useState<ScraperStatus | null>(null);
@@ -1025,7 +1027,7 @@ export function ImportLeadsModal() {
                       {/* 4. Start Scrape Button */}
                       <button
                         onClick={handleStartScrape}
-                        disabled={isActionLoading || !broadArea.trim()}
+                        disabled={isActionLoading || !broadArea.trim() || !subLocationsInput.trim()}
                         className="w-full py-3 rounded-xl bg-gradient-to-r from-[#F95721] to-[#E04816] text-white text-xs font-bold hover:brightness-105 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm"
                       >
                         {isActionLoading ? (
