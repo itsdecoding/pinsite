@@ -93,9 +93,7 @@ export function ImportLeadsModal() {
 
   // Scraper configuration state (Broad area + Manual sub-locations)
   const [broadArea, setBroadArea] = useState<string>("Hadapsar");
-  const [subLocationsInput, setSubLocationsInput] = useState<string>(
-    "Magarpatta\nAmanora\nSasane Nagar\nSayyed Nagar\nMalwadi"
-  );
+  const [subLocationsInput, setSubLocationsInput] = useState<string>("");
   const [moreSubLocations, setMoreSubLocations] = useState<string>("");
   const [targetLeads, setTargetLeads] = useState<number>(1000);
   const [scraperStatus, setScraperStatus] = useState<ScraperStatus | null>(null);
@@ -1025,23 +1023,44 @@ export function ImportLeadsModal() {
                       </div>
 
                       {/* 4. Start Scrape Button */}
-                      <button
-                        onClick={handleStartScrape}
-                        disabled={isActionLoading || !broadArea.trim() || !subLocationsInput.trim()}
-                        className="w-full py-3 rounded-xl bg-gradient-to-r from-[#F95721] to-[#E04816] text-white text-xs font-bold hover:brightness-105 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm"
-                      >
-                        {isActionLoading ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            <span>Queuing Scrape Job...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-3.5 h-3.5 fill-current" />
-                            <span>Start Scrape</span>
-                          </>
-                        )}
-                      </button>
+                      {(() => {
+                        const subLocsCount = subLocationsInput
+                          .split("\n")
+                          .map((s) => s.replace(/^[\s•\-\*\d\.\)]+/, "").trim())
+                          .filter(Boolean).length;
+                        const canStart = !isActionLoading && broadArea.trim().length > 0 && subLocsCount > 0;
+
+                        return (
+                          <div className="space-y-1.5">
+                            <button
+                              onClick={handleStartScrape}
+                              disabled={!canStart}
+                              className="w-full py-3 rounded-xl bg-gradient-to-r from-[#F95721] to-[#E04816] text-white text-xs font-bold hover:brightness-105 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-sm"
+                            >
+                              {isActionLoading ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Queuing Scrape Job...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="w-3.5 h-3.5 fill-current" />
+                                  <span>
+                                    {subLocsCount > 0
+                                      ? `Start Scrape (${subLocsCount} Sub-Locations)`
+                                      : "Start Scrape"}
+                                  </span>
+                                </>
+                              )}
+                            </button>
+                            {subLocsCount === 0 && (
+                              <p className="text-[10px] text-amber-500/90 text-center font-medium">
+                                ℹ️ Enter at least 1 sub-location above to begin scraping.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
