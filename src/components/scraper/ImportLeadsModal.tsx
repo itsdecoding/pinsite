@@ -197,7 +197,7 @@ export function ImportLeadsModal() {
 
     const subLocs = subLocationsInput
       .split("\n")
-      .map((s) => s.trim())
+      .map((s) => s.replace(/^[\s•\-\*\d\.\)]+/, "").trim())
       .filter(Boolean);
 
     setIsActionLoading(true);
@@ -276,7 +276,7 @@ export function ImportLeadsModal() {
   const handleAddMoreLocations = async () => {
     const newLocs = moreSubLocations
       .split("\n")
-      .map((s) => s.trim())
+      .map((s) => s.replace(/^[\s•\-\*\d\.\)]+/, "").trim())
       .filter(Boolean);
 
     if (newLocs.length === 0) return;
