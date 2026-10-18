@@ -112,14 +112,18 @@ export default function LeadIngestionPage() {
         preview: 4,
         skipEmptyLines: true,
         complete: (results) => {
-          const sample = (results.data as any[]).map((row) => ({
-            name: getVal(row, ["Business Name", "name", "company", "title", "clinic name"]),
-            phone: getVal(row, ["Phone Number", "phone", "mobile", "contact"]),
-            website: getVal(row, ["Google Maps Link", "Website URL", "website", "url"]),
-            address: getVal(row, ["Address", "Full Address", "location", "address"]),
-            niche: getVal(row, ["niche", "category", "industry"]) || targetNiche,
-            area: getVal(row, ["area", "city", "locality"]) || targetArea,
-          }));
+          const sample = (results.data as any[]).map((row) => {
+            const rawWebsite = getVal(row, ["Website URL", "Website", "Site", "url"]);
+            const cleanWebsite = rawWebsite && !rawWebsite.includes("google.com/maps") && !rawWebsite.includes("maps.google") ? rawWebsite : "";
+            return {
+              name: getVal(row, ["Business Name", "name", "company", "title", "clinic name"]),
+              phone: getVal(row, ["Phone Number", "phone", "mobile", "contact"]),
+              website: cleanWebsite,
+              address: getVal(row, ["Address", "Full Address", "location", "address"]),
+              niche: getVal(row, ["niche", "category", "industry"]) || targetNiche,
+              area: getVal(row, ["area", "city", "locality"]) || targetArea,
+            };
+          });
           setPreviewRows(sample);
         },
       });
@@ -153,7 +157,8 @@ export default function LeadIngestionPage() {
             const chunk = rows.slice(i, i + chunkSize).map((row) => {
               const name = getVal(row, ["Business Name", "name", "company", "title", "clinic name"]);
               const phone = getVal(row, ["Phone Number", "phone", "mobile", "contact"]);
-              const website = getVal(row, ["Google Maps Link", "Website URL", "website", "url", "maps link"]);
+              const rawWeb = getVal(row, ["Website URL", "Website", "Site", "url"]);
+              const cleanWeb = rawWeb && !rawWeb.includes("google.com/maps") && !rawWeb.includes("maps.google") ? rawWeb : null;
               const address = getVal(row, ["Address", "Full Address", "location", "address"]);
               const niche = getVal(row, ["niche", "category", "industry"]) || targetNiche || "Dentist";
               const area = getVal(row, ["area", "city", "locality"]) || targetArea || "Kothrud, Pune";
@@ -162,7 +167,7 @@ export default function LeadIngestionPage() {
               return {
                 name,
                 phone,
-                website: website || null,
+                website: cleanWeb,
                 address: address || null,
                 niche,
                 area,

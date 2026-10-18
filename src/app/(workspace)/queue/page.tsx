@@ -75,7 +75,44 @@ function QueueEntry() {
   }
 
   if (isMirroring && impersonateParam) {
-    return <DesktopMirrorQueue callerId={impersonateParam} />;
+    if (viewParam === "table") {
+      return <DesktopMirrorQueue callerId={impersonateParam} />;
+    }
+    return (
+      <div className="min-h-[calc(100vh-100px)] w-full flex flex-col items-center justify-center p-2 sm:p-4">
+        {/* Mirroring Banner */}
+        <div className="mb-3 px-4 py-1.5 rounded-full bg-zinc-900/95 border border-white/15 text-xs text-zinc-300 shadow-xl backdrop-blur-md flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#F95721] animate-pulse shrink-0" />
+          <span className="text-xs">
+            Mirroring Caller Cockpit &mdash; Real-time caller viewport simulation
+          </span>
+        </div>
+
+        {/* Scaled Phone Frame for Desktop Simulation */}
+        <div className="w-[385px] max-w-[calc(100vw-32px)] h-[min(720px,calc(100vh-140px))] rounded-[42px] border-[8px] border-[#1e1d23] bg-[#0c0c0e] shadow-[0_25px_70px_-15px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.08)] flex flex-col overflow-hidden relative">
+          {/* Phone Top Speaker & Dynamic Island */}
+          <div className="w-24 h-3.5 rounded-full bg-black/90 mx-auto mt-2 shrink-0 z-50 flex items-center justify-center pointer-events-none border border-white/[0.06]">
+            <div className="w-1.5 h-1.5 rounded-full bg-zinc-900 border border-zinc-700/60 mr-2" />
+            <div className="w-7 h-1 rounded-full bg-zinc-800" />
+          </div>
+
+          {/* Live Cockpit inside Phone Frame */}
+          <div className="flex-1 w-full overflow-hidden relative">
+            <CallerCockpit
+              callerId={impersonateParam}
+              readOnly={true}
+              viewingAs="caller"
+              initialView="cockpit"
+              embedded={true}
+              hideMirrorBanner={true}
+            />
+          </div>
+
+          {/* Phone Bottom Home Indicator */}
+          <div className="w-24 h-1 rounded-full bg-white/25 mx-auto mb-1.5 shrink-0 z-50 pointer-events-none" />
+        </div>
+      </div>
+    );
   }
 
   return <DesktopQueue />;

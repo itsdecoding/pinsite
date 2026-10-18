@@ -179,6 +179,7 @@ export async function POST(req: NextRequest) {
     if (updateError && (updateError.code === "42883" || updateError.message?.includes("digest"))) {
       console.warn("Trigger digest error encountered during DNC update; applying direct soft delete fallback");
       const fallbackDncUpdate: Record<string, any> = {
+        status: "dnc",
         deleted_at: nowIso,
         dnc_flag: true,
         assigned_to: null,

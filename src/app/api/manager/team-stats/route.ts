@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     ] = await Promise.all([
       admin
         .from("profiles")
-        .select("id, full_name, role, phone, is_available, active, require_password_change, temp_password_issued_at, created_at")
+        .select("id, full_name, role, phone, is_available, active, require_password_change, temp_password_issued_at, created_at, updated_at")
         .is("deleted_at", null)
         .neq("id", "00000000-0000-0000-0000-000000000001")
         .neq("id", "a87c7c79-6c4c-4787-8132-8cff8f7a1e74")
@@ -185,7 +185,22 @@ export async function GET(req: NextRequest) {
         fleetWaiting += waitingCount;
       }
 
-      const isOnline = Boolean(caller.active && caller.is_available);
+      // Check for live telemetry in the last 15 minutes
+      let latestActivityMs = 0;
+      for (const c of callerCalls) {
+        if (c.called_at) {
+          const t = new Date(c.called_at).getTime();
+          if (t > latestActivityMs) latestActivityMs = t;
+        }
+      }
+      if (caller.updated_at) {
+        const u = new Date(caller.updated_at).getTime();
+        if (u > latestActivityMs) latestActivityMs = u;
+      }
+
+      const fifteenMinsAgoMs = now.getTime() - 15 * 60 * 1000;
+      const hasRecentActivity = latestActivityMs > fifteenMinsAgoMs;
+      const isOnline = Boolean(caller.active && caller.is_available && hasRecentActivity);
       if (isOnline && caller.role === "caller") {
         activeCallersCount += 1;
       }

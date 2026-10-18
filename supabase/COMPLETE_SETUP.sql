@@ -706,7 +706,7 @@ CREATE OR REPLACE FUNCTION public.caller_update_lead(
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, extensions, pg_temp
 AS $$
 DECLARE
   v_normalized_phone TEXT;
@@ -723,7 +723,7 @@ BEGIN
   -- If DNC selected, atomically blacklist phone hash (DPDP compliance)
   IF p_status = 'dnc' AND v_normalized_phone IS NOT NULL THEN
     INSERT INTO public.dnc_blacklist (phone_hash, reason)
-    VALUES (encode(digest(v_normalized_phone, 'sha256'), 'hex'), 'caller_dnc_request')
+    VALUES (encode(extensions.digest(v_normalized_phone::text, 'sha256'::text), 'hex'), 'caller_dnc_request')
     ON CONFLICT (phone_hash) DO NOTHING;
   END IF;
 
@@ -897,9 +897,9 @@ GRANT EXECUTE ON FUNCTION public.claim_email_batch(INT) TO service_role;
 -- 5.3 Codified SQL Bodies for All 7 Automation Functions
 --------------------------------------------------------------------------------
 
--- CRON 1: Daily 6:00 AM IST Lead Top-Up (v1.8 Depth-Aware Algorithm)
+-- CRON 1: Daily 6:00 AM IST Lead Top-Up (v1.9 Fair Round-Robin Distribution)
 CREATE OR REPLACE FUNCTION public.assign_daily_leads(p_target_cap INT DEFAULT 100)
-RETURNS JSON
+RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
@@ -910,6 +910,8 @@ DECLARE
   v_lead_ids UUID[];
   v_total_assigned INT := 0;
   v_remaining_pool INT;
+  v_slice INT := 10; -- Chunk size per round-robin pass to guarantee fair spread
+  v_progress_made BOOLEAN := TRUE;
 BEGIN
   -- Count available unassigned pool
   SELECT COUNT(*) INTO v_remaining_pool
@@ -917,61 +919,73 @@ BEGIN
   WHERE status = 'unassigned' AND dnc_flag = FALSE AND deleted_at IS NULL;
 
   IF v_remaining_pool = 0 THEN
-    RETURN json_build_object('success', true, 'assigned_count', 0, 'remaining_pool', 0, 'message', 'Unassigned pool is empty');
+    RETURN jsonb_build_object('success', true, 'assigned_count', 0, 'remaining_pool', 0, 'message', 'Unassigned pool is empty');
   END IF;
 
-  -- Iterate through callers ORDERED BY CURRENT ACTIVE QUEUE ASC (lightest caller first)
-  FOR v_caller IN 
-    SELECT 
-      p.id, 
-      p.full_name,
-      COALESCE(l_count.cnt, 0) AS current_load
-    FROM public.profiles p
-    LEFT JOIN (
-      SELECT assigned_to, COUNT(*) AS cnt 
-      FROM public.leads 
-      WHERE deleted_at IS NULL 
-        AND status NOT IN ('closed_won', 'closed_lost', 'dnc', 'not_interested', 'interested')
-      GROUP BY assigned_to
-    ) l_count ON l_count.assigned_to = p.id
-    WHERE p.role = 'caller' 
-      AND p.active = TRUE 
-      AND COALESCE(p.is_available, TRUE) = TRUE 
-      AND p.deleted_at IS NULL
-    ORDER BY current_load ASC, p.created_at ASC
-  LOOP
-    EXIT WHEN v_remaining_pool <= 0;
+  -- Fair multi-pass round-robin loop: distributes up to 10 leads per caller per pass
+  WHILE v_remaining_pool > 0 AND v_progress_made LOOP
+    v_progress_made := FALSE;
 
-    v_needed := GREATEST(0, p_target_cap - v_caller.current_load);
-    v_needed := LEAST(v_needed, v_remaining_pool);
+    FOR v_caller IN 
+      SELECT 
+        p.id, 
+        p.full_name,
+        COALESCE(l_count.cnt, 0) AS current_load
+      FROM public.profiles p
+      LEFT JOIN (
+        SELECT assigned_to, COUNT(*) AS cnt 
+        FROM public.leads 
+        WHERE deleted_at IS NULL 
+          AND status NOT IN ('closed_won', 'closed_lost', 'dnc', 'not_interested', 'interested')
+        GROUP BY assigned_to
+      ) l_count ON l_count.assigned_to = p.id
+      WHERE p.role = 'caller' 
+        AND p.active = TRUE 
+        AND COALESCE(p.is_available, TRUE) = TRUE 
+        AND p.deleted_at IS NULL
+      ORDER BY current_load ASC, p.created_at ASC
+    LOOP
+      EXIT WHEN v_remaining_pool <= 0;
 
-    IF v_needed > 0 THEN
-      SELECT ARRAY_AGG(id) INTO v_lead_ids FROM (
-        SELECT id FROM public.leads 
-        WHERE status = 'unassigned' AND dnc_flag = FALSE AND deleted_at IS NULL
-        ORDER BY score DESC, created_at ASC
-        LIMIT v_needed
-        FOR UPDATE SKIP LOCKED
-      ) sub;
+      v_needed := GREATEST(0, p_target_cap - v_caller.current_load);
 
-      IF v_lead_ids IS NOT NULL AND ARRAY_LENGTH(v_lead_ids, 1) > 0 THEN
-        UPDATE public.leads 
-        SET status = 'assigned', assigned_to = v_caller.id, assigned_date = CURRENT_DATE, updated_at = NOW()
-        WHERE id = ANY(v_lead_ids);
+      IF v_needed > 0 THEN
+        v_needed := LEAST(v_needed, v_slice, v_remaining_pool);
 
-        INSERT INTO public.assignment_history (lead_id, to_caller_id, reason)
-        SELECT unnest(v_lead_ids), v_caller.id, 'daily_distribution_topup';
+        SELECT ARRAY_AGG(id) INTO v_lead_ids FROM (
+          SELECT id FROM public.leads 
+          WHERE status = 'unassigned' AND dnc_flag = FALSE AND deleted_at IS NULL
+          ORDER BY score DESC, created_at ASC
+          LIMIT v_needed
+          FOR UPDATE SKIP LOCKED
+        ) sub;
 
-        INSERT INTO public.notifications (user_id, type, title, body, link)
-        VALUES (v_caller.id, 'leads_ready', 'Leads Assigned', 'Your queue has been refreshed with new leads.', '/queue');
+        IF v_lead_ids IS NOT NULL AND ARRAY_LENGTH(v_lead_ids, 1) > 0 THEN
+          UPDATE public.leads 
+          SET status = 'assigned', assigned_to = v_caller.id, assigned_date = CURRENT_DATE, updated_at = NOW()
+          WHERE id = ANY(v_lead_ids);
 
-        v_total_assigned := v_total_assigned + ARRAY_LENGTH(v_lead_ids, 1);
-        v_remaining_pool := v_remaining_pool - ARRAY_LENGTH(v_lead_ids, 1);
+          INSERT INTO public.assignment_history (lead_id, to_caller_id, reason)
+          SELECT unnest(v_lead_ids), v_caller.id, 'daily_distribution_topup';
+
+          v_total_assigned := v_total_assigned + ARRAY_LENGTH(v_lead_ids, 1);
+          v_remaining_pool := v_remaining_pool - ARRAY_LENGTH(v_lead_ids, 1);
+          v_progress_made := TRUE;
+        END IF;
       END IF;
-    END IF;
+    END LOOP;
   END LOOP;
 
-  RETURN json_build_object('success', true, 'assigned_count', v_total_assigned, 'remaining_pool', v_remaining_pool);
+  -- Notify callers who received new leads
+  IF v_total_assigned > 0 THEN
+    INSERT INTO public.notifications (user_id, type, title, body, link)
+    SELECT DISTINCT to_caller_id, 'leads_ready', 'Leads Assigned', 'Your queue has been refreshed with new leads.', '/queue'
+    FROM public.assignment_history
+    WHERE assigned_at >= NOW() - INTERVAL '10 seconds'
+      AND reason = 'daily_distribution_topup';
+  END IF;
+
+  RETURN jsonb_build_object('success', true, 'assigned_count', v_total_assigned, 'remaining_pool', v_remaining_pool);
 END;
 $$;
 
@@ -1219,6 +1233,73 @@ BEGIN
   UPDATE public.email_queue SET status = 'pending' WHERE status = 'held_cap';
 END;
 $$;
+
+--------------------------------------------------------------------------------
+-- 5.4 Idempotent pg_cron Scheduling for Automation Functions
+--------------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    -- CRON 1: Daily 6:00 AM IST (00:30 UTC) Lead Distribution
+    PERFORM cron.unschedule('cron_assign_daily_leads');
+    PERFORM cron.schedule(
+      'cron_assign_daily_leads',
+      '30 0 * * *',
+      'SELECT public.assign_daily_leads(100)'
+    );
+
+    -- CRON 2: 10:00 AM IST (04:30 UTC) Inactive Caller Detection
+    PERFORM cron.unschedule('cron_detect_inactive_callers');
+    PERFORM cron.schedule(
+      'cron_detect_inactive_callers',
+      '30 4 * * *',
+      'SELECT public.detect_inactive_callers()'
+    );
+
+    -- CRON 3: 2:00 PM IST (08:30 UTC) Midday Lead Rebalance
+    PERFORM cron.unschedule('cron_rebalance_midday');
+    PERFORM cron.schedule(
+      'cron_rebalance_midday',
+      '30 8 * * *',
+      'SELECT public.rebalance_midday_leads()'
+    );
+
+    -- CRON 4: Due Notification Scanner (Every 5 Minutes)
+    PERFORM cron.unschedule('cron_dispatch_due_notifications');
+    PERFORM cron.schedule(
+      'cron_dispatch_due_notifications',
+      '*/5 * * * *',
+      'SELECT public.dispatch_due_notifications()'
+    );
+
+    -- CRON 5: 11:59 PM IST (18:29 UTC) Nightly Scoreboard Aggregation
+    PERFORM cron.unschedule('cron_aggregate_daily_scores');
+    PERFORM cron.schedule(
+      'cron_aggregate_daily_scores',
+      '29 18 * * *',
+      'SELECT public.aggregate_daily_scores()'
+    );
+
+    -- CRON 6: Email Queue Dispatcher (Every 2 Minutes)
+    PERFORM cron.unschedule('cron_dispatch_email_queue');
+    PERFORM cron.schedule(
+      'cron_dispatch_email_queue',
+      '*/2 * * * *',
+      'SELECT public.dispatch_email_queue()'
+    );
+
+    -- CRON 7: Reset Held Emails at 00:01 AM IST (18:31 UTC previous day)
+    PERFORM cron.unschedule('cron_flush_held_emails');
+    PERFORM cron.schedule(
+      'cron_flush_held_emails',
+      '31 18 * * *',
+      'SELECT public.flush_held_emails()'
+    );
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'pg_cron scheduling notice: %', SQLERRM;
+END $$;
+
 
 --------------------------------------------------------------------------------
 -- 6. Comprehensive Row-Level Security (RLS) Matrix

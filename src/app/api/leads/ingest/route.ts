@@ -212,7 +212,10 @@ export async function POST(req: NextRequest) {
       }
 
       const niche = (lead.niche || "Dentist").trim();
-      const hasWebsite = Boolean(lead.website && String(lead.website).trim().length > 0);
+      const rawWeb = lead.website ? String(lead.website).trim() : "";
+      const isMapsLink = !rawWeb || rawWeb.includes("google.com/maps") || rawWeb.includes("maps.google");
+      const cleanWebsite = isMapsLink ? null : rawWeb;
+      const hasWebsite = Boolean(cleanWebsite && cleanWebsite.length > 0);
 
       // Multidimensional lead opportunity scoring formula (Realistic 55-98 range with high granularity)
       let computedScore = 52;
@@ -223,8 +226,7 @@ export async function POST(req: NextRequest) {
       else computedScore += 2;
 
       // 2. Pitch potential: Leads lacking a custom website have higher design pitch opportunity
-      const isMapsLink = !lead.website || lead.website.includes("google.com/maps") || lead.website.includes("maps.google");
-      if (isMapsLink) computedScore += 14;
+      if (!hasWebsite) computedScore += 14;
       else computedScore += 6;
 
       // 3. Location specificity
@@ -259,7 +261,8 @@ export async function POST(req: NextRequest) {
       }
       computedScore += (hash - 5); // -5 to +5
 
-      const finalScore = typeof lead.score === "number" && !isNaN(lead.score) && lead.score > 0
+      // Respect explicit custom scores, but dynamically calculate whenever default placeholder 75 or null is supplied
+      const finalScore = (typeof lead.score === "number" && !isNaN(lead.score) && lead.score > 0 && lead.score !== 75)
         ? Math.min(100, Math.max(0, lead.score))
         : Math.min(98, Math.max(55, computedScore));
 
@@ -268,7 +271,7 @@ export async function POST(req: NextRequest) {
         name: formatLeadName(lead.name),
         phone: rawPhone,
         normalized_phone: normalizedPhone,
-        website: lead.website || null,
+        website: cleanWebsite,
         has_website: hasWebsite,
         address: lead.address || null,
         niche: niche,

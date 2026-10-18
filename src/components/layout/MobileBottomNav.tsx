@@ -33,6 +33,11 @@ export function MobileBottomNav() {
   const [unreadCommsCount, setUnreadCommsCount] = useState(0);
   const supabase = React.useMemo(() => createClient(), []);
 
+  // Suppress duplicate bottom nav when CallerCockpit owns the mobile screen
+  const isQueueCockpit =
+    pathname === "/queue" &&
+    (profile?.role === "caller" || (typeof window !== "undefined" && window.location.search.includes("impersonate")));
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -620,8 +625,9 @@ export function MobileBottomNav() {
       {/* ======================================================== */}
       {/* MOBILE BOTTOM NAVIGATION BAR (< lg, 4 Shortcuts)        */}
       {/* ======================================================== */}
-      <nav
-        aria-label="Mobile Navigation"
+      {!isQueueCockpit && (
+        <nav
+          aria-label="Mobile Navigation"
           className="fixed bottom-0 inset-x-0 lg:hidden z-40 bg-white/90 dark:bg-[#111213]/95 backdrop-blur-2xl border-t border-black/[0.08] dark:border-white/[0.12] shadow-[0_-10px_25px_rgba(0,0,0,0.2)] pb-[env(safe-area-inset-bottom)] px-1 py-1.5 transition-all"
         >
           <div className="grid grid-cols-4 max-w-lg mx-auto w-full">
@@ -694,6 +700,7 @@ export function MobileBottomNav() {
             })}
           </div>
         </nav>
+      )}
     </>
   );
 }
