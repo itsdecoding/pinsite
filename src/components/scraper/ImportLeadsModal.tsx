@@ -99,6 +99,8 @@ export function ImportLeadsModal() {
   const [scraperStatus, setScraperStatus] = useState<ScraperStatus | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [justRefreshed, setJustRefreshed] = useState(false);
   const [assignSuccessMsg, setAssignSuccessMsg] = useState<string | null>(null);
 
   // CSV Ingestion state
@@ -145,6 +147,46 @@ export function ImportLeadsModal() {
       console.warn("Failed to fetch scraper status:", err);
     }
   }, [supabase]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchScraperTelemetry();
+      setJustRefreshed(true);
+      setTimeout(() => setJustRefreshed(false), 1500);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 400);
+    }
+  };
+
+  const handleResetScrape = async () => {
+    setIsActionLoading(true);
+    try {
+      await supabase
+        .from("scraper_jobs")
+        .update({ status: "cancelled", error_message: "Reset by user" })
+        .in("status", ["running", "pending", "waiting_decision"]);
+
+      await supabase
+        .from("scraper_status")
+        .update({
+          run_state: "idle",
+          active_job_id: null,
+          leads_collected: 0,
+          current_batch: 0,
+          total_batches: 0,
+          control_action: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", "default");
+
+      await fetchScraperTelemetry();
+    } catch (err: any) {
+      console.error("Error resetting scrape:", err);
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -703,11 +745,13 @@ export function ImportLeadsModal() {
                 </div>
 
                 <button
-                  onClick={fetchScraperTelemetry}
-                  className="text-xs text-[#8A8680] hover:text-[#111110] dark:hover:text-white flex items-center gap-1 font-mono transition-colors"
+                  onClick={handleManualRefresh}
+                  disabled={isRefreshing}
+                  className="text-xs px-2.5 py-1 rounded-lg border border-[#ECE8E1] dark:border-white/10 hover:border-[#F95721]/30 bg-black/[0.02] dark:bg-white/[0.04] text-[#8A8680] hover:text-[#111110] dark:hover:text-white flex items-center gap-1.5 font-mono transition-all disabled:opacity-60 shadow-xs cursor-pointer"
+                  title="Check live scraper status"
                 >
-                  <RotateCw className="w-3 h-3" />
-                  <span>Refresh</span>
+                  <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-[#F95721]" : ""}`} />
+                  <span>{isRefreshing ? "Checking..." : justRefreshed ? "Updated!" : "Refresh"}</span>
                 </button>
               </div>
 
@@ -772,16 +816,13 @@ export function ImportLeadsModal() {
                             Batch {scraperStatus.current_batch} of {scraperStatus.total_batches || 1}
                           </span>
                           <button
-                            onClick={() => {
-                              supabase
-                                .from("scraper_status")
-                                .update({ run_state: "idle", active_job_id: null })
-                                .eq("id", "default")
-                                .then(() => fetchScraperTelemetry());
-                            }}
-                            className="px-2 py-0.5 rounded text-[10px] font-bold text-red-500 hover:bg-red-500/10 transition-colors"
+                            onClick={handleResetScrape}
+                            disabled={isActionLoading}
+                            className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-red-500 hover:text-red-600 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                            title="Cancel this scrape and return to location input"
                           >
-                            Reset / New Scrape
+                            <RotateCw className="w-3 h-3" />
+                            <span>Reset / New Scrape</span>
                           </button>
                         </div>
                       </div>
