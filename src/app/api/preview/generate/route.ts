@@ -4,23 +4,9 @@ import { getLeadForPreview } from "@/lib/preview/intake";
 import { generateSiteBlueprintWithGemini } from "@/lib/preview/gemini";
 import { saveWebsitePreview, getWebsitePreviewBySlug } from "@/lib/preview/db";
 import { PreviewSiteData, ThemeId, FontPairingId } from "@/lib/preview/types";
+import { generateUniqueVanitySlug } from "@/lib/preview/slug";
 
 export const dynamic = "force-dynamic";
-
-function generateSlug(businessName: string, city: string): string {
-  const cleanName = businessName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "")
-    .slice(0, 30);
-  const cleanCity = city
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "")
-    .slice(0, 15);
-  const randomSuffix = Math.random().toString(36).substring(2, 6);
-  return `${cleanName}-${cleanCity}-${randomSuffix}`;
-}
 
 /**
  * POST /api/preview/generate
@@ -46,11 +32,11 @@ export async function POST(req: NextRequest) {
     // 1. Automatic Lead Intake from Supabase
     const lead = await getLeadForPreview(leadId);
 
-    // 2. Gemini 3.8 Flash AI Orchestration
+    // 2. Gemini Flash AI Orchestration
     const siteBlueprint = await generateSiteBlueprintWithGemini(lead);
 
-    // 3. Generate unique vanity slug
-    const slug = generateSlug(lead.name, lead.area || "metro");
+    // 3. Generate clean, un-spammed executive vanity slug (e.g. "perfect-smile")
+    const slug = await generateUniqueVanitySlug(lead.name, lead.area);
 
     // 4. Save to Supabase website_previews and link to lead
     const saved = await saveWebsitePreview({
@@ -64,7 +50,7 @@ export async function POST(req: NextRequest) {
 
     const durationMs = Date.now() - startTime;
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://pinsite.pro";
-    const previewUrl = `${appUrl}/preview/${slug}`;
+    const previewUrl = `${appUrl}/${slug}`;
 
     return NextResponse.json({
       success: true,
@@ -141,7 +127,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({
       success: true,
       slug: updated.slug,
-      previewUrl: `${appUrl}/preview/${updated.slug}`,
+      previewUrl: `${appUrl}/${updated.slug}`,
       theme: updated.theme,
       fontPairing: updated.font_pairing,
       siteData: updated.site_data,

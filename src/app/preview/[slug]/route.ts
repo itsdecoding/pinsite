@@ -129,23 +129,8 @@ export async function GET(
       return renderNotFoundResponse();
     }
 
-    // 2. Asynchronously increment view count in the background (fire-and-forget)
-    incrementPreviewViewCount(slug).catch((err) => {
-      console.error(`Failed to bump view count for ${slug}:`, err);
-    });
-
-    // 3. Compile the $1,000 HTML with all styles, animations, and Pinsite Agency bar
-    const html = renderPreviewHtml(record.site_data);
-
-    // 4. Deliver compiled response in < 30ms with edge cache headers
-    return new Response(html, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "public, max-age=60, stale-while-revalidate=600",
-        "X-Frame-Options": "SAMEORIGIN",
-      },
-    });
+    // 2. Redirect to clean root vanity URL (e.g. /perfect-smile)
+    return NextResponse.redirect(new URL(`/${record.slug}`, req.url), 307);
   } catch (error: any) {
     console.error("Preview render error:", error);
     return renderNotFoundResponse();

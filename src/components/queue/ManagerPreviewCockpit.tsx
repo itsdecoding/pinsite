@@ -75,8 +75,8 @@ export function ManagerPreviewCockpit({
 
   const previewUrl = slug
     ? typeof window !== "undefined"
-      ? `${window.location.origin}/preview/${slug}`
-      : `https://pinsite.pro/preview/${slug}`
+      ? `${window.location.origin}/${slug}`
+      : `https://pinsite.pro/${slug}`
     : null;
 
   // Flash notice helper
@@ -209,7 +209,7 @@ export function ManagerPreviewCockpit({
   const handleCopyPitch = () => {
     if (!previewUrl) return;
     const dm = lead.decision_maker || "there";
-    const text = `Hi ${dm}, I'm Muzammil from Pinsite. Here is the custom concept preview website our creative team designed specifically for ${lead.name}:\n\n${previewUrl}\n\nTake a quick look on your phone and let me know your thoughts!`;
+    const text = `Hi ${dm}, I'm Muzammil from Pinsite. Here is the custom concept website our creative team designed specifically for ${lead.name}:\n\n${previewUrl}\n\nTake a quick look on your phone and let me know your thoughts!`;
 
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -221,7 +221,7 @@ export function ManagerPreviewCockpit({
     if (!previewUrl) return;
     const cleanPhone = (lead.normalized_phone || lead.phone).replace(/[^0-9]/g, "");
     const dm = lead.decision_maker || "there";
-    const text = `Hi ${dm}, I'm Muzammil from Pinsite. Here is the custom concept preview website our creative team designed specifically for ${lead.name}:\n\n${previewUrl}\n\nTake a quick look on your phone and let me know your thoughts!`;
+    const text = `Hi ${dm}, I'm Muzammil from Pinsite. Here is the custom concept website our creative team designed specifically for ${lead.name}:\n\n${previewUrl}\n\nTake a quick look on your phone and let me know your thoughts!`;
     const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
     window.open(waUrl, "_blank", "noopener,noreferrer");
   };
@@ -295,7 +295,7 @@ export function ManagerPreviewCockpit({
                   Live Concept Active
                 </span>
                 <span className="text-xs font-mono text-zinc-200 truncate block">
-                  pinsite.pro/preview/{slug}
+                  pinsite.pro/{slug}
                 </span>
               </div>
             </div>
