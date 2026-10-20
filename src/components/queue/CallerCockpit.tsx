@@ -40,6 +40,7 @@ import {
   HUMAN_CONNECT_OUTCOMES,
   cleanTruncateAtWord,
 } from "@/lib/queue/utils";
+import { ManagerPreviewCockpit } from "./ManagerPreviewCockpit";
 
 export interface Lead {
   id: string;
@@ -60,6 +61,7 @@ export interface Lead {
   decision_maker?: string | null;
   cooldown_until?: string | null;
   rejection_reason?: string | null;
+  active_preview_slug?: string | null;
   profiles?: {
     full_name: string;
   } | null;
@@ -792,6 +794,18 @@ export function CallerCockpit({
     }
   };
 
+  // Preview update handler for Manager Website Engine
+  const handlePreviewUpdated = (newSlug: string | null) => {
+    if (!currentLead) return;
+    currentLead.active_preview_slug = newSlug;
+    setDialNowLeads((prev) =>
+      prev.map((l) => (l.id === currentLead.id ? { ...l, active_preview_slug: newSlug } : l))
+    );
+    setCallbackLeads((prev) =>
+      prev.map((l) => (l.id === currentLead.id ? { ...l, active_preview_slug: newSlug } : l))
+    );
+  };
+
   // 8. Navigation handler between 4 bottom tabs
   const handleBottomNavClick = (tabKey: "queue" | "comms" | "today" | "profile") => {
     if (readOnly) {
@@ -1164,6 +1178,14 @@ export function CallerCockpit({
                         </div>
                       </div>
                     </div>
+
+                    {/* MANAGER-ONLY WEBSITE PREVIEW ENGINE */}
+                    <ManagerPreviewCockpit
+                      lead={currentLead}
+                      userRole={currentUserProfile?.role || "caller"}
+                      viewingAs={viewingAs}
+                      onPreviewUpdated={handlePreviewUpdated}
+                    />
 
                     {/* BOTTOM COCKPIT ACTIONS */}
                     <div className="w-full flex flex-col gap-1.5 pt-2 shrink-0">
@@ -1670,6 +1692,15 @@ export function CallerCockpit({
                     )}
                   </div>
                 </div>
+
+                {/* MANAGER PREVIEW ENGINE IN DISPOSITION DRAWER */}
+                <ManagerPreviewCockpit
+                  lead={currentLead}
+                  userRole={currentUserProfile?.role || "caller"}
+                  viewingAs={viewingAs}
+                  onPreviewUpdated={handlePreviewUpdated}
+                  compact={true}
+                />
 
                 {/* 6 Outcome Buttons */}
                 <div className="pt-3.5">
