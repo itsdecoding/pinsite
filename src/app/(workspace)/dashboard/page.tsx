@@ -21,6 +21,7 @@ import {
   Loader2,
   Crown,
 } from "lucide-react";
+import { ManagerPreviewCockpit } from "@/components/queue/ManagerPreviewCockpit";
 
 interface Snapshot {
   warm_in_play: number;
@@ -39,12 +40,14 @@ interface InterestedProspect {
   phone: string;
   niche: string;
   area: string;
+  address?: string | null;
   score: number;
   status: string;
   escalated_at: string;
   caller_name: string;
   caller_id?: string;
   estimated_value_inr?: number;
+  active_preview_slug?: string | null;
 }
 
 interface CallerPerformance {
@@ -244,6 +247,18 @@ export default function ManagerDashboardPage() {
     const cardWidth = card ? card.offsetWidth + 12 : el.offsetWidth * 0.86;
     el.scrollTo({ left: index * cardWidth, behavior: "smooth" });
     setActiveCarouselIndex(index);
+  }, []);
+
+  const handleDashboardPreviewUpdated = useCallback((leadId: string, newSlug: string | null) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        interested_prospects: prev.interested_prospects.map((p) =>
+          p.id === leadId ? { ...p, active_preview_slug: newSlug } : p
+        ),
+      };
+    });
   }, []);
 
   // Live IST Clock ticking
@@ -756,6 +771,17 @@ export default function ManagerDashboardPage() {
                         <span>Open</span>
                       </Link>
                     </div>
+
+                    {/* WEBSITE PREVIEW ENGINE (MOBILE) */}
+                    <div className="pt-2 pl-6">
+                      <ManagerPreviewCockpit
+                        lead={lead}
+                        userRole="admin"
+                        viewingAs="manager"
+                        onPreviewUpdated={(slug) => handleDashboardPreviewUpdated(lead.id, slug)}
+                        compact={true}
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -860,6 +886,16 @@ export default function ManagerDashboardPage() {
                       <ExternalLink className="w-3.5 h-3.5 text-[#8A8680]" />
                       <span>Open</span>
                     </Link>
+                  </div>
+
+                  {/* WEBSITE PREVIEW ENGINE (DESKTOP) */}
+                  <div className="pt-2 pl-6 max-w-xl">
+                    <ManagerPreviewCockpit
+                      lead={lead}
+                      userRole="admin"
+                      viewingAs="manager"
+                      onPreviewUpdated={(slug) => handleDashboardPreviewUpdated(lead.id, slug)}
+                    />
                   </div>
                 </div>
               ))}

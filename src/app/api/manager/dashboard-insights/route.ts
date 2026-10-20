@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
       admin.from("calls").select("id", { count: "exact", head: true }),
       admin
         .from("leads")
-        .select("id, name, phone, niche, area, score, status, escalated_at, updated_at, assigned_to")
+        .select("id, name, phone, niche, area, address, score, status, escalated_at, updated_at, assigned_to, active_preview_slug")
         .in("status", ["interested", "closed_won"])
         .is("deleted_at", null)
         .order("escalated_at", { ascending: false }),
@@ -199,12 +199,14 @@ export async function GET(req: NextRequest) {
         phone: l.phone,
         niche: l.niche || "Dentist",
         area: l.area || "Pune",
+        address: l.address || l.area || "Pune",
         score: typeof l.score === "number" && !isNaN(l.score) ? l.score : 88,
         status: l.status,
         escalated_at: l.escalated_at || l.updated_at,
         caller_name: l.assigned_to ? callerMap.get(l.assigned_to)?.name || "Unassigned" : "Unassigned",
         caller_id: l.assigned_to,
         estimated_value_inr: estValue,
+        active_preview_slug: l.active_preview_slug,
       };
     });
 

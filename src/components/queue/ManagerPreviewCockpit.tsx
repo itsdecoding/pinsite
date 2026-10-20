@@ -17,7 +17,7 @@ import {
 import { Lead } from "./CallerCockpit";
 
 interface ManagerPreviewCockpitProps {
-  lead: Lead;
+  lead: any;
   userRole?: string;
   viewingAs?: "caller" | "manager";
   onPreviewUpdated?: (newSlug: string | null) => void;

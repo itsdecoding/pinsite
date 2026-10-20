@@ -49,6 +49,7 @@ import {
   formatRelativeTime,
   getISTStartOfDayUtcIso,
 } from "@/lib/queue/utils";
+import { ManagerPreviewCockpit } from "./ManagerPreviewCockpit";
 
 export interface Lead {
   id: string;
@@ -69,6 +70,7 @@ export interface Lead {
   decision_maker?: string | null;
   cooldown_until?: string | null;
   rejection_reason?: string | null;
+  active_preview_slug?: string | null;
   profiles?: {
     full_name: string;
   } | null;
@@ -1057,6 +1059,20 @@ function DesktopQueueMain() {
                   </div>
                 )}
 
+                {/* MANAGER WEBSITE PREVIEW ENGINE (DESKTOP) */}
+                <ManagerPreviewCockpit
+                  lead={currentLead}
+                  userRole={userRole}
+                  viewingAs="manager"
+                  onPreviewUpdated={(newSlug) => {
+                    if (!currentLead) return;
+                    currentLead.active_preview_slug = newSlug;
+                    setLeads((prev) =>
+                      prev.map((l) => (l.id === currentLead.id ? { ...l, active_preview_slug: newSlug } : l))
+                    );
+                  }}
+                />
+
                 {/* Primary Dial CTA (Desktop & Tablet) */}
                 <div className="pt-2 flex flex-col sm:flex-row items-center gap-4">
                   {callActive && (
@@ -1232,6 +1248,23 @@ function DesktopQueueMain() {
                   })}
                 </div>
               </div>
+
+              {/* Conditional Website Preview Generator for Interested Outcome */}
+              {selectedOutcome === "interested" && (
+                <ManagerPreviewCockpit
+                  lead={currentLead}
+                  userRole={userRole}
+                  viewingAs="manager"
+                  onPreviewUpdated={(newSlug) => {
+                    if (!currentLead) return;
+                    currentLead.active_preview_slug = newSlug;
+                    setLeads((prev) =>
+                      prev.map((l) => (l.id === currentLead.id ? { ...l, active_preview_slug: newSlug } : l))
+                    );
+                  }}
+                  compact={true}
+                />
+              )}
 
               {/* Conditional Callback Datetime */}
               {selectedOutcome === "callback" && (
