@@ -211,27 +211,35 @@ export function MobileBottomNav() {
     ];
   }, [pathname, unreadCommsCount]);
 
-  // Bottom nav 4 shortcuts mapped strictly per role
+  // Bottom nav shortcuts mapped strictly per role
   const navItems = React.useMemo(() => {
     if (isManagerOrAdmin) {
       return [
         {
+          id: "dashboard",
+          label: "Dashboard",
+          href: "/studio/dashboard",
+          icon: LayoutDashboard,
+          isAction: false,
+          isActive: pathname.startsWith("/studio/dashboard") || pathname === "/dashboard",
+        },
+        {
+          id: "queue",
+          label: "Queue",
+          href: "/studio/queue",
+          icon: PhoneCall,
+          isAction: false,
+          isActive: pathname.startsWith("/studio/queue") || pathname === "/queue",
+        },
+        {
           id: "team",
-          label: "Team Center",
+          label: "Team",
           href: "/studio/manager/team",
           icon: Users,
           isAction: false,
           isActive:
             (pathname.startsWith("/studio/manager") || pathname.startsWith("/manager")) &&
             !pathname.includes("/ingestion"),
-        },
-        {
-          id: "queue",
-          label: "Dial Queue",
-          href: "/studio/queue",
-          icon: PhoneCall,
-          isAction: false,
-          isActive: pathname.startsWith("/studio/queue") || pathname === "/queue",
         },
         {
           id: "comms",
@@ -328,6 +336,27 @@ export function MobileBottomNav() {
       },
     ];
   }, [isManagerOrAdmin, isCaller, pathname, showProfileSheet, unreadCommsCount]);
+
+  const activeIndex = React.useMemo(() => {
+    const idx = navItems.findIndex((item) => item.isActive);
+    return idx >= 0 ? idx : 0;
+  }, [navItems]);
+
+  const navGeometry = React.useMemo(() => {
+    const count = navItems.length;
+    const itemWidth = count === 5 ? 58 : 68;
+    const barWidth = count === 5 ? 356 : 332;
+    const bubbleSize = 52;
+    const containerWidth = count * itemWidth;
+    const indicatorOffset = activeIndex * itemWidth + (itemWidth - bubbleSize) / 2;
+
+    return {
+      itemWidth,
+      barWidth,
+      containerWidth,
+      indicatorOffset,
+    };
+  }, [navItems.length, activeIndex]);
 
   // Prevent SSR hydration duplication on client mount
   if (!mounted) {
@@ -623,83 +652,102 @@ export function MobileBottomNav() {
       )}
 
       {/* ======================================================== */}
-      {/* MOBILE BOTTOM NAVIGATION BAR (< lg, 4 Shortcuts)        */}
+      {/* MOBILE BOTTOM NAVIGATION BAR (Magic Navigation Menu)      */}
       {/* ======================================================== */}
       {!isQueueCockpit && (
-        <nav
-          aria-label="Mobile Navigation"
-          className="fixed bottom-0 inset-x-0 lg:hidden z-40 bg-white/90 dark:bg-[#111213]/95 backdrop-blur-2xl border-t border-black/[0.08] dark:border-white/[0.12] shadow-[0_-10px_25px_rgba(0,0,0,0.2)] pb-[env(safe-area-inset-bottom)] px-1 py-1.5 transition-all"
-        >
-          <div className="grid grid-cols-4 max-w-lg mx-auto w-full">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = item.isActive;
-
-              if (item.isAction) {
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setShowProfileSheet(true)}
-                    className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-2xl transition active:scale-95 ${
-                      isActive
-                        ? "text-[#F95721] font-semibold"
-                        : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-                    }`}
-                  >
-                    <div
-                      className={`p-1.5 rounded-xl transition ${
-                        isActive
-                          ? "bg-[#7F3922]/15 text-[#F95721]"
-                          : "bg-transparent text-current"
-                      }`}
-                    >
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <span className="text-[10px] tracking-tight leading-none mt-0.5 whitespace-nowrap">
-                      {item.label}
-                    </span>
-                  </button>
-                );
-              }
-
-              return (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  onClick={() => {
-                    if (item.id === "comms" && typeof window !== "undefined") {
-                      window.dispatchEvent(new CustomEvent("reset-comms-view"));
-                    }
+        <div className="fixed bottom-3 inset-x-0 lg:hidden z-40 flex justify-center pointer-events-none px-3 pb-[env(safe-area-inset-bottom)]">
+          <div className="pointer-events-auto magic-nav-wrapper">
+            <nav
+              aria-label="Mobile Navigation"
+              className="magic-nav-bar border border-black/[0.08] dark:border-white/[0.12] backdrop-blur-2xl"
+              style={{
+                width: `${navGeometry.barWidth}px`,
+                height: "64px",
+              }}
+            >
+              <div
+                className="relative flex items-center justify-center"
+                style={{
+                  width: `${navGeometry.containerWidth}px`,
+                  height: "64px",
+                }}
+              >
+                {/* Floating Indicator with dual curved inverse fillets */}
+                <div
+                  className="magic-indicator"
+                  style={{
+                    transform: `translateX(${navGeometry.indicatorOffset}px)`,
+                    left: 0,
                   }}
-                  className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-2xl transition active:scale-95 ${
-                    isActive
-                      ? "text-[#F95721] font-semibold"
-                      : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-                  }`}
-                >
-                  <div
-                    className={`p-1.5 rounded-xl transition relative ${
-                      isActive
-                        ? "bg-[#7F3922]/15 text-[#F95721]"
-                        : "bg-transparent text-current"
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    {typeof item.badge === "number" && item.badge > 0 && (
-                      <span className="absolute -top-0.5 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center shadow-xs">
-                        {item.badge > 99 ? "99+" : item.badge}
+                />
+
+                {/* Nav Items */}
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = item.isActive;
+
+                  const content = (
+                    <div
+                      className={`magic-nav-item flex flex-col items-center justify-center relative cursor-pointer ${
+                        isActive ? "active" : ""
+                      }`}
+                      style={{
+                        width: `${navGeometry.itemWidth}px`,
+                        height: "64px",
+                      }}
+                    >
+                      <div className="magic-nav-icon relative flex items-center justify-center text-[#6E6B66] dark:text-[#8A8680]">
+                        <Icon className="w-5 h-5 transition-transform" />
+                        {typeof item.badge === "number" && item.badge > 0 && (
+                          <span className="absolute -top-1 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-white text-[9px] font-bold flex items-center justify-center shadow-xs">
+                            {item.badge > 99 ? "99+" : item.badge}
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className={`text-[9px] tracking-tight font-semibold leading-none transition-all duration-300 mt-1 whitespace-nowrap ${
+                          isActive
+                            ? "opacity-0 scale-75 -translate-y-2"
+                            : "text-[#6E6B66] dark:text-[#8A8680] opacity-80"
+                        }`}
+                      >
+                        {item.label}
                       </span>
-                    )}
-                  </div>
-                  <span className="text-[10px] tracking-tight leading-none mt-0.5 whitespace-nowrap">
-                    {item.label}
-                  </span>
-                </Link>
-              );
-            })}
+                    </div>
+                  );
+
+                  if (item.isAction) {
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setShowProfileSheet(true)}
+                        className="outline-none focus:outline-none"
+                      >
+                        {content}
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      onClick={() => {
+                        if (item.id === "comms" && typeof window !== "undefined") {
+                          window.dispatchEvent(new CustomEvent("reset-comms-view"));
+                        }
+                      }}
+                      className="outline-none focus:outline-none"
+                    >
+                      {content}
+                    </Link>
+                  );
+                })}
+              </div>
+            </nav>
           </div>
-        </nav>
+        </div>
       )}
     </>
   );

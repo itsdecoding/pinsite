@@ -151,3 +151,97 @@ button:focus-visible {
     scroll-behavior: auto !important;
   }
 }
+
+/* ========================================================================= */
+/* MAGIC NAVIGATION MENU (FLUID FLOATING INDICATOR & CURVED NOTCH)           */
+/* ========================================================================= */
+:root {
+  --magic-bar-bg: #FFFFFF;
+  --magic-cutout-bg: #F7F5F0;
+  --magic-bubble-bg: linear-gradient(135deg, #F95721, #E04612);
+  --magic-bubble-border: #F7F5F0;
+  --magic-active-icon: #FFFFFF;
+  --magic-inactive-icon: #6E6B66;
+  --magic-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+  --magic-spring: cubic-bezier(0.34, 1.45, 0.64, 1);
+}
+
+.dark {
+  --magic-bar-bg: #141517;
+  --magic-cutout-bg: #0E0E0E;
+  --magic-bubble-bg: linear-gradient(135deg, #D97755, #7F3922);
+  --magic-bubble-border: #0E0E0E;
+  --magic-active-icon: #FFFFFF;
+  --magic-inactive-icon: #8A8680;
+  --magic-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+}
+
+.magic-nav-wrapper {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.magic-nav-bar {
+  position: relative;
+  background: var(--magic-bar-bg);
+  box-shadow: var(--magic-shadow);
+  border-radius: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: background 0.3s ease;
+}
+
+.magic-indicator {
+  position: absolute;
+  top: -22px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--magic-bubble-bg);
+  border: 4.5px solid var(--magic-cutout-bg);
+  box-shadow: 0 8px 20px rgba(249, 87, 33, 0.35);
+  transition: transform 0.45s var(--magic-spring), background 0.3s ease, border-color 0.3s ease;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.magic-indicator::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -17px;
+  width: 17px;
+  height: 17px;
+  background: transparent;
+  border-top-right-radius: 17px;
+  box-shadow: 1px -8.5px 0 0 var(--magic-cutout-bg);
+  transition: box-shadow 0.3s ease;
+}
+
+.magic-indicator::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -17px;
+  width: 17px;
+  height: 17px;
+  background: transparent;
+  border-top-left-radius: 17px;
+  box-shadow: -1px -8.5px 0 0 var(--magic-cutout-bg);
+  transition: box-shadow 0.3s ease;
+}
+
+.magic-nav-icon {
+  transition: transform 0.45s var(--magic-spring), color 0.3s ease;
+}
+
+.magic-nav-item.active .magic-nav-icon {
+  transform: translateY(-21px);
+  color: var(--magic-active-icon) !important;
+  z-index: 20;
+}
+
