@@ -38,6 +38,7 @@ import {
   Lock,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useUserSession } from "@/contexts/UserSessionContext";
 import { EntityComments } from "@/components/comms/EntityComments";
 import { get, set } from "idb-keyval";
 import { QueueKanban, KanbanLead } from "./QueueKanban";
@@ -143,6 +144,7 @@ function formatDurationTimer(seconds: number): string {
 }
 
 function DesktopQueueMain() {
+  const { user: sessionUser, profile: sessionProfile } = useUserSession();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [totalPoolCount, setTotalPoolCount] = useState<number | null>(null);
   const [unassignedPoolCount, setUnassignedPoolCount] = useState<number>(0);
@@ -211,7 +213,7 @@ function DesktopQueueMain() {
     setActiveView("deck");
   };
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const notesInputRef = useRef<HTMLTextAreaElement>(null);
   const callActiveRef = useRef(callActive);
   const isDrawerOpenRef = useRef(isDrawerOpen);
@@ -320,86 +322,30 @@ function DesktopQueueMain() {
 
   const loadLeads = useCallback(
     async (scopeOverride?: QueueScope, silent: boolean = false) => {
-      if (!silent) setLoading(true);
+      // Don't flash loading spinner if we already have leads rendered (e.g. from instant cache)
+      if (!silent && leads.length === 0) setLoading(true);
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        let activeUser = sessionUser;
+        if (!activeUser) {
+          const { data } = await supabase.auth.getUser();
+          activeUser = data.user;
+        }
 
-        if (!user) {
+        if (!activeUser) {
           const cached = await get("cached_leads");
           if (cached && Array.isArray(cached)) setLeads(cached);
           if (!silent) setLoading(false);
           return;
         }
 
-        setCurrentUserId(user.id);
-
-        // 1. Fetch user role & admin name
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role, full_name")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        const role = profile?.role || "caller";
-        setUserRole(role);
-
-        // 2. Check total pool & unassigned counts (strictly excluding closed, dnc, not_interested, and interested)
-        const { count: poolCount } = await supabase
-          .from("leads")
-          .select("*", { count: "exact", head: true })
-          .is("deleted_at", null)
-          .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")');
-
-        setTotalPoolCount(poolCount || 0);
-
-        const { count: unassignedCount } = await supabase
-          .from("leads")
-          .select("*", { count: "exact", head: true })
-          .is("deleted_at", null)
-          .is("assigned_to", null)
-          .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")');
-
-        setUnassignedPoolCount(unassignedCount || 0);
-
-        // 4. For Managers/Admins: Fetch active callers list and count their assigned leads
-        if (role === "admin" || role === "manager") {
-          const { data: callers } = await supabase
-            .from("profiles")
-            .select("id, full_name")
-            .eq("role", "caller")
-            .eq("active", true)
-            .order("full_name", { ascending: true });
-
-          const { data: assignedLeadsData } = await supabase
-            .from("leads")
-            .select("assigned_to")
-            .is("deleted_at", null)
-            .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")')
-            .not("assigned_to", "is", null);
-
-          const counts: Record<string, number> = {};
-          (assignedLeadsData || []).forEach((l) => {
-            if (l.assigned_to) {
-              counts[l.assigned_to] = (counts[l.assigned_to] || 0) + 1;
-            }
-          });
-
-          setCallersList(
-            (callers || []).map((c) => ({
-              id: c.id,
-              full_name: c.full_name,
-              lead_count: counts[c.id] || 0,
-            }))
-          );
-        }
+        setCurrentUserId(activeUser.id);
+        const role = sessionProfile?.role || userRole;
+        if (sessionProfile?.role) setUserRole(sessionProfile.role);
 
         const activeScope = scopeOverride || queueScope;
         const nowIso = new Date().toISOString();
 
-        // 5. Build query based on role, mirror mode, and scope
-        // Strictly exclude not_interested, closed, dnc, and interested (deals/prospects)
+        // 1. Build prioritized query with sensible batch limit (.limit(60))
         const buildLeadQuery = (includeCooldown: boolean) => {
           let q = supabase
             .from("leads")
@@ -412,10 +358,10 @@ function DesktopQueueMain() {
           }
 
           if (role === "caller") {
-            q = q.eq("assigned_to", user.id);
+            q = q.eq("assigned_to", activeUser!.id);
           } else {
             if (activeScope === "mine") {
-              q = q.eq("assigned_to", user.id);
+              q = q.eq("assigned_to", activeUser!.id);
             } else if (activeScope === "unassigned") {
               q = q.is("assigned_to", null);
             } else if (activeScope === "assigned") {
@@ -428,12 +374,13 @@ function DesktopQueueMain() {
 
           return q
             .order("next_callback_at", { ascending: true, nullsFirst: false })
-            .order("score", { ascending: false });
-        }
+            .order("score", { ascending: false })
+            .limit(60);
+        };
 
+        // 2. Fetch the deck immediately
         let { data, error } = await buildLeadQuery(true);
         if (error && (error.message?.includes("cooldown_until") || error.code === "42703")) {
-          // Column does not exist yet prior to migration; retry without cooldown filter
           const retryRes = await buildLeadQuery(false);
           data = retryRes.data;
           error = retryRes.error;
@@ -441,9 +388,9 @@ function DesktopQueueMain() {
 
         if (error) throw error;
 
+        // 3. Immediately unblock the UI with the fresh deck
         if (data && data.length > 0) {
           setLeads(data);
-          // If silent refresh and user was viewing a lead, preserve current lead index if possible
           if (silent && currentLeadRef.current) {
             const preservedIdx = data.findIndex((l) => l.id === currentLeadRef.current?.id);
             if (preservedIdx !== -1) {
@@ -454,11 +401,49 @@ function DesktopQueueMain() {
           } else if (!silent) {
             setActiveLeadIndex(0);
           }
-          await set("cached_leads", data);
+          // Non-blocking background cache write
+          set("cached_leads", data).catch(() => {});
         } else {
           setLeads([]);
           setActiveLeadIndex(0);
         }
+
+        // 4. Background auxiliary counts (parallelized, non-blocking)
+        (async () => {
+          try {
+            const [poolRes, unassignedRes] = await Promise.all([
+              supabase
+                .from("leads")
+                .select("*", { count: "exact", head: true })
+                .is("deleted_at", null)
+                .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")'),
+              supabase
+                .from("leads")
+                .select("*", { count: "exact", head: true })
+                .is("deleted_at", null)
+                .is("assigned_to", null)
+                .not("status", "in", '("closed_won","closed_lost","dnc","not_interested","interested")'),
+            ]);
+
+            setTotalPoolCount(poolRes.count || 0);
+            setUnassignedPoolCount(unassignedRes.count || 0);
+
+            if (role === "admin" || role === "manager") {
+              const { data: callers } = await supabase
+                .from("profiles")
+                .select("id, full_name")
+                .eq("role", "caller")
+                .eq("active", true)
+                .order("full_name", { ascending: true });
+
+              if (callers) {
+                setCallersList(callers.map((c) => ({ id: c.id, full_name: c.full_name, lead_count: 0 })));
+              }
+            }
+          } catch {
+            // Non-blocking auxiliary stats
+          }
+        })();
       } catch (err: any) {
         console.warn("Fallback to offline cache:", err);
         const cached = await get("cached_leads");
@@ -467,11 +452,23 @@ function DesktopQueueMain() {
         if (!silent) setLoading(false);
       }
     },
-    [supabase, queueScope]
+    [supabase, queueScope, sessionUser, sessionProfile, leads.length, userRole]
   );
 
-  // Initial lead fetch and connectivity listeners
+  // Initial lead fetch with 0ms instant display from cache
   useEffect(() => {
+    let isMounted = true;
+
+    // Fast-path 0ms: Immediately show cached leads from IndexedDB if available
+    get("cached_leads")
+      .then((cached) => {
+        if (isMounted && Array.isArray(cached) && cached.length > 0) {
+          setLeads(cached);
+          setLoading(false); // Instantly dismiss spinner!
+        }
+      })
+      .catch(() => {});
+
     loadLeads();
 
     const handleOnline = () => {
@@ -489,6 +486,7 @@ function DesktopQueueMain() {
     }
 
     return () => {
+      isMounted = false;
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
