@@ -82,23 +82,8 @@ export async function getWebsitePreviewBySlug(slug: string): Promise<WebsitePrev
  * Increments view count and updates last_viewed_at timestamp.
  */
 export async function incrementPreviewViewCount(slug: string): Promise<void> {
-  const admin = getAdminClient();
-  const now = new Date().toISOString();
-
-  // Optimistic bump
-  const { data } = await admin
-    .from("website_previews")
-    .select("view_count")
-    .eq("slug", slug)
-    .single();
-
-  const newCount = (data?.view_count || 0) + 1;
-
-  await admin
-    .from("website_previews")
-    .update({
-      view_count: newCount,
-      last_viewed_at: now,
-    })
-    .eq("slug", slug);
+  const { error } = await getAdminClient().rpc("increment_preview_view", { p_slug: slug });
+  if (error) {
+    console.error("Failed to increment preview view count:", error);
+  }
 }

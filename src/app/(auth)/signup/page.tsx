@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ShieldAlert, CheckCircle2, ArrowRight, Loader2, KeyRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { QuantAuthBackground } from "@/components/auth/QuantAuthBackground";
 
 function SignupForm() {
   const searchParams = useSearchParams();
@@ -73,7 +74,7 @@ function SignupForm() {
   function handleManualTokenSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!tokenInput.trim()) return;
-    router.replace(`/signup?token=${encodeURIComponent(tokenInput.trim())}`);
+    router.replace(`/studio/signup?token=${encodeURIComponent(tokenInput.trim())}`);
     validateToken(tokenInput.trim());
   }
 
@@ -125,151 +126,175 @@ function SignupForm() {
     }
   }
 
-  return (
-    <div className="w-full max-w-md bg-background-card border border-border-subtle rounded-xl p-8 shadow-card">
-      <div className="flex items-center gap-2 mb-6">
-        <span className="w-2.5 h-2.5 rounded-full bg-accent-primary animate-pulse" />
-        <span className="text-sm font-mono tracking-wider uppercase text-text-primary">
-          Agency OS — Seat Onboarding
-        </span>
+  if (isValidating) {
+    return (
+      <div className="quant-login-card flex flex-col items-center justify-center gap-4 text-center">
+        <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
+        <p className="text-sm font-medium text-emerald-100">
+          Verifying invitation token...
+        </p>
       </div>
+    );
+  }
 
-      {isValidating ? (
-        <div className="flex flex-col items-center justify-center py-12 text-text-secondary gap-3">
-          <Loader2 className="w-6 h-6 animate-spin text-accent-primary" />
-          <p className="text-xs">Verifying invitation token...</p>
+  if (!activeToken || !inviteData) {
+    return (
+      <div className="quant-login-card">
+        <div className="quant-brand-badge" aria-hidden="true">
+          <span className="quant-pulse-dot" />
+          <span>AGENCY OS</span>
         </div>
-      ) : !activeToken || !inviteData ? (
-        <div className="space-y-4">
-          {inviteError && (
-            <div className="p-4 rounded-lg bg-feedback-error/10 border border-feedback-error/20 flex items-start gap-3 text-feedback-error">
-              <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
-              <div className="text-xs leading-relaxed">
-                <p className="font-semibold text-sm">Access Denied</p>
-                <p className="mt-1">{inviteError}</p>
-              </div>
-            </div>
-          )}
+        <h2>Seat Onboarding</h2>
+        <p className="quant-subtitle">
+          Registration is invite-only. Enter your assigned 16-character token below:
+        </p>
 
-          <div className="p-4 rounded-lg bg-background-elevated border border-border-subtle">
-            <h3 className="text-xs font-semibold text-text-primary flex items-center gap-2 mb-1.5">
-              <KeyRound className="w-4 h-4 text-accent-primary" />
-              Enter Invite Token
-            </h3>
-            <p className="text-[11px] text-text-muted leading-relaxed mb-3">
-              Seat registration is strictly invite-only. Paste your assigned 16-character token below:
-            </p>
-
-            <form onSubmit={handleManualTokenSubmit} className="space-y-3">
-              <input
-                type="text"
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-                placeholder="e.g. alipathan_c2026"
-                className="w-full px-3 py-2 bg-background-input border border-border-subtle focus:border-border-focus rounded-md text-xs font-mono text-text-primary placeholder:text-text-placeholder outline-none"
-              />
-              <button
-                type="submit"
-                disabled={!tokenInput.trim()}
-                className="w-full py-2 px-3 bg-accent-primary hover:bg-accent-hover text-background-base font-semibold text-xs uppercase tracking-wider rounded-md transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                Validate Token &rarr;
-              </button>
-            </form>
+        {inviteError && (
+          <div className="quant-error-alert flex items-center justify-center gap-2" role="alert">
+            <ShieldAlert className="w-4 h-4 shrink-0 text-red-300" />
+            <span>{inviteError}</span>
           </div>
+        )}
 
-          <div className="pt-2 text-center">
-            <Link
-              href="/login"
-              className="text-xs text-text-muted hover:text-text-primary transition-colors"
-            >
-              Already have an account? Sign in
-            </Link>
-          </div>
-        </div>
-      ) : (
-        <form onSubmit={handleSignup} className="space-y-4">
-          <div className="p-3.5 rounded-lg bg-accent-subtle border border-accent-border flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-accent-primary shrink-0" />
-            <div className="text-xs">
-              <p className="text-text-primary font-medium">Invited Email Verified</p>
-              <p className="text-text-secondary font-mono text-[11px]">{inviteData.email}</p>
-              <span className="inline-block mt-1 text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-background-base text-accent-primary border border-accent-border font-bold">
-                Assigned Role: {inviteData.role}
-              </span>
-            </div>
-          </div>
-
-          {formError && (
-            <div className="p-3 rounded bg-feedback-error/10 border border-feedback-error/20 text-feedback-error text-xs">
-              {formError}
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">
-              Full Name
-            </label>
+        <form onSubmit={handleManualTokenSubmit} className="space-y-4">
+          <div className="quant-input-box">
             <input
               type="text"
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              placeholder="e.g. alipathan_c2026"
+              className="font-mono"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               required
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="e.g. Ali Pathan"
-              className="w-full px-3 py-2 bg-background-input border border-border-subtle focus:border-border-focus rounded-md text-sm text-text-primary placeholder:text-text-placeholder outline-none"
+              autoFocus
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">
-              Set Account Password
-            </label>
-            <input
-              type="password"
-              required
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Minimum 6 characters"
-              className="w-full px-3 py-2 bg-background-input border border-border-subtle focus:border-border-focus rounded-md text-sm text-text-primary placeholder:text-text-placeholder outline-none"
-            />
+          <div className="quant-input-box">
+            <button
+              type="submit"
+              id="btn"
+              className="quant-btn"
+              disabled={!tokenInput.trim()}
+            >
+              <span>Validate Token</span>
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </button>
           </div>
 
+          <div className="quant-group">
+            <span className="text-xs text-emerald-100/70">Already have an account?</span>
+            <Link href="/studio/login" id="loginLink">
+              Sign In
+            </Link>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div className="quant-login-card quant-card-fluid">
+      <h2>Activate Seat</h2>
+
+      {/* Verified Email Banner */}
+      <div className="quant-badge-container flex-col items-start gap-1">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="font-semibold text-emerald-100">Invited Email Verified</span>
+        </div>
+        <div className="flex items-center justify-between w-full pt-1">
+          <span className="font-mono text-xs text-emerald-300">{inviteData.email}</span>
+          <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-500/30">
+            {inviteData.role}
+          </span>
+        </div>
+      </div>
+
+      {formError && (
+        <div className="quant-error-alert" role="alert">
+          {formError}
+        </div>
+      )}
+
+      <form onSubmit={handleSignup} className="space-y-3">
+        <div className="quant-input-box">
+          <input
+            type="text"
+            required
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            placeholder="Full Name (e.g. Ali Pathan)"
+            disabled={isSubmitting}
+          />
+        </div>
+
+        <div className="quant-input-box">
+          <input
+            type="password"
+            required
+            minLength={8}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Set Password (min. 8 characters)"
+            disabled={isSubmitting}
+          />
+        </div>
+
+        <div className="quant-input-box">
           <button
             type="submit"
+            id="btn"
+            className="quant-btn"
             disabled={isSubmitting}
-            className="w-full py-2.5 px-4 bg-accent-primary hover:bg-accent-hover active:bg-accent-active text-background-base font-semibold text-xs uppercase tracking-wider rounded-md flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Activating Seat...
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>Activating Seat...</span>
               </>
             ) : (
               <>
-                Complete Registration & Enter
-                <ArrowRight className="w-4 h-4" />
+                <span>Complete Registration & Enter</span>
+                <ArrowRight className="w-4 h-4 ml-1" />
               </>
             )}
           </button>
-        </form>
-      )}
+        </div>
+
+        <div className="quant-group">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveToken(null);
+              setInviteData(null);
+              router.replace("/studio/signup");
+            }}
+            className="text-xs text-emerald-200/80 hover:text-white underline bg-transparent border-none cursor-pointer p-0"
+          >
+            Use different token
+          </button>
+          <Link href="/studio/login">Back to Sign In</Link>
+        </div>
+      </form>
     </div>
   );
 }
 
 export default function SignupPage() {
   return (
-    <div className="min-h-screen bg-background-base flex items-center justify-center p-4">
+    <QuantAuthBackground>
       <Suspense
         fallback={
-          <div className="w-full max-w-md bg-background-card border border-border-subtle rounded-xl p-8 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 animate-spin text-accent-primary" />
+          <div className="quant-login-card flex items-center justify-center">
+            <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
           </div>
         }
       >
         <SignupForm />
       </Suspense>
-    </div>
+    </QuantAuthBackground>
   );
 }

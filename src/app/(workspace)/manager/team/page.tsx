@@ -162,10 +162,8 @@ function formatCallbackDate(isoString: string | null | undefined): { label: stri
 
 function generateTemporaryPassword(): string {
   const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  let randomPart = "";
-  for (let i = 0; i < 6; i++) {
-    randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
+  const bytes = crypto.getRandomValues(new Uint32Array(12));
+  const randomPart = Array.from(bytes, (n) => chars[n % chars.length]).join("");
   return `Pinsite-${randomPart}!`;
 }
 

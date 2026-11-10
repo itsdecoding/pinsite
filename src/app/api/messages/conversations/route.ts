@@ -131,7 +131,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ conversations });
   } catch (err: any) {
     console.error("Error fetching conversations:", err);
-    return NextResponse.json({ error: err.message || "Failed to fetch conversations" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch conversations" }, { status: 500 });
   }
 }
 
@@ -197,6 +197,6 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error("Error marking thread as read:", err);
-    return NextResponse.json({ error: err.message || "Failed to update thread read status" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to update thread read status" }, { status: 500 });
   }
 }

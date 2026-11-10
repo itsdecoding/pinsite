@@ -13,6 +13,7 @@ export function createClient() {
         path: "/",
         sameSite: "lax",
         maxAge: 400 * 24 * 60 * 60, // 400 days persistent auth cookie
+        secure: process.env.NODE_ENV === "production",
       },
     }
   );

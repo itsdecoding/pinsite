@@ -5,6 +5,8 @@ import { generateSiteBlueprintWithGemini } from "@/lib/preview/gemini";
 import { saveWebsitePreview, getWebsitePreviewBySlug } from "@/lib/preview/db";
 import { PreviewSiteData, ThemeId, FontPairingId } from "@/lib/preview/types";
 import { generateUniqueVanitySlug } from "@/lib/preview/slug";
+import { PREVIEW_THEMES } from "@/lib/preview/themes";
+import { FONT_PAIRINGS } from "@/lib/preview/fonts";
 
 export const dynamic = "force-dynamic";
 
@@ -83,10 +85,17 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { slug, theme, fontPairing, siteDataUpdates } = body;
+    const { slug, theme, fontPairing } = body;
 
     if (!slug) {
       return NextResponse.json({ error: "Missing required parameter: slug" }, { status: 400 });
+    }
+
+    if (
+      (theme && !Object.prototype.hasOwnProperty.call(PREVIEW_THEMES, theme)) ||
+      (fontPairing && !Object.prototype.hasOwnProperty.call(FONT_PAIRINGS, fontPairing))
+    ) {
+      return NextResponse.json({ error: "Invalid theme or font pairing" }, { status: 400 });
     }
 
     const existing = await getWebsitePreviewBySlug(slug);
@@ -100,7 +109,6 @@ export async function PATCH(req: NextRequest) {
       (fontPairing as FontPairingId) || (existing.font_pairing as FontPairingId);
     const updatedSiteData: PreviewSiteData = {
       ...existing.site_data,
-      ...siteDataUpdates,
       themeId: updatedTheme,
       fontPairingId: updatedFont,
     };
@@ -119,7 +127,7 @@ export async function PATCH(req: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://pinsite.pro";
@@ -134,7 +142,7 @@ export async function PATCH(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("Preview patch error:", error);
-    return NextResponse.json({ error: error.message || "Failed to patch preview" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to patch preview" }, { status: 500 });
   }
 }
 
@@ -192,6 +200,6 @@ export async function DELETE(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("Preview deletion error:", error);
-    return NextResponse.json({ error: error.message || "Failed to delete preview" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to delete preview" }, { status: 500 });
   }
 }

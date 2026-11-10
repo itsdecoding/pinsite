@@ -83,7 +83,14 @@ export const PREVIEW_THEMES: Record<ThemeId, ThemeConfig> = {
   },
 };
 
+const HEX_COLOR = /^#[0-9a-fA-F]{3,8}$/;
+
 export function resolveTheme(themeId: ThemeId, overrides?: Partial<ThemeConfig>): ThemeConfig {
   const base = PREVIEW_THEMES[themeId] || PREVIEW_THEMES["medical-mint"];
-  return { ...base, ...overrides };
+  const safeOverrides = Object.fromEntries(
+    Object.entries(overrides ?? {}).filter(
+      ([key, value]) => key !== "id" && key !== "name" && key in base && typeof value === "string" && HEX_COLOR.test(value)
+    )
+  );
+  return { ...base, ...safeOverrides };
 }

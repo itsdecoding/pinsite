@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminClient } from "@/lib/supabase/admin";
-import { createClient as createServerClient } from "@/lib/supabase/server";
-import crypto from "crypto";
+import { getAdminClient, verifyManagerSession } from "@/lib/supabase/admin";
+import { createHash, timingSafeEqual } from "crypto";
+
+const MAX_LEADS_PER_REQUEST = 1000;
 
 /**
  * Normalizes and formats lead names cleanly for data hygiene:
@@ -24,39 +25,14 @@ export async function POST(req: NextRequest) {
   try {
     const configuredApiKey = process.env.INGESTION_API_KEY;
 
-    let isAuthorized = false;
+    const managerSession = await verifyManagerSession(req);
+    let isAuthorized = !("error" in managerSession);
 
-    // Path A: Check for logged-in Manager or Admin user session (for browser CSV uploads)
-    try {
-      const serverSupabase = createServerClient();
-      const {
-        data: { user },
-      } = await serverSupabase.auth.getUser();
-
-      if (user) {
-        const admin = getAdminClient();
-        const { data: profile } = await admin
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        if (profile?.role === "admin" || profile?.role === "manager") {
-          isAuthorized = true;
-        }
-      }
-    } catch {
-      // Continue to check Bearer token
-    }
-
-    // Path B: Check for external ingestion API key (for automated scrapers)
-    if (!isAuthorized) {
-      const authHeader = req.headers.get("authorization");
-      const token = authHeader?.replace("Bearer ", "").trim();
-
-      if (configuredApiKey && token && token === configuredApiKey) {
-        isAuthorized = true;
-      }
+    if (!isAuthorized && configuredApiKey) {
+      const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() ?? "";
+      const expected = createHash("sha256").update(configuredApiKey).digest();
+      const provided = createHash("sha256").update(token).digest();
+      isAuthorized = token.length > 0 && timingSafeEqual(expected, provided);
     }
 
     if (!isAuthorized) {
@@ -79,6 +55,13 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const leadsRaw = Array.isArray(body) ? body : body.leads ? body.leads : [body];
+
+    if (leadsRaw.length > MAX_LEADS_PER_REQUEST) {
+      return NextResponse.json(
+        { error: `Too many leads in one request (max ${MAX_LEADS_PER_REQUEST})` },
+        { status: 413 }
+      );
+    }
 
     let invalidCount = 0;
     const candidates: Array<{
@@ -128,7 +111,7 @@ export async function POST(req: NextRequest) {
         normalizedPhone = rawPhone.startsWith("+") ? rawPhone : `+${digitsOnly}`;
       }
 
-      const phoneHash = crypto.createHash("sha256").update(normalizedPhone).digest("hex");
+      const phoneHash = createHash("sha256").update(normalizedPhone).digest("hex");
 
       candidates.push({
         lead,
@@ -213,7 +196,9 @@ export async function POST(req: NextRequest) {
 
       const niche = (lead.niche || "Dentist").trim();
       const rawWeb = lead.website ? String(lead.website).trim() : "";
-      const isMapsLink = !rawWeb || rawWeb.includes("google.com/maps") || rawWeb.includes("maps.google");
+      const hasUnsafeScheme = /^[a-z][a-z0-9+.-]*:/i.test(rawWeb) && !/^https?:\/\//i.test(rawWeb);
+      const isMapsLink =
+        !rawWeb || hasUnsafeScheme || rawWeb.includes("google.com/maps") || rawWeb.includes("maps.google");
       const cleanWebsite = isMapsLink ? null : rawWeb;
       const hasWebsite = Boolean(cleanWebsite && cleanWebsite.length > 0);
 
@@ -318,6 +303,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("Ingestion endpoint exception:", err);
-    return NextResponse.json({ error: err.message || "Failed to process lead batch" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to process lead batch" }, { status: 500 });
   }
 }

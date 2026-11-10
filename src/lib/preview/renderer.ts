@@ -13,31 +13,42 @@ function escapeHtml(str: string): string {
     .replace(/'/g, "&#039;");
 }
 
+function safeUrl(url: string): string {
+  const trimmed = url?.trim() ?? "";
+  return /^(https?:\/\/|\/(?!\/))/i.test(trimmed) ? trimmed : "#";
+}
+
+function sanitizeInlineHtml(html: string): string {
+  return escapeHtml(html).replace(/&lt;(\/?)(em|b|strong)&gt;|&lt;br\s*\/?&gt;/gi, (_m, slash, tag) =>
+    tag ? `<${slash}${tag.toLowerCase()}>` : "<br>"
+  );
+}
+
 export function renderPreviewHtml(data: PreviewSiteData): string {
   const theme = resolveTheme(data.themeId, data.customTheme);
   const font = resolveFontConfig(data.fontPairingId);
   const nicheImages = resolveNicheImages(data.niche);
 
-  const heroImg = data.hero.heroImageUrl || nicheImages.hero;
-  const tiltL = data.philosophy.tiltImageLeft || nicheImages.tilts[0];
-  const tiltR = data.philosophy.tiltImageRight || nicheImages.tilts[1];
-  const founderImg = data.founder.imageUrl || nicheImages.founder;
+  const heroImg = data.hero.heroImageUrl ? safeUrl(data.hero.heroImageUrl) : nicheImages.hero;
+  const tiltL = data.philosophy.tiltImageLeft ? safeUrl(data.philosophy.tiltImageLeft) : nicheImages.tilts[0];
+  const tiltR = data.philosophy.tiltImageRight ? safeUrl(data.philosophy.tiltImageRight) : nicheImages.tilts[1];
+  const founderImg = data.founder.imageUrl ? safeUrl(data.founder.imageUrl) : nicheImages.founder;
 
   const phoneRaw = data.phone.replace(/[^0-9+]/g, "");
   const waRaw = (data.whatsappNumber || data.phone).replace(/[^0-9]/g, "");
 
   const agencyBarEnabled = data.agencyBar?.enabled !== false;
-  const claimUrl =
-    data.agencyBar?.claimUrl ||
-    `https://wa.me/918080630000?text=${encodeURIComponent(
-      `Hi Pinsite, I reviewed the preview for ${data.businessName} and want to launch it.`
-    )}`;
+  const claimUrl = data.agencyBar?.claimUrl
+    ? safeUrl(data.agencyBar.claimUrl)
+    : `https://wa.me/918080630000?text=${encodeURIComponent(
+        `Hi Pinsite, I reviewed the preview for ${data.businessName} and want to launch it.`
+      )}`;
 
   // Render services
   const servicesHtml = (data.servicesSection.items || [])
     .slice(0, 9)
     .map((s, idx) => {
-      const sImg = s.imageUrl || nicheImages.services[idx % nicheImages.services.length];
+      const sImg = s.imageUrl ? safeUrl(s.imageUrl) : nicheImages.services[idx % nicheImages.services.length];
       return `
       <article class="t">
         <img class="t-img" src="${escapeHtml(sImg)}" alt="${escapeHtml(s.title)}" width="900" height="675" loading="lazy" decoding="async">
@@ -67,7 +78,7 @@ export function renderPreviewHtml(data: PreviewSiteData): string {
       const isFirst = i === 0 ? " first" : "";
       return `
       <li class="step${isFirst} reveal">
-        <span class="n">${st.stepNumber || i + 1}</span>
+        <span class="n">${escapeHtml(String(st.stepNumber || i + 1))}</span>
         <h3>${escapeHtml(st.title)}</h3>
         <p>${escapeHtml(st.description)}</p>
       </li>`;
@@ -522,7 +533,7 @@ ${
     <figure class="tilt r reveal"><img src="${escapeHtml(tiltR)}" alt="${escapeHtml(data.businessName)} Facility" loading="lazy"></figure>
   </div>
   <div class="wrap">
-    <p class="statement reveal">${data.philosophy.statementHtml}</p>
+    <p class="statement reveal">${sanitizeInlineHtml(data.philosophy.statementHtml)}</p>
     <a class="btn btn-ink reveal" href="#founder">
       <span class="dot"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
       <span>${escapeHtml(data.philosophy.ctaText || "Meet Our Team")}</span>

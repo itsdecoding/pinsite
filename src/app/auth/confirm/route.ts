@@ -7,10 +7,14 @@ export async function GET(request: NextRequest) {
   const token_hash = searchParams.get("token_hash");
   const code = searchParams.get("code");
   const type = (searchParams.get("type") as EmailOtpType) || "recovery";
-  const next = searchParams.get("next") || "/studio/reset-password";
+  const requestedNext = searchParams.get("next");
+  const next =
+    requestedNext && /^\/(?![/\\])/.test(requestedNext) ? requestedNext : "/studio/reset-password";
 
-  // Target redirect URL on current request origin
   const redirectUrl = new URL(next, request.url);
+  if (redirectUrl.origin !== new URL(request.url).origin) {
+    redirectUrl.href = new URL("/studio/reset-password", request.url).href;
+  }
 
   const cookiesToSet: { name: string; value: string; options?: CookieOptions }[] = [];
 
@@ -43,6 +47,7 @@ export async function GET(request: NextRequest) {
           path: "/",
           sameSite: "lax",
           maxAge: 400 * 24 * 60 * 60,
+          secure: process.env.NODE_ENV === "production",
           ...options,
         });
       });
@@ -68,6 +73,7 @@ export async function GET(request: NextRequest) {
           path: "/",
           sameSite: "lax",
           maxAge: 400 * 24 * 60 * 60,
+          secure: process.env.NODE_ENV === "production",
           ...options,
         });
       });

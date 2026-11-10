@@ -9,6 +9,7 @@ export async function POST(req: NextRequest) {
     // 1. Authenticate user session via Supabase server client (cookies) or Bearer token
     let activeUser = null;
     let userToken: string | null = null;
+    let signOutScope: "global" | "others" = "global";
 
     const authHeader = req.headers.get("authorization");
     if (authHeader?.startsWith("Bearer ")) {
@@ -22,11 +23,18 @@ export async function POST(req: NextRequest) {
 
     if (!activeUser) {
       try {
-        const serverSupabase = createServerClient();
+        const serverSupabase = await createServerClient();
         const {
           data: { user: cookieUser },
         } = await serverSupabase.auth.getUser();
         activeUser = cookieUser;
+        if (cookieUser) {
+          const {
+            data: { session },
+          } = await serverSupabase.auth.getSession();
+          userToken = session?.access_token ?? null;
+          signOutScope = "others";
+        }
       } catch {
         activeUser = null;
       }
@@ -55,7 +63,7 @@ export async function POST(req: NextRequest) {
     // 2. Invalidate all previous active sessions globally across all devices
     if (userToken) {
       try {
-        await admin.auth.admin.signOut(userToken, "global");
+        await admin.auth.admin.signOut(userToken, signOutScope);
       } catch (signOutErr) {
         console.warn("Could not globally terminate previous sessions:", signOutErr);
       }
@@ -103,7 +111,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Reset-password handler error:", err);
     return NextResponse.json(
-      { error: err.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

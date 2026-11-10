@@ -5,6 +5,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
+import { secretsMatch } from "../_shared/secretsMatch.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -110,7 +111,13 @@ serve(async (req: Request) => {
 
     // 1. Validate x-dispatch-secret
     const secretHeader = req.headers.get("x-dispatch-secret");
-    if (!secretHeader || (expectedSecret && secretHeader !== expectedSecret)) {
+    if (!expectedSecret) {
+      return new Response(JSON.stringify({ error: "Dispatch secret is not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!secretHeader || !(await secretsMatch(secretHeader, expectedSecret))) {
       return new Response(JSON.stringify({ error: "Unauthorized: Invalid dispatch secret" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ invites: data || [] });
   } catch (err: any) {
     console.error("Failed to fetch invites:", err);
-    return NextResponse.json({ error: err.message || "Failed to fetch invites" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch invites" }, { status: 500 });
   }
 }
 
@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ invite: inviteRecord }, { status: 201 });
   } catch (err: any) {
     console.error("Invite generation error:", err);
-    return NextResponse.json({ error: err.message || "Failed to generate invite" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to generate invite" }, { status: 500 });
   }
 }
 
@@ -176,6 +176,6 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Failed to delete invite" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to delete invite" }, { status: 500 });
   }
 }

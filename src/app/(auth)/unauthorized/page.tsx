@@ -2,11 +2,12 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ShieldX, ArrowRight, Home } from "lucide-react";
+import { ShieldX, ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { QuantAuthBackground } from "@/components/auth/QuantAuthBackground";
 
 export default function UnauthorizedPage() {
-  const [targetPath, setTargetPath] = useState("/queue");
+  const [targetPath, setTargetPath] = useState("/studio/queue");
   const [role, setRole] = useState<string>("caller");
   const supabase = createClient();
 
@@ -26,43 +27,41 @@ export default function UnauthorizedPage() {
       const userRole = profile?.role || "caller";
       setRole(userRole);
 
-      if (userRole === "caller") setTargetPath("/queue");
-      else if (userRole === "developer") setTargetPath("/projects");
-      else setTargetPath("/dashboard");
+      if (userRole === "caller") setTargetPath("/studio/queue");
+      else if (userRole === "developer") setTargetPath("/studio/projects");
+      else setTargetPath("/studio/dashboard");
     }
 
     determineRole();
   }, []);
 
   return (
-    <div className="min-h-screen bg-background-base flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-background-card border border-border-subtle rounded-xl p-8 shadow-card text-center">
-        <div className="w-12 h-12 rounded-full bg-feedback-error/10 border border-feedback-error/20 flex items-center justify-center mx-auto mb-4 text-feedback-error">
-          <ShieldX className="w-6 h-6" />
+    <QuantAuthBackground>
+      <div className="quant-login-card text-center">
+        <div className="w-14 h-14 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center mx-auto mb-4 text-red-300">
+          <ShieldX className="w-7 h-7" />
         </div>
 
-        <h1 className="text-lg font-bold text-text-primary">403 — Unauthorized View</h1>
-        <p className="text-xs text-text-secondary mt-2 mb-6">
-          Your active role (<span className="font-mono text-accent-primary">{role}</span>) does not have authorization to access this segment.
+        <h2>Access Denied</h2>
+        <p className="quant-subtitle">
+          Your active role (<span className="font-mono text-emerald-300 font-bold">{role}</span>) does not have authorization to access this area.
         </p>
 
-        <div className="space-y-3">
-          <Link
-            href={targetPath}
-            className="w-full py-2.5 px-4 bg-accent-primary hover:bg-accent-hover text-background-base font-semibold text-xs uppercase tracking-wider rounded-md flex items-center justify-center gap-2 transition-colors"
-          >
-            <span>Return to Assigned Workspace</span>
-            <ArrowRight className="w-4 h-4" />
+        <div className="quant-input-box mb-4">
+          <Link href={targetPath} className="text-decoration-none">
+            <button type="button" className="quant-btn">
+              <span>Return to Workspace</span>
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </button>
           </Link>
+        </div>
 
-          <Link
-            href="/login"
-            className="w-full py-2 px-4 bg-background-surface hover:bg-background-elevated text-text-secondary text-xs rounded-md flex items-center justify-center gap-2 border border-border-subtle transition-colors"
-          >
+        <div className="quant-group justify-center">
+          <Link href="/studio/login" id="switchAccountLink">
             Switch Account
           </Link>
         </div>
       </div>
-    </div>
+    </QuantAuthBackground>
   );
 }

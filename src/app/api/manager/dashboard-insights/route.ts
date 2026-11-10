@@ -319,7 +319,7 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     console.error("Dashboard insights error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to calculate dashboard insights" },
+      { error: "Failed to calculate dashboard insights" },
       { status: 500 }
     );
   }

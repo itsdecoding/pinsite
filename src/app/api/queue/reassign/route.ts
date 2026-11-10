@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Lead reassignment error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to reassign lead" },
+      { error: "Failed to reassign lead" },
       { status: 500 }
     );
   }

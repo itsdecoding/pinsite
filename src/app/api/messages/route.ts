@@ -4,6 +4,21 @@ import { getAdminClient, getAuthenticatedUser } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
+const ATTACHMENT_URL_PREFIX = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/comms-attachments/`;
+
+function sanitizeAttachments(input: unknown) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .filter((a) => a && typeof a.url === "string" && a.url.startsWith(ATTACHMENT_URL_PREFIX))
+    .slice(0, 10)
+    .map((a) => ({
+      type: a.type === "image" ? "image" : "file",
+      url: a.url as string,
+      name: String(a.name ?? "attachment").slice(0, 255),
+      size: String(a.size ?? "").slice(0, 32),
+    }));
+}
+
 export async function GET(req: NextRequest) {
   try {
     const auth = await getAuthenticatedUser(req);
@@ -96,7 +111,7 @@ export async function GET(req: NextRequest) {
     }
   } catch (err: any) {
     console.error("Failed to fetch messages:", err);
-    return NextResponse.json({ error: err.message || "Failed to fetch messages" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch messages" }, { status: 500 });
   }
 }
 
@@ -150,7 +165,7 @@ export async function POST(req: NextRequest) {
           thread_id,
           sender_id: senderId,
           body: messageBody.trim(),
-          attachments: Array.isArray(attachments) ? attachments : [],
+          attachments: sanitizeAttachments(attachments),
         })
         .select(`
           id,
@@ -224,7 +239,7 @@ export async function POST(req: NextRequest) {
           sender_id: senderId,
           body: messageBody.trim(),
           parent_message_id: parent_message_id || null,
-          attachments: Array.isArray(attachments) ? attachments : [],
+          attachments: sanitizeAttachments(attachments),
         })
         .select(`
           id,
@@ -244,7 +259,7 @@ export async function POST(req: NextRequest) {
       // Dispatch in-app notifications for @mentions
       try {
         if (messageBody.includes("@")) {
-          const isAtAll = /@all\b/i.test(messageBody);
+          const isAtAll = /@all\b/i.test(messageBody) && (role === "manager" || role === "admin");
           const { data: activeProfiles } = await admin
             .from("profiles")
             .select("id, full_name")
@@ -303,7 +318,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (err: any) {
     console.error("Failed to dispatch message:", err);
-    return NextResponse.json({ error: err.message || "Failed to dispatch message" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to dispatch message" }, { status: 500 });
   }
 }
 
@@ -356,7 +371,7 @@ export async function PATCH(req: NextRequest) {
     if (error) throw error;
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Failed to update message" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to update message" }, { status: 500 });
   }
 }
 
@@ -406,6 +421,6 @@ export async function DELETE(req: NextRequest) {
     if (error) throw error;
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Failed to delete message" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to delete message" }, { status: 500 });
   }
 }

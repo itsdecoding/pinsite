@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const serverSupabase = createServerClient();
+    const serverSupabase = await createServerClient();
     const {
       data: { user },
     } = await serverSupabase.auth.getUser();

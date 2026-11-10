@@ -7,6 +7,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
+import { secretsMatch } from "../_shared/secretsMatch.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,7 +41,13 @@ serve(async (req: Request) => {
     const authHeader = req.headers.get("Authorization");
     const token = authHeader?.replace("Bearer ", "").trim();
 
-    if (!token || (configuredApiKey && token !== configuredApiKey)) {
+    if (!configuredApiKey) {
+      return new Response(JSON.stringify({ error: "Ingestion API key is not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!token || !(await secretsMatch(token, configuredApiKey))) {
       return new Response(JSON.stringify({ error: "Unauthorized: Invalid ingestion API key" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -164,13 +171,16 @@ serve(async (req: Request) => {
       }
 
       const score = typeof lead.score === "number" ? Math.min(100, Math.max(0, lead.score)) : 75;
-      const hasWebsite = Boolean(lead.website && lead.website.trim().length > 4);
+      const rawWebsite = lead.website?.trim() ?? "";
+      const hasUnsafeScheme = /^[a-z][a-z0-9+.-]*:/i.test(rawWebsite) && !/^https?:\/\//i.test(rawWebsite);
+      const website = rawWebsite && !hasUnsafeScheme ? rawWebsite : null;
+      const hasWebsite = Boolean(website && website.length > 4);
 
       const { error: insertError } = await supabase.from("leads").insert({
         name: lead.name.trim(),
         phone: lead.phone.trim(),
         normalized_phone: normalizedPhone,
-        website: lead.website || null,
+        website,
         has_website: hasWebsite,
         address: lead.address || null,
         niche: lead.niche.trim(),

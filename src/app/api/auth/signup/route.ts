@@ -1,18 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    if (await isRateLimited(`signup:${getClientIp(req)}`, 10, 3600)) {
+      return NextResponse.json({ error: "Too many attempts. Please try again later." }, { status: 429 });
+    }
+
     const supabase = getAdminClient();
 
     const body = await req.json();
     const { token, full_name, password } = body;
 
-    if (!token || !password || password.length < 6) {
+    if (!token || typeof password !== "string" || password.length < 8) {
       return NextResponse.json(
-        { error: "Token and a secure password (min 6 characters) are required" },
+        { error: "Token and a secure password (min 8 characters) are required" },
         { status: 400 }
       );
     }
@@ -47,6 +52,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const { data: claimedInvite } = await supabase
+      .from("invites")
+      .update({ accepted_at: new Date().toISOString() })
+      .eq("id", invite.id)
+      .is("accepted_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (!claimedInvite) {
+      return NextResponse.json(
+        { error: "This invitation has already been accepted." },
+        { status: 400 }
+      );
+    }
+
+    const releaseInvite = () =>
+      supabase.from("invites").update({ accepted_at: null }).eq("id", invite.id).is("accepted_by", null);
+
     // 2. Create user in Supabase Auth with auto email confirmation
     const { data: authData, error: createError } = await supabase.auth.admin.createUser({
       email: invite.email,
@@ -59,6 +82,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (createError) {
+      await releaseInvite();
       if (
         createError.message?.toLowerCase().includes("already") ||
         createError.message?.toLowerCase().includes("exists")
@@ -92,13 +116,10 @@ export async function POST(req: NextRequest) {
       console.warn("Profile upsert warning:", profileError);
     }
 
-    // 4. Mark invite as accepted
+    // 4. Record who accepted the invite
     const { error: consumeError } = await supabase
       .from("invites")
-      .update({
-        accepted_at: new Date().toISOString(),
-        accepted_by: userId,
-      })
+      .update({ accepted_by: userId })
       .eq("id", invite.id);
 
     if (consumeError) {
@@ -113,7 +134,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Signup onboarding error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to complete registration" },
+      { error: "Failed to complete registration" },
       { status: 500 }
     );
   }

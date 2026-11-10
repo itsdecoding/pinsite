@@ -85,7 +85,7 @@ BEGIN
       '00000000-0000-0000-0000-000000000001',
       '00000000-0000-0000-0000-000000000000',
       'bot@pinsite.pro',
-      crypt('PinsiteBotInternal2026!', gen_salt('bf')),
+      crypt(gen_random_uuid()::text, gen_salt('bf')),
       NOW(),
       '{"provider":"email","providers":["email"]}'::jsonb,
       '{"full_name":"Pinsite Bot"}'::jsonb,

@@ -220,7 +220,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Distribute endpoint exception:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to distribute leads" },
+      { error: "Failed to distribute leads" },
       { status: 500 }
     );
   }

@@ -66,6 +66,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ thread_id: newThread.id }, { status: 201 });
   } catch (err: any) {
     console.error("Error creating/getting DM thread:", err);
-    return NextResponse.json({ error: err.message || "Failed to resolve DM thread" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to resolve DM thread" }, { status: 500 });
   }
 }

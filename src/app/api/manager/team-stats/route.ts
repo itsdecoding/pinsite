@@ -382,7 +382,7 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     console.error("Team stats error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to retrieve team stats" },
+      { error: "Failed to retrieve team stats" },
       { status: 500 }
     );
   }

@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
 
     if (updateError) {
       console.error("Failed to update profile role:", updateError);
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     // Keep auth.users user_metadata.role in sync with profiles.role
@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Error in role update endpoint:", err);
     return NextResponse.json(
-      { error: err?.message || "Internal server error updating role" },
+      { error: "Internal server error updating role" },
       { status: 500 }
     );
   }

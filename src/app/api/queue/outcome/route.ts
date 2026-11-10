@@ -52,11 +52,11 @@ export async function POST(req: NextRequest) {
 
     // 4. Role Authorization Check:
     // - Managers and Admins can update any lead
-    // - Callers can update their assigned leads, or unassigned leads (which auto-claims it)
+    // - Callers can update only leads assigned to them
     const isManagerOrAdmin = profile.role === "manager" || profile.role === "admin";
-    if (!isManagerOrAdmin && lead.assigned_to && lead.assigned_to !== user.id) {
+    if (!isManagerOrAdmin && (profile.role !== "caller" || lead.assigned_to !== user.id)) {
       return NextResponse.json(
-        { error: "Forbidden: Lead is assigned to another team member" },
+        { error: "Forbidden: Lead is not assigned to you" },
         { status: 403 }
       );
     }
@@ -243,7 +243,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Error logging call outcome:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to log outcome" },
+      { error: "Failed to log outcome" },
       { status: 500 }
     );
   }

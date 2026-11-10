@@ -5,6 +5,7 @@ const PERSISTENT_COOKIE_OPTIONS: CookieOptions = {
   path: "/",
   sameSite: "lax",
   maxAge: 400 * 24 * 60 * 60, // 400 days (maximum Chrome/Safari cookie expiration)
+  secure: process.env.NODE_ENV === "production",
 };
 
 /**
@@ -112,30 +113,25 @@ export async function updateSession(request: NextRequest) {
 
   // If authenticated user is on public routes (login/signup without token, or /studio), redirect to their workspace
   if (user) {
-    // 1. Fetch profile columns (role, active, require_password_change)
-    // Fast path: if role is present in session JWT user_metadata, read it in 0ms without querying the profiles table
-    let role: string | null = (user.user_metadata?.role as string) || (user.app_metadata?.role as string) || null;
-    let isActive = true;
+    // Role is read only from profiles: user_metadata is user-writable and must never grant access.
+    let role: string | null = null;
     let requirePasswordChange = Boolean(user.user_metadata?.require_password_change);
 
-    if (!role) {
-      try {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role, active, require_password_change")
-          .eq("id", user.id)
-          .maybeSingle();
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, require_password_change")
+        .eq("id", user.id)
+        .maybeSingle();
 
-        if (profile) {
-          if (profile.role) role = profile.role;
-          isActive = profile.active !== false;
-          if (profile.require_password_change) {
-            requirePasswordChange = true;
-          }
+      if (profile) {
+        role = profile.role ?? null;
+        if (profile.require_password_change) {
+          requirePasswordChange = true;
         }
-      } catch (e) {
-        console.warn("Middleware profile lookup failed, falling back to session metadata:", e);
       }
+    } catch (e) {
+      console.warn("Middleware profile lookup failed:", e);
     }
 
     if (requirePasswordChange) {

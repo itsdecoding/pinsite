@@ -421,8 +421,6 @@ DROP TRIGGER IF EXISTS trg_set_updated_at_scores_daily ON public.scores_daily;
 CREATE TRIGGER trg_set_updated_at_scores_daily BEFORE UPDATE ON public.scores_daily FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 -- Helper: Current User Role (Optimized RLS Helper)
--- Evaluates directly against JWT user_metadata in 0ms when present,
--- or cleanly evaluates (SELECT role FROM public.profiles WHERE id = auth.uid()) without per-row table scans.
 CREATE OR REPLACE FUNCTION public.current_user_role()
 RETURNS user_role
 LANGUAGE sql
@@ -430,19 +428,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-  SELECT COALESCE(
-    CASE 
-      WHEN (NULLIF(current_setting('request.jwt.claims', true), '')::jsonb->'user_metadata'->>'role') IN ('caller', 'developer', 'manager', 'admin')
-      THEN (NULLIF(current_setting('request.jwt.claims', true), '')::jsonb->'user_metadata'->>'role')::user_role
-      ELSE NULL
-    END,
-    CASE 
-      WHEN (NULLIF(current_setting('request.jwt.claim.user_metadata', true), '')::jsonb->>'role') IN ('caller', 'developer', 'manager', 'admin')
-      THEN (NULLIF(current_setting('request.jwt.claim.user_metadata', true), '')::jsonb->>'role')::user_role
-      ELSE NULL
-    END,
-    (SELECT role FROM public.profiles WHERE id = auth.uid())
-  );
+  SELECT role FROM public.profiles WHERE id = auth.uid();
 $$;
 
 -- Decoupled RLS Helper: Is Channel Member (Zero Recursion)

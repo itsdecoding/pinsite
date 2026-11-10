@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { getAdminClient, getAuthenticatedUser } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
+
+const MAX_FILES = 10;
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_TYPES: Record<string, string[]> = {
+  "image/png": ["png"],
+  "image/jpeg": ["jpg", "jpeg"],
+  "image/gif": ["gif"],
+  "image/webp": ["webp"],
+  "application/pdf": ["pdf"],
+  "text/plain": ["txt"],
+};
+
+function isAllowedFile(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  return ALLOWED_TYPES[file.type]?.includes(extension) && file.size > 0 && file.size <= MAX_FILE_BYTES;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,6 +43,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (files.length > MAX_FILES) {
+      return NextResponse.json({ error: `You can upload up to ${MAX_FILES} files at once` }, { status: 400 });
+    }
+
+    const rejected = files.find((file) => !isAllowedFile(file));
+    if (rejected) {
+      return NextResponse.json(
+        { error: `"${rejected.name}" is not allowed. Use PNG, JPG, GIF, WEBP, PDF or TXT up to 10 MB.` },
+        { status: 400 }
+      );
+    }
+
     const admin = getAdminClient();
     const uploadedAttachments: {
       type: "image" | "file";
@@ -40,18 +69,18 @@ export async function POST(req: NextRequest) {
 
       const isImage = file.type.startsWith("image/");
       const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const storagePath = `${authenticatedUserId}/${Date.now()}-${sanitizedName}`;
+      const storagePath = `${authenticatedUserId}/${randomUUID()}-${sanitizedName}`;
 
       const { error: uploadError } = await admin.storage
         .from("comms-attachments")
         .upload(storagePath, buffer, {
-          contentType: file.type || "application/octet-stream",
-          upsert: true,
+          contentType: file.type,
+          upsert: false,
         });
 
       if (uploadError) {
         console.error("Storage upload error:", uploadError);
-        throw new Error(uploadError.message || "Failed to upload file to storage");
+        throw new Error("Failed to upload file to storage");
       }
 
       const {
@@ -72,7 +101,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Attachment upload failed:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to upload attachment" },
+      { error: "Failed to upload attachment" },
       { status: 500 }
     );
   }

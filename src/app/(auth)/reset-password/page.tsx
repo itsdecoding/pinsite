@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { QuantAuthBackground } from "@/components/auth/QuantAuthBackground";
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -336,19 +337,9 @@ function ResetPasswordForm() {
   }
 
   return (
-    <div className="w-full max-w-md bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl p-8 shadow-card dark:shadow-islandDark">
-      {/* Brand Header */}
-      <div className="flex items-center gap-2 mb-2">
-        <span className="w-2.5 h-2.5 rounded-full bg-[#F95721] animate-pulse" />
-        <span className="text-sm font-mono tracking-wider uppercase text-[#111110] dark:text-[#F5F3EF] font-bold">
-          Pinsite
-        </span>
-      </div>
-
-      <h1 className="text-xl font-bold tracking-tight text-[#111110] dark:text-[#F5F3EF]">
-        Set New Password
-      </h1>
-      <p className="text-xs text-[#6E6B66] dark:text-[#8A8680] mt-1 mb-6">
+    <div className="quant-login-card quant-card-fluid">
+      <h2>Set New Password</h2>
+      <p className="quant-subtitle">
         Create a secure password for your operator account.
       </p>
 
@@ -568,34 +559,37 @@ function ResetPasswordForm() {
           </div>
 
           {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={!isFormValid || isLoading || !sessionReady || isVerifyingSession}
-            className="w-full py-2.5 px-4 bg-[#F95721] hover:bg-[#E04612] active:bg-[#C83B0D] text-white font-semibold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Updating Password...
-              </>
-            ) : (
-              <>
-                <span>Update Password</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
+          <div className="quant-input-box">
+            <button
+              type="submit"
+              id="btn"
+              disabled={!isFormValid || isLoading || !sessionReady || isVerifyingSession}
+              className="quant-btn"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Updating Password...</span>
+                </>
+              ) : (
+                <>
+                  <span>Update Password</span>
+                  <ArrowRight className="w-4 h-4 ml-1" />
+                </>
+              )}
+            </button>
+          </div>
         </form>
       )}
 
       {/* Footer Link */}
-      <div className="mt-6 pt-5 border-t border-[#ECE8E1] dark:border-[#2D2924] flex items-center justify-center text-xs">
-        <span className="text-[#6E6B66] dark:text-[#8A8680] mr-1.5">
+      <div className="quant-group mt-4 pt-3 border-t border-emerald-500/20">
+        <span className="text-xs text-emerald-100/70">
           Already know your password?
         </span>
         <Link
-          href="/login"
-          className="text-[#F95721] hover:underline font-medium inline-flex items-center gap-1"
+          href="/studio/login"
+          id="loginLink"
         >
           Log in
         </Link>
@@ -606,17 +600,17 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="min-h-screen bg-[#F7F5F0] dark:bg-[#141210] flex items-center justify-center p-4 selection:bg-[#F95721]/20">
+    <QuantAuthBackground>
       <Suspense
         fallback={
-          <div className="w-full max-w-md bg-white dark:bg-[#1C1A17] border border-[#ECE8E1] dark:border-[#2D2924] rounded-2xl p-8 flex flex-col items-center justify-center gap-3">
-            <Loader2 className="w-6 h-6 animate-spin text-[#F95721]" />
-            <p className="text-xs text-[#6E6B66] dark:text-[#8A8680]">Loading reset form...</p>
+          <div className="quant-login-card flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
+            <p className="text-xs text-emerald-100">Loading reset form...</p>
           </div>
         }
       >
         <ResetPasswordForm />
       </Suspense>
-    </div>
+    </QuantAuthBackground>
   );
 }

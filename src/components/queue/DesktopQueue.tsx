@@ -964,7 +964,7 @@ function DesktopQueueMain() {
                     currentLead.website?.includes("maps.app.goo.gl") ||
                     currentLead.website?.includes("goo.gl/maps");
 
-                  const mapsUrl = isMapsUrl
+                  const mapsUrl = isMapsUrl && /^https:\/\//i.test(currentLead.website!)
                     ? currentLead.website!
                     : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
                         `${currentLead.name} ${currentLead.address || currentLead.area || ""}`

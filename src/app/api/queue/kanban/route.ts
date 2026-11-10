@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     const filterNiche = searchParams.get("niche")?.trim();
     const filterArea = searchParams.get("area")?.trim();
     const filterCaller = searchParams.get("caller_id")?.trim();
-    const searchQuery = searchParams.get("search")?.trim();
+    const searchQuery = searchParams.get("search")?.replace(/[,()*%\\"]/g, " ").trim();
     const targetCap = Number(searchParams.get("target_cap")) || 100;
 
     const admin = getAdminClient();
@@ -241,7 +241,7 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     console.error("Queue Kanban API error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to load Kanban board data" },
+      { error: "Failed to load Kanban board data" },
       { status: 500 }
     );
   }

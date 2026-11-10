@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Task creation error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to create task" },
+      { error: "Failed to create task" },
       { status: 500 }
     );
   }
@@ -121,7 +121,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error("Task deletion error:", err);
-    return NextResponse.json({ error: err.message || "Failed to delete task" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to delete task" }, { status: 500 });
   }
 }
 

@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       console.error("Failed to query user FCM tokens:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     return NextResponse.json({
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("GET FCM tokens error:", err);
-    return NextResponse.json({ error: err?.message || "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -82,13 +82,13 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error("Failed to upsert FCM token:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, message: "Token registered successfully" });
   } catch (err: any) {
     console.error("FCM token registration error:", err);
-    return NextResponse.json({ error: err?.message || "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -120,7 +120,7 @@ export async function DELETE(req: NextRequest) {
 
       if (error) {
         console.error("Failed to delete FCM token:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
       }
     } else {
       // Delete all tokens for this user
@@ -131,13 +131,13 @@ export async function DELETE(req: NextRequest) {
 
       if (error) {
         console.error("Failed to delete all FCM tokens for user:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
       }
     }
 
     return NextResponse.json({ success: true, message: "Notifications unregistered successfully" });
   } catch (err: any) {
     console.error("FCM token removal error:", err);
-    return NextResponse.json({ error: err?.message || "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

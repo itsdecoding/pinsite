@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
       .eq("user_id", user.id);
 
     if (tokenError) {
-      return NextResponse.json({ error: tokenError.message }, { status: 500 });
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     if (!tokens || tokens.length === 0) {
@@ -53,6 +53,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("Test notification dispatch error:", err);
-    return NextResponse.json({ error: err?.message || "Failed to dispatch test notification" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to dispatch test notification" }, { status: 500 });
   }
 }

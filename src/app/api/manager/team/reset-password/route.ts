@@ -46,6 +46,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const { data: targetProfile } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", userId.trim())
+      .maybeSingle();
+
+    if (targetProfile?.role === "admin" && authResult.role !== "admin") {
+      return NextResponse.json(
+        { error: "Only admins can reset an admin's password" },
+        { status: 403 }
+      );
+    }
+
     // Update password in Supabase Auth
     const { error: updateAuthError } = await admin.auth.admin.updateUserById(userId.trim(), {
       password: tempPassword,
@@ -84,7 +97,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Manager reset-password error:", err);
     return NextResponse.json(
-      { error: err.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

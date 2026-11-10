@@ -52,7 +52,7 @@ export async function verifyApiSession(
 ): Promise<VerifyApiSessionResult> {
   let user: User | null = null;
   try {
-    const serverSupabase = createServerClient();
+    const serverSupabase = await createServerClient();
     const { data } = await serverSupabase.auth.getUser();
     user = data.user;
   } catch {
@@ -80,11 +80,15 @@ export async function verifyApiSession(
 
   const { data: profile } = await admin
     .from("profiles")
-    .select("id, role, full_name")
+    .select("id, role, full_name, active, deleted_at")
     .eq("id", user.id)
     .maybeSingle();
 
-  const role = profile?.role || "caller";
+  if (!profile || profile.active === false || profile.deleted_at) {
+    return { error: "Forbidden: Account is inactive", status: 403 };
+  }
+
+  const role = profile.role || "caller";
   const fullName = profile?.full_name || "Team Member";
 
   if (options?.requiredRoles && options.requiredRoles.length > 0) {

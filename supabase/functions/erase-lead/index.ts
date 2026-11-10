@@ -19,6 +19,28 @@ serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim();
+    const { data: authData } = token ? await supabase.auth.getUser(token) : { data: { user: null } };
+    if (!authData.user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", authData.user.id)
+      .maybeSingle();
+
+    if (!profile || !["manager", "admin"].includes(profile.role)) {
+      return new Response(JSON.stringify({ error: "Forbidden: Manager or Admin role required" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const body = await req.json();
     const leadId = body.lead_id;
 

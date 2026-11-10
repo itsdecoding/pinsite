@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@200;300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -244,4 +245,869 @@ button:focus-visible {
   color: var(--magic-active-icon) !important;
   z-index: 20;
 }
+
+/* ========================================================================= */
+/* QUANT EMERALD GLASSMORPHISM PORTAL (1:1 RATIO)                            */
+/* ========================================================================= */
+
+.quant-login-section {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: #020617;
+  user-select: none;
+  font-family: 'Poppins', sans-serif;
+}
+
+.quant-login-section * {
+  box-sizing: border-box;
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Background & Canvas: Fixed stage backdrop so scrolling card doesn't jitter */
+.quant-bg {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background: radial-gradient(circle at 75% 20%, #064e3b 0%, #0f172a 55%, #020617 100%);
+  z-index: 0;
+  overflow: hidden;
+}
+
+.quant-bg-perspective-grid {
+  position: absolute;
+  inset: -30% -20%;
+  background-image:
+    linear-gradient(to right, rgba(52, 211, 153, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(52, 211, 153, 0.12) 1px, transparent 1px);
+  background-size: 56px 56px;
+  transform: perspective(700px) rotateX(58deg) translateY(120px) translateZ(-80px);
+  animation: quantGridPulse 18s linear infinite;
+  mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.95) 20%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.95) 20%, transparent 78%);
+}
+
+@keyframes quantGridPulse {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 56px; }
+}
+
+.quant-bg-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(55px);
+  opacity: 0.85;
+}
+
+.quant-bg-orb-1 {
+  width: 480px;
+  height: 480px;
+  background: rgba(16, 185, 129, 0.5);
+  top: 8%;
+  left: 18%;
+  animation: quantOrbFloat1 16s ease-in-out infinite alternate;
+}
+
+.quant-bg-orb-2 {
+  width: 420px;
+  height: 420px;
+  background: rgba(6, 182, 212, 0.48);
+  bottom: 8%;
+  right: 16%;
+  animation: quantOrbFloat2 14s ease-in-out infinite alternate;
+}
+
+.quant-bg-orb-3 {
+  width: 340px;
+  height: 340px;
+  background: rgba(99, 102, 241, 0.42);
+  top: 42%;
+  left: 48%;
+  transform: translate(-50%, -50%);
+  animation: quantOrbFloat3 11s ease-in-out infinite alternate;
+}
+
+@keyframes quantOrbFloat1 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(90px, 50px) scale(1.14); }
+}
+
+@keyframes quantOrbFloat2 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(-100px, -60px) scale(1.18); }
+}
+
+@keyframes quantOrbFloat3 {
+  0% { transform: translate(-50%, -50%) scale(0.92); }
+  100% { transform: translate(-42%, -58%) scale(1.15); }
+}
+
+.quant-network-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Foreground Pillars (.trees layer at z-index: 100) */
+.quant-trees {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 100;
+  pointer-events: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+}
+
+.quant-arch-pillar {
+  width: clamp(60px, 9vw, 150px);
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 28px 18px;
+  background: linear-gradient(90deg, rgba(6, 78, 59, 0.55) 0%, transparent 100%);
+  border-right: 1px solid rgba(167, 243, 208, 0.25);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.quant-arch-pillar.right {
+  background: linear-gradient(-90deg, rgba(6, 78, 59, 0.55) 0%, transparent 100%);
+  border-right: none;
+  border-left: 1px solid rgba(167, 243, 208, 0.25);
+  align-items: flex-end;
+}
+
+.quant-pillar-telemetry {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.55);
+  text-transform: uppercase;
+}
+
+.quant-pillar-bar {
+  width: 3px;
+  height: 140px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.quant-pillar-bar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: -40%;
+  width: 100%;
+  height: 45%;
+  background: linear-gradient(to bottom, transparent, #34d399, #0284c7);
+  animation: quantPillarScan 4s ease-in-out infinite;
+}
+
+@keyframes quantPillarScan {
+  0% { top: -45%; }
+  100% { top: 110%; }
+}
+
+/* Traversing Pod (.girl layer at z-index: 2 behind glass) */
+.quant-girl {
+  position: absolute;
+  scale: 0.65;
+  pointer-events: none;
+  animation: quantAnimateGirl 15s linear infinite;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+@keyframes quantAnimateGirl {
+  0% {
+    transform: translateX(calc(100% + 100vw));
+  }
+  50% {
+    transform: translateX(calc(-100% - 100vw));
+  }
+  50.01% {
+    transform: translateX(calc(-100% - 100vw)) rotateY(180deg);
+  }
+  100% {
+    transform: translateX(calc(100% + 100vw)) rotateY(180deg);
+  }
+}
+
+.quant-crm-kinetic-pod {
+  position: relative;
+  width: 440px;
+  height: 210px;
+  border-radius: 28px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.85), rgba(6, 182, 212, 0.85), rgba(99, 102, 241, 0.85));
+  box-shadow:
+    0 0 70px rgba(16, 185, 129, 0.65),
+    0 0 120px rgba(6, 182, 212, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 30px;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+}
+
+.quant-crm-kinetic-pod::before {
+  content: '';
+  position: absolute;
+  right: -140px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 140px;
+  height: 18px;
+  background: linear-gradient(90deg, rgba(52, 211, 153, 0.85), transparent);
+  filter: blur(6px);
+  border-radius: 999px;
+}
+
+.quant-pod-orb-core {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #34d399, #06b6d4, #818cf8, #10b981, #34d399);
+  animation: quantSpinCore 4s linear infinite;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 35px rgba(52, 211, 153, 0.8);
+}
+
+.quant-pod-orb-core::after {
+  content: '';
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: #0f172a;
+  border: 3px solid rgba(255, 255, 255, 0.85);
+}
+
+@keyframes quantSpinCore {
+  to { transform: rotate(360deg); }
+}
+
+.quant-pod-metrics {
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quant-pod-tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 4px 10px;
+  border-radius: 999px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.quant-pod-value {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.quant-pod-sub {
+  font-size: 14px;
+  opacity: 0.92;
+  font-weight: 500;
+}
+
+/* Falling Glass Nodes (.leaves layer) */
+.quant-leaves {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.quant-leaves .quant-set {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.quant-leaves .quant-set div {
+  position: absolute;
+  display: block;
+}
+
+.quant-leaves .quant-set div:nth-child(1) { left: 20%; animation: quantAnimate 20s linear infinite; }
+.quant-leaves .quant-set div:nth-child(2) { left: 50%; animation: quantAnimate 14s linear infinite; }
+.quant-leaves .quant-set div:nth-child(3) { left: 70%; animation: quantAnimate 12s linear infinite; }
+.quant-leaves .quant-set div:nth-child(4) { left: 5%;  animation: quantAnimate 15s linear infinite; }
+.quant-leaves .quant-set div:nth-child(5) { left: 85%; animation: quantAnimate 18s linear infinite; }
+.quant-leaves .quant-set div:nth-child(6) { left: 90%; animation: quantAnimate 12s linear infinite; }
+.quant-leaves .quant-set div:nth-child(7) { left: 15%; animation: quantAnimate 14s linear infinite; }
+.quant-leaves .quant-set div:nth-child(8) { left: 60%; animation: quantAnimate 15s linear infinite; }
+
+@keyframes quantAnimate {
+  0% {
+    opacity: 0;
+    top: -10%;
+    transform: translateX(20px) rotate(0deg);
+  }
+  10% {
+    opacity: 1;
+  }
+  20% {
+    transform: translateX(-20px) rotate(45deg);
+  }
+  40% {
+    transform: translateX(-20px) rotate(90deg);
+  }
+  60% {
+    transform: translateX(20px) rotate(180deg);
+  }
+  80% {
+    transform: translateX(-20px) rotate(45deg);
+  }
+  100% {
+    top: 110%;
+    transform: translateX(20px) rotate(225deg);
+  }
+}
+
+.quant-node-shard {
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.05));
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.16);
+  color: #ffffff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.quant-node-shard.diamond {
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.42), rgba(6, 182, 212, 0.25));
+}
+
+.quant-node-shard.ring {
+  border-radius: 50%;
+  width: 46px;
+  height: 46px;
+  background: radial-gradient(circle, rgba(52, 211, 153, 0.45) 0%, rgba(15, 23, 42, 0.1) 70%);
+}
+
+.quant-node-shard.amber {
+  background: linear-gradient(135deg, rgba(5, 150, 105, 0.45), rgba(14, 165, 233, 0.28));
+}
+
+/* 1:1 Aspect Ratio Glassmorphism Card */
+.quant-login-card {
+  position: relative;
+  width: 480px;
+  max-width: calc(100vw - 36px);
+  min-height: 480px;
+  aspect-ratio: 1 / 1;
+  padding: 44px 44px;
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.35);
+  border-right: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease;
+}
+
+.quant-login-card.quant-card-fluid {
+  aspect-ratio: auto;
+  min-height: 480px;
+  padding: 40px 42px;
+}
+
+.quant-login-card h2 {
+  position: relative;
+  width: 100%;
+  text-align: center;
+  font-size: 2.3em;
+  font-weight: 600;
+  color: #ecfdf5;
+  margin-bottom: 22px;
+  letter-spacing: -0.02em;
+}
+
+.quant-brand-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 auto 12px auto;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  color: #6ee7b7;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.quant-brand-badge .quant-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 8px #34d399;
+  animation: quantPulseDot 2s ease-in-out infinite;
+}
+
+.quant-input-box {
+  position: relative;
+}
+
+.quant-input-box input {
+  position: relative;
+  width: 100%;
+  padding: 14px 20px;
+  outline: none !important;
+  font-size: 1.12em;
+  color: #064e3b !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-radius: 8px;
+  border: none;
+  margin-bottom: 20px;
+  transition: box-shadow 0.25s ease, transform 0.2s ease;
+}
+
+.quant-input-box input[type="password"],
+.quant-input-box input.quant-input-password {
+  padding-right: 52px !important;
+}
+
+.quant-input-box input:-webkit-autofill,
+.quant-input-box input:-webkit-autofill:hover,
+.quant-input-box input:-webkit-autofill:focus,
+.quant-input-box input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.96) inset !important;
+  -webkit-text-fill-color: #064e3b !important;
+  caret-color: #064e3b !important;
+  font-family: inherit !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+.quant-input-box input:focus {
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.5), 0 10px 25px rgba(0, 0, 0, 0.15) !important;
+}
+
+.quant-input-box input::placeholder {
+  color: #047857 !important;
+  opacity: 0.85;
+}
+
+.quant-pwd-toggle {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  background: none;
+  border: none;
+  color: #047857;
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.75;
+  transition: opacity 0.2s;
+  z-index: 3;
+}
+
+.quant-pwd-toggle:hover {
+  opacity: 1;
+}
+
+.quant-input-box .quant-btn {
+  position: relative;
+  width: 100%;
+  padding: 13px 20px;
+  border: none;
+  outline: none;
+  background: linear-gradient(135deg, #059669 0%, #0d9488 55%, #0284c7 100%);
+  color: #fff;
+  cursor: pointer;
+  font-size: 1.2em;
+  font-weight: 500;
+  border-radius: 6px;
+  margin-bottom: 22px;
+  transition: 0.3s;
+  box-shadow: 0 10px 24px rgba(5, 150, 105, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.quant-input-box .quant-btn:hover {
+  background: linear-gradient(135deg, #047857 0%, #0f766e 55%, #0369a1 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(5, 150, 105, 0.45);
+}
+
+.quant-input-box .quant-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.quant-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.quant-group a {
+  font-size: 1.15em;
+  color: #d1fae5;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.quant-group a:hover {
+  opacity: 0.85;
+}
+
+.quant-group a:nth-child(2) {
+  text-decoration: underline;
+}
+
+.quant-error-alert {
+  padding: 8px 14px;
+  margin-bottom: 16px;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fecaca;
+  font-size: 0.82em;
+  text-align: center;
+}
+
+.quant-subtitle {
+  color: rgba(236, 253, 245, 0.82);
+  font-size: 0.88em;
+  text-align: center;
+  margin-top: -14px;
+  margin-bottom: 22px;
+  line-height: 1.45;
+}
+
+.quant-badge-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  color: #ecfdf5;
+  margin-bottom: 18px;
+  font-size: 0.82em;
+}
+
+.quant-success-card {
+  padding: 22px 20px;
+  border-radius: 12px;
+  background: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  color: #ecfdf5;
+  text-align: center;
+  margin-bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.quant-success-card h3 {
+  font-size: 1.15em;
+  font-weight: 600;
+  color: #34d399;
+}
+
+.quant-success-card p {
+  font-size: 0.85em;
+  color: rgba(236, 253, 245, 0.85);
+  line-height: 1.4;
+}
+
+.quant-success-card .quant-recipient-email {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.88em;
+  color: #6ee7b7;
+  word-break: break-all;
+}
+
+.quant-btn-ghost {
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #a7f3d0 !important;
+  border: 1px solid rgba(52, 211, 153, 0.35) !important;
+  font-size: 0.9em !important;
+  padding: 10px 16px !important;
+  margin-bottom: 0 !important;
+}
+
+.quant-btn-ghost:hover {
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: #ffffff !important;
+}
+
+/* Mobile HUD & Segmented Story Indicators */
+.quant-mobile-hud {
+  display: none;
+}
+
+@keyframes quantPulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.75); }
+}
+
+@keyframes quantSheetSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(35px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ========================================================================= */
+/* ERGONOMIC MOBILE VIEWPORT (INSPIRATION: MODERN MOBILE SHEET UX)            */
+/* ========================================================================= */
+@media (max-width: 640px) {
+  /* Mobile Layout Alignment: Anchored to Bottom Thumb Zone with scrolling safety */
+  .quant-login-section {
+    align-items: flex-end !important;
+    justify-content: center !important;
+    padding-top: max(84px, env(safe-area-inset-top)) !important;
+    padding-bottom: max(18px, env(safe-area-inset-bottom)) !important;
+    min-height: 100dvh !important;
+    height: auto !important;
+  }
+
+  /* Segmented Top HUD Bar */
+  .quant-mobile-hud {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    position: absolute;
+    top: max(16px, env(safe-area-inset-top));
+    left: 20px;
+    right: 20px;
+    z-index: 20;
+    pointer-events: none;
+  }
+
+  .quant-hud-dashes {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    max-width: 200px;
+  }
+
+  .quant-hud-dash {
+    flex: 1;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 999px;
+  }
+
+  .quant-hud-dash.active {
+    background: #34d399;
+    box-shadow: 0 0 10px rgba(52, 211, 153, 0.9);
+  }
+
+  .quant-hud-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: rgba(167, 243, 208, 0.75);
+    text-transform: uppercase;
+  }
+
+  .quant-hud-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #34d399;
+    box-shadow: 0 0 6px #34d399;
+    animation: quantPulseDot 2s ease-in-out infinite;
+  }
+
+  /* Mobile Pod Traversal: Positioned High in Sky Above Sheet */
+  .quant-girl {
+    top: 14% !important;
+    scale: 0.48 !important;
+    z-index: 1 !important;
+    opacity: 0.85;
+  }
+
+  /* Falling Shards: Scale down subtly for mobile screens */
+  .quant-node-shard {
+    width: 44px !important;
+    height: 44px !important;
+    font-size: 9px !important;
+  }
+
+  /* Mobile Floating Glass Sheet */
+  .quant-login-card {
+    width: calc(100% - 24px) !important;
+    max-width: 420px !important;
+    aspect-ratio: auto !important;
+    min-height: auto !important;
+    padding: 22px 20px 18px 20px !important;
+    border-radius: 28px !important;
+    margin: auto auto 0 auto !important;
+    background: rgba(15, 23, 42, 0.75) !important;
+    backdrop-filter: blur(28px) !important;
+    -webkit-backdrop-filter: blur(28px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.28) !important;
+    border-top: 1.5px solid rgba(255, 255, 255, 0.6) !important;
+    box-shadow:
+      0 -12px 40px rgba(0, 0, 0, 0.55),
+      0 0 35px rgba(16, 185, 129, 0.18) !important;
+    animation: quantSheetSlideUp 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Ergonomic Sheet Drag Handle Pill */
+  .quant-login-card::before {
+    content: '';
+    display: block;
+    width: 38px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.35);
+    margin: 0 auto 14px auto;
+  }
+
+  .quant-login-card h2 {
+    font-size: 1.6em !important;
+    margin-bottom: 6px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em !important;
+  }
+
+  .quant-subtitle {
+    font-size: 0.8em !important;
+    margin-top: 0 !important;
+    margin-bottom: 16px !important;
+    line-height: 1.38 !important;
+  }
+
+  /* Mobile Inputs: Large touch target, 16px font to prevent auto-zoom */
+  .quant-input-box {
+    margin-bottom: 0 !important;
+  }
+
+  .quant-input-box input {
+    padding: 13px 18px !important;
+    font-size: 16px !important;
+    border-radius: 14px !important;
+    margin-bottom: 12px !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+  }
+
+  .quant-input-box input:focus {
+    box-shadow: 0 0 0 2px #34d399, 0 8px 20px rgba(0, 0, 0, 0.25) !important;
+  }
+
+  .quant-pwd-toggle {
+    right: 14px !important;
+    top: 12px !important;
+    padding: 6px !important;
+  }
+
+  /* Full-width thumb-friendly primary button */
+  .quant-input-box .quant-btn {
+    padding: 14px 20px !important;
+    font-size: 1.05em !important;
+    font-weight: 600 !important;
+    border-radius: 14px !important;
+    margin-bottom: 14px !important;
+    box-shadow: 0 8px 24px rgba(5, 150, 105, 0.45) !important;
+  }
+
+  .quant-input-box .quant-btn:active {
+    transform: scale(0.98);
+  }
+
+  /* Mobile links row */
+  .quant-group {
+    padding: 2px 4px;
+  }
+
+  .quant-group a {
+    font-size: 0.92em !important;
+    padding: 4px 0;
+  }
+
+  /* Hide architectural side pillars on mobile */
+  .quant-trees {
+    display: none !important;
+  }
+}
+
 

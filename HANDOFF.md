@@ -44,7 +44,7 @@ Pinsite is a mobile-first web app where:
 | **Yadullah** | *(Internal Account)* | `manager` | 0 leads | **MANAGER (EXCLUDED from caller pool)** |
 
 > [!CRITICAL]
-> **1. Owner Security Rule:** Do NOT change or reset `muzammilpathan6047@gmail.com`'s password. It is `AgencyOwner2026!`. The backend protects this account from modification, role changes, or automated resets.
+> **1. Owner Security Rule:** Do NOT change or reset `muzammilpathan6047@gmail.com`'s password. It is stored in the team password manager (never in the repo). The backend protects this account from modification, role changes, or automated resets.
 >
 > **2. Yadullah & Manager Boundary:** Yadullah was promoted to `manager` on Sept 27. **Managers are NOT callers.**
 > - Active caller pool consists of exactly **4 callers** (Ali, Sayyed Maaz, Melikecookie, Anas) holding 74 total leads.
@@ -277,7 +277,7 @@ Sprints 6, 7, and 8 are complete. Sprints 9 and 10 represent the final remaining
 
 ## 12. Rules for Any Agent Working on This Project
 
-1. **Never change Muzammil's password** (`muzammilpathan6047@gmail.com` / `AgencyOwner2026!`).
+1. **Never change Muzammil's password** (`muzammilpathan6047@gmail.com`).
 2. **Never treat managers as callers**: Yadullah is a manager.
 3. **Always push to `main`**: Commits on `main` auto-deploy to `https://pinsite.pro`.
 4. **Use semicolons, not `&&`** when chaining terminal commands in PowerShell.

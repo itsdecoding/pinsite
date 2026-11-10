@@ -157,11 +157,11 @@ Return JSON matching this exact structure:
   let lastErrorText = "";
 
   for (const model of candidateModels) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     try {
       res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify(requestBody),
         signal: AbortSignal.timeout(30000),
       });
@@ -178,7 +178,8 @@ Return JSON matching this exact structure:
   }
 
   if (!res || !res.ok) {
-    throw new Error(`All Gemini candidate models failed. Last error: ${lastErrorText}`);
+    console.error("All Gemini candidate models failed. Last error:", lastErrorText);
+    throw new Error("Website generation service is unavailable. Please try again.");
   }
 
   const json = await res.json();
@@ -191,7 +192,8 @@ Return JSON matching this exact structure:
   try {
     parsed = JSON.parse(rawText.trim());
   } catch (err: any) {
-    throw new Error(`Failed to parse Gemini JSON response: ${err.message}. Raw: ${rawText}`);
+    console.error("Failed to parse Gemini JSON response:", err.message, rawText);
+    throw new Error("Website generation returned an invalid response. Please try again.");
   }
 
   // Ensure mandatory fields exist

@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Rebalance error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to rebalance leads" },
+      { error: "Failed to rebalance leads" },
       { status: 500 }
     );
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,6 +15,14 @@ export async function POST(req: NextRequest) {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+
+    if (
+      (await isRateLimited(`forgot:ip:${getClientIp(req)}`, 10, 3600)) ||
+      (await isRateLimited(`forgot:email:${normalizedEmail}`, 3, 3600))
+    ) {
+      return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
+    }
+
     const admin = getAdminClient();
 
     // Supabase Auth URL whitelist strictly matches https://pinsite.pro (WITHOUT www).
@@ -129,7 +138,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Forgot-password handler error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to process password reset request" },
+      { error: "Failed to process password reset request" },
       { status: 500 }
     );
   }

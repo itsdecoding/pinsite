@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     console.error("Fetch quarantined leads error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to load quarantined leads" },
+      { error: "Failed to load quarantined leads" },
       { status: 500 }
     );
   }
@@ -240,7 +240,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Rescue quarantined lead error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to rescue lead" },
+      { error: "Failed to rescue lead" },
       { status: 500 }
     );
   }
