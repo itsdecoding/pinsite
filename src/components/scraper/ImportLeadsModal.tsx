@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import Papa from "papaparse";
 import { createClient } from "@/lib/supabase/client";
 import { useUserSession } from "@/contexts/UserSessionContext";
@@ -983,12 +984,12 @@ export function ImportLeadsModal() {
                           <CheckCircle2 className="w-3.5 h-3.5" />
                           <span>Distribute Leads Equally</span>
                         </button>
-                        <a
+                        <Link
                           href="/queue"
                           className="py-2 px-3 rounded-xl bg-black/5 dark:bg-white/10 text-xs font-bold text-[#111110] dark:text-white hover:bg-black/10 dark:hover:bg-white/15 transition-all flex items-center justify-center gap-1.5"
                         >
                           <span>Manage in Queue</span>
-                        </a>
+                        </Link>
                         <button
                           onClick={() => {
                             // Reset state for new scrape
